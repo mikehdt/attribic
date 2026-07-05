@@ -95,7 +95,9 @@ const TrainingMenuComponent = () => {
       if (res.ok && data.status === 'ready') {
         showToast('Sidecar restarted.');
       } else {
-        showErrorToast(`Sidecar restart failed: ${data.error ?? 'unknown error'}`);
+        showErrorToast(
+          `Sidecar restart failed: ${data.error ?? 'unknown error'}`,
+        );
       }
     } catch (err) {
       showErrorToast(
@@ -164,7 +166,7 @@ const TrainingMenuComponent = () => {
             onClick={handleRestartSidecar}
             disabled={restarting}
             className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700"
-            title="Kill and re-spawn the Python sidecar to pick up code changes"
+            title="Restart the Python sidecar if it misbehaves"
           >
             <span className="h-5 w-5">
               <RefreshCwIcon
