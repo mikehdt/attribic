@@ -43,6 +43,15 @@ export type TrainingProgress = {
   checkpointSteps: number[];
   logLines: string[];
   error: string | null;
+  /**
+   * Human-readable activity label. While preparing it names the setup phase
+   * (e.g. "Caching latents") and currentStep/totalSteps carry that phase's own
+   * item count; while training it names a transient activity between steps
+   * (e.g. "Saving checkpoint"), or is null while steps advance.
+   */
+  phase: string | null;
+  /** Iteration rate from the trainer, e.g. "2.30 it/s" / "23.01 s/it". */
+  speed: string | null;
 };
 
 // --- Hyperparameters ---

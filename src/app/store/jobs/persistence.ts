@@ -29,8 +29,11 @@ const TRAINING_KEY = 'img-tagger:training-jobs';
  */
 export function persistDownloadJobs(jobs: Record<string, Job>): void {
   try {
+    // `pending` downloads are queued but never started — nothing is on disk
+    // and the in-memory concurrency queue doesn't survive a reload, so
+    // persisting them would leave orphaned "queued" entries that never run.
     const downloadJobs = Object.values(jobs).filter(
-      (j): j is DownloadJob => j.type === 'download',
+      (j): j is DownloadJob => j.type === 'download' && j.status !== 'pending',
     );
 
     if (downloadJobs.length === 0) {

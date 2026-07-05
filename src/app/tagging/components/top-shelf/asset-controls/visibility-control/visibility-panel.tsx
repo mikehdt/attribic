@@ -55,7 +55,7 @@ export const VisibilityPanel = () => {
     <>
       {/* Scope section */}
       <div className="flex flex-col gap-3 px-3 py-3">
-        <FormTitle as="span" size="xs">
+        <FormTitle as="span" variant="section" size="xs">
           Scope
         </FormTitle>
 

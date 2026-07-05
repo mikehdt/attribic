@@ -54,6 +54,8 @@ type SidecarJobProgress = {
   sample_image_paths?: string[];
   log_lines?: string[];
   error?: string | null;
+  phase?: string | null;
+  speed?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -128,6 +130,8 @@ function buildProgress(
     checkpointSteps,
     logLines: msg.log_lines ?? [],
     error: msg.error ?? null,
+    phase: msg.phase ?? null,
+    speed: msg.speed ?? null,
   };
 }
 

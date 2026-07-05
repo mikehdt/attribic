@@ -7,6 +7,7 @@ import {
   type ModelComponentType,
 } from '@/app/services/training/models';
 import { Button } from '@/app/shared/button';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Modal } from '@/app/shared/modal';
 
 import { ModelPathField } from '../model-path-field/model-path-field';
@@ -105,14 +106,14 @@ export function ModelDefaultsModal({
                     <div className="space-y-2">
                       {model.components.map((comp) => (
                         <div key={comp.type}>
-                          <label className="mt-4 mb-2 ml-2 flex items-baseline gap-1.5 text-xs text-(--foreground)/70">
+                          <FormTitle className="mt-4 mb-2 ml-2 flex items-baseline gap-1.5">
                             {comp.label}
                             {!comp.required && (
                               <span className="font-normal text-slate-400">
                                 (optional)
                               </span>
                             )}
-                          </label>
+                          </FormTitle>
 
                           <ModelPathField
                             value={draft[model.id]?.[comp.type] ?? ''}

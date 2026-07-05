@@ -4,7 +4,7 @@ import { ActivityIcon, ChevronDownIcon } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { memo, useCallback, useEffect, useRef } from 'react';
 
-import { abortTagging } from '@/app/services/auto-tagger/tagging-controllers';
+import { cancelTaggingJob } from '@/app/services/auto-tagger/tagging-controllers';
 import { useIsAnyModalOpen } from '@/app/shared/modal';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
@@ -100,7 +100,7 @@ const ActivityPanelComponent = () => {
 
   const handleCancelTagging = useCallback(
     (job: TaggingJob) => {
-      abortTagging(job.id);
+      cancelTaggingJob(job.id);
       dispatch(cancelTagging(job.id));
     },
     [dispatch],

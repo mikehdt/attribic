@@ -136,6 +136,42 @@ export const SHARED_COMPONENTS: DownloadableModel[] = [
     sharedId: 'sdxl-vae',
     description: 'Shared VAE for SDXL-based models (~319 MB)',
   },
+
+  // --- Anima text encoder + VAE ---
+  // Anima's split files all live in the one circlestone-labs/Anima repo under
+  // split_files/. The Kohya (sd-scripts) trainer takes the TE and VAE as
+  // separate paths, so we model them as their own components rather than
+  // bundling everything into the DiT download.
+  {
+    id: 'shared-anima-qwen3',
+    name: 'Qwen3 0.6B Text Encoder (Anima)',
+    repoId: 'circlestone-labs/Anima',
+    files: [
+      {
+        name: 'split_files/text_encoders/qwen_3_06b_base.safetensors',
+        size: 1_192_135_096,
+      },
+    ],
+    feature: 'training',
+    componentType: 'qwen',
+    sharedId: 'anima-qwen3',
+    description: 'Qwen3 0.6B text encoder for Anima (~1.2 GB)',
+  },
+  {
+    id: 'shared-anima-vae',
+    name: 'Qwen-Image VAE (Anima)',
+    repoId: 'circlestone-labs/Anima',
+    files: [
+      {
+        name: 'split_files/vae/qwen_image_vae.safetensors',
+        size: 253_806_246,
+      },
+    ],
+    feature: 'training',
+    componentType: 'vae',
+    sharedId: 'anima-vae',
+    description: 'Qwen-Image VAE for Anima (~242 MB)',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -144,6 +180,7 @@ export const SHARED_COMPONENTS: DownloadableModel[] = [
 
 const FLUX1_DEPS = ['t5-xxl', 'clip-l', 'flux-ae'];
 const FLUX2_DEPS = ['qwen3-8b', 'flux2-vae'];
+const ANIMA_DEPS = ['anima-qwen3', 'anima-vae'];
 
 const TRAINING_CHECKPOINTS: DownloadableModel[] = [
   // --- Flux.2 family ---
@@ -280,6 +317,31 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
     componentType: 'checkpoint',
     dependencies: ['sdxl-vae'],
     description: 'Anime/illustration SDXL, non-vpred variant (~6.6 GB)',
+  },
+
+  // --- Anima ---
+  // Anima is anime-focused, Cosmos-Predict2-based, ~2B params. Trained via the
+  // Kohya (sd-scripts) `anima_train_network.py` backend. The DiT, Qwen3 text
+  // encoder, and Qwen-Image VAE all download from the one HF repo.
+  //
+  // Licensed under the CircleStone Labs Non-Commercial License (weights only;
+  // generated images are unrestricted). The repo is public, so no gated-repo
+  // acceptance is needed to download.
+  {
+    id: 'dl-anima-dit',
+    name: 'Anima DiT (base v1.0)',
+    repoId: 'circlestone-labs/Anima',
+    files: [
+      {
+        name: 'split_files/diffusion_models/anima-base-v1.0.safetensors',
+        size: 4_182_218_328,
+      },
+    ],
+    feature: 'training',
+    architecture: 'anima',
+    componentType: 'checkpoint',
+    dependencies: ANIMA_DEPS,
+    description: 'Anime-focused ~2B DiT — low VRAM, fast to train (~4 GB)',
   },
 
   // --- Z-Image ---

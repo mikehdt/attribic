@@ -12,6 +12,7 @@ import path from 'path';
 import { getModel } from '@/app/services/auto-tagger';
 import { getHfToken } from '@/app/services/config/server-config';
 import {
+  isDownloadActive,
   markDownloadActive,
   markDownloadInactive,
 } from '@/app/services/model-manager/active-downloads';
@@ -98,8 +99,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const downloadId = `dl-${Date.now()}-${modelId}`;
     const activeModelId = downloadable.id;
+
+    // Server-side guard: the UI suppresses colliding actions, but a second
+    // tab can still POST. Two generators appending to the same files would
+    // interleave writes and corrupt them.
+    if (isDownloadActive(activeModelId)) {
+      return new Response(
+        JSON.stringify({
+          error: 'A download for this model is already in progress',
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const downloadId = `dl-${Date.now()}-${modelId}`;
     markDownloadActive(activeModelId);
 
     // Create a readable stream for SSE
@@ -242,6 +256,15 @@ export async function DELETE(request: NextRequest) {
       return Response.json({ error: 'Model not found' }, { status: 404 });
     }
 
+    // Refuse to delete files a live download is writing to — on Windows the
+    // unlink would fail against the open handle and leave a half-wiped model.
+    if (isDownloadActive(downloadable.id)) {
+      return Response.json(
+        { error: 'Model is downloading — cancel the download first' },
+        { status: 409 },
+      );
+    }
+
     // Collect all known file names across the default + every variant.
     // This way deleting "Flux.1 Dev" wipes whichever quantisation the user
     // actually downloaded, not just the default fp16/bf16 layout.
@@ -258,16 +281,23 @@ export async function DELETE(request: NextRequest) {
         fs.unlinkSync(filePath);
         deletedCount++;
       }
-      // Also clean up sidecar
-      const sidecarPath = `${filePath}.model.json`;
-      if (fs.existsSync(sidecarPath)) {
-        fs.unlinkSync(sidecarPath);
+      // Also clean up the metadata sidecars (model info + resume validation)
+      for (const extra of [
+        `${filePath}.model.json`,
+        `${filePath}.download-meta.json`,
+      ]) {
+        if (fs.existsSync(extra)) {
+          fs.unlinkSync(extra);
+        }
       }
     }
 
     // Clean up the per-model manifest. Other models sharing this directory
     // have their own manifests, so this only removes the one we wrote.
-    const manifestPath = path.join(targetDir, `${downloadable.id}.manifest.json`);
+    const manifestPath = path.join(
+      targetDir,
+      `${downloadable.id}.manifest.json`,
+    );
     if (fs.existsSync(manifestPath)) {
       fs.unlinkSync(manifestPath);
     }

@@ -7,6 +7,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { resolveLoraOutputDir } from './output-path';
+
 type ClientFormConfig = Record<string, unknown>;
 
 type ClientDatasetFolder = {
@@ -119,12 +121,12 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   const outputName = (config.outputName as string) || 'unnamed-lora';
   // Put outputs under the first dataset's project folder when possible,
   // otherwise fall back to .training/outputs. Gives users predictable
-  // locations for trained LoRAs.
+  // locations for trained LoRAs. Uses the shared resolver so the UI's
+  // "Output folder" display matches what actually gets written.
   const firstDataset = (config.datasets as ClientDatasetSource[])?.[0];
   const outputPath =
-    firstDataset && projectsFolder
-      ? path.join(projectsFolder, firstDataset.folderName, 'loras')
-      : path.join(process.cwd(), '.training', 'outputs');
+    resolveLoraOutputDir(projectsFolder, firstDataset?.folderName) ??
+    path.join(process.cwd(), '.training', 'outputs');
 
   // Project path: best-effort — the first dataset's folder, else cwd.
   const projectPath =
@@ -193,6 +195,10 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     // Pass through the user-selected checkpoint path so the sidecar uses
     // the local file rather than the registry's default HF URL.
     model_path: checkpointPath,
+    // Full per-component path map (keyed by component type: checkpoint, qwen,
+    // vae, t5, clip_l, ae). Backends that need more than the checkpoint —
+    // e.g. Kohya/Anima wants explicit DiT + Qwen3 + VAE paths — read from here.
+    model_paths: modelPaths,
   };
 
   return {

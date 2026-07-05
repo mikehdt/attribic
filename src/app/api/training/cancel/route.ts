@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
 
-import { ensureSidecar } from '@/app/services/training/sidecar-manager';
+import { connectSidecar } from '@/app/services/training/sidecar-manager';
 
 /**
  * POST /api/training/cancel — Cancel the active training job.
+ * Never spawns the sidecar: if it isn't running, there's nothing to cancel.
  */
 export async function POST() {
-  const sidecar = await ensureSidecar();
+  const sidecar = await connectSidecar();
   if (sidecar.status !== 'ready') {
     return NextResponse.json(
-      { error: `Sidecar not ready: ${sidecar.error}` },
-      { status: 503 },
+      { error: 'Sidecar is not running — no active job to cancel' },
+      { status: 409 },
     );
   }
 

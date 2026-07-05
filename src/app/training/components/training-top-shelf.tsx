@@ -5,9 +5,10 @@ import {
   ChevronDownIcon,
   FolderCogIcon,
   GraduationCapIcon,
+  RefreshCwIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { memo, useCallback, useId, useRef } from 'react';
+import { memo, useCallback, useId, useRef, useState } from 'react';
 
 import { MenuThemeSwitcher } from '@/app/shared/menu-theme-switcher';
 import { Popup, usePopup } from '@/app/shared/popup';
@@ -16,7 +17,9 @@ import {
   ShelfToolbarRow,
   TopShelfFrame,
 } from '@/app/shared/shelf';
+import { useToast } from '@/app/shared/toast/hooks/use-toast';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { selectGpuBusyReason } from '@/app/store/jobs';
 import { selectTheme, setTheme } from '@/app/store/preferences';
 import { type ThemeMode } from '@/app/utils/use-theme';
 
@@ -31,6 +34,9 @@ const TrainingMenuComponent = () => {
   const popupId = useId();
 
   const theme = useAppSelector(selectTheme);
+  const gpuBusyReason = useAppSelector(selectGpuBusyReason);
+  const { showToast, showErrorToast } = useToast();
+  const [restarting, setRestarting] = useState(false);
   const { openModal: openModelDefaults } = useModelDefaultsModal();
   const isOpen = getPopupState(popupId).isOpen;
 
@@ -54,6 +60,58 @@ const TrainingMenuComponent = () => {
     closePopup(popupId);
     router.push('/');
   }, [closePopup, popupId, router]);
+
+  const handleRestartSidecar = useCallback(async () => {
+    closePopup(popupId);
+    if (restarting) return;
+
+    // Restarting kills whatever the sidecar is doing. If we know a GPU job is
+    // running, make the user confirm before we force it.
+    const force = gpuBusyReason !== null;
+    if (force) {
+      const ok = window.confirm(
+        `A ${gpuBusyReason} job is running on the sidecar. Restarting will stop it. Continue?`,
+      );
+      if (!ok) return;
+    }
+
+    setRestarting(true);
+    try {
+      const res = await fetch('/api/training/sidecar/restart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 409) {
+        // A job started between our check and the click — surface it rather
+        // than silently killing it.
+        showErrorToast(
+          'A job is running on the sidecar — restart cancelled. Cancel the job first, or retry to force.',
+        );
+        return;
+      }
+      if (res.ok && data.status === 'ready') {
+        showToast('Sidecar restarted.');
+      } else {
+        showErrorToast(`Sidecar restart failed: ${data.error ?? 'unknown error'}`);
+      }
+    } catch (err) {
+      showErrorToast(
+        `Sidecar restart failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      );
+    } finally {
+      setRestarting(false);
+    }
+  }, [
+    closePopup,
+    popupId,
+    restarting,
+    gpuBusyReason,
+    showToast,
+    showErrorToast,
+  ]);
 
   const handleSetTheme = useCallback(
     (mode: ThemeMode) => {
@@ -100,6 +158,21 @@ const TrainingMenuComponent = () => {
           </button>
 
           <MenuThemeSwitcher theme={theme} setTheme={handleSetTheme} />
+
+          <button
+            type="button"
+            onClick={handleRestartSidecar}
+            disabled={restarting}
+            className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-700"
+            title="Kill and re-spawn the Python sidecar to pick up code changes"
+          >
+            <span className="h-5 w-5">
+              <RefreshCwIcon
+                className={`h-5 w-5 ${restarting ? 'animate-spin' : ''}`}
+              />
+            </span>
+            {restarting ? 'Restarting sidecar…' : 'Restart Sidecar'}
+          </button>
 
           <button
             type="button"

@@ -26,11 +26,13 @@ export function AutoTaggerProgress({
 
   const loading = progress?.loading;
   const isLoading = loading !== undefined;
+  const queued = progress?.queued;
+  const isQueued = queued !== undefined;
   // "Starting" = the job has been created but the backend hasn't emitted any
-  // event yet (no loading shards, no per-image progress). Avoids the
-  // misleading "Tagging image 1 of N" + empty bar that briefly appears
-  // before the model has even begun loading.
-  const isStarting = jobStatus === 'preparing' && !isLoading;
+  // event yet (no queue placement, no loading shards, no per-image progress).
+  // Avoids the misleading "Tagging image 1 of N" + empty bar that briefly
+  // appears before the model has even begun loading.
+  const isStarting = jobStatus === 'preparing' && !isLoading && !isQueued;
   const isCaptioning = providerType === 'vlm';
   const verbPresent = isCaptioning ? 'Captioning' : 'Tagging';
   const startingVerb = isCaptioning ? 'captioner' : 'tagger';
@@ -40,7 +42,20 @@ export function AutoTaggerProgress({
 
   return (
     <div className="flex flex-col gap-4">
-      {isStarting ? (
+      {isQueued ? (
+        <>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Waiting for the GPU...
+          </p>
+          <div className="flex flex-col gap-2">
+            <ProgressBar color="indigo" indeterminate />
+            <p className="truncate text-xs text-slate-500">
+              Queued behind other work — position {queued.position} in line. It
+              will start automatically.
+            </p>
+          </div>
+        </>
+      ) : isStarting ? (
         <>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Starting auto-{startingVerb}...

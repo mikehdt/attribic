@@ -20,10 +20,8 @@ import {
   getProviderTypeForModel,
 } from '@/app/services/auto-tagger';
 import { checkModelStatus } from '@/app/services/auto-tagger/model-manager';
-import {
-  cancelCaptionBatch,
-  captionBatchViaSidecar,
-} from '@/app/services/auto-tagger/providers/vlm/client';
+import type { CaptionBatchItem } from '@/app/services/auto-tagger/providers/vlm/client';
+import { captionBatchViaSidecar } from '@/app/services/auto-tagger/providers/vlm/client';
 import { tagImageInWorker } from '@/app/services/auto-tagger/providers/wd14/worker-manager';
 import { ensureVideoPoster } from '@/app/utils/asset-actions';
 
@@ -49,6 +47,14 @@ const getServerConfig = () => {
 type BatchTagRequest = {
   modelId: string;
   projectPath: string;
+  /**
+   * Client-supplied batch/job ID. Doubles as the sidecar batch_id so the
+   * client can cancel (POST /batch/cancel) or reattach (GET /batch/attach)
+   * using the same identifier it already tracks in its jobs store.
+   */
+  batchId?: string;
+  /** Project folder name, used to find this project's batches on reattach. */
+  projectFolderName?: string;
   assets: { fileId: string; fileExtension: string }[];
   /** ONNX (WD14) options — threshold, includeCharacterTags, etc. */
   options?: Partial<TaggerOptions>;
@@ -62,7 +68,17 @@ type BatchTagRequest = {
 };
 
 type BatchProgressEvent = {
-  type: 'progress' | 'result' | 'complete' | 'error' | 'loading' | 'loaded';
+  type:
+    | 'progress'
+    | 'result'
+    | 'complete'
+    | 'error'
+    | 'loading'
+    | 'loaded'
+    | 'queued'
+    | 'cancelled';
+  /** 1-indexed queue position, on `queued` events only. */
+  position?: number;
   current?: number;
   total?: number;
   fileId?: string;
@@ -85,7 +101,14 @@ export async function POST(request: NextRequest) {
       options: userOptions,
       vlmOptions: userVlmOptions,
       triggerPhrases = [],
+      projectFolderName,
     } = body;
+
+    // Prefer the client's ID (it uses the same value to cancel/reattach);
+    // random suffix on the fallback so same-millisecond starts can't collide.
+    const batchId =
+      body.batchId ??
+      `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Resolve to absolute path
     // The projectPath from client could be:
@@ -238,13 +261,16 @@ export async function POST(request: NextRequest) {
         };
 
         try {
+          let outcome: 'complete' | 'cancelled' = 'complete';
           if (providerType === 'vlm') {
-            await runVlmBatch(sendEvent);
+            outcome = (await runVlmBatch(sendEvent)) ?? 'complete';
           } else {
             await runOnnxBatch(sendEvent);
           }
 
-          sendEvent({ type: 'complete', total });
+          if (outcome !== 'cancelled') {
+            sendEvent({ type: 'complete', total });
+          }
           controller.close();
         } catch (err) {
           sendEvent({
@@ -348,11 +374,15 @@ export async function POST(request: NextRequest) {
     }
 
     // --- VLM (sidecar) batch runner ---
-    async function runVlmBatch(sendEvent: (event: BatchProgressEvent) => void) {
-      // Build ordered list of image paths. The sidecar processes them in order
-      // and yields one event per image, so we match results back to assets by
-      // their sequence index rather than by path string — this avoids subtle
-      // path-normalisation mismatches between Node and Python.
+    // Returns 'cancelled' when the sidecar reports the batch was cancelled;
+    // undefined for a normal run (the caller emits `complete`).
+    async function runVlmBatch(
+      sendEvent: (event: BatchProgressEvent) => void,
+    ): Promise<'cancelled' | undefined> {
+      // Build the item list for the sidecar. Each item carries the asset's
+      // fileId as its item_id, so every progress event and stored result
+      // comes back tagged with the asset it belongs to — no index or path
+      // mapping to keep in sync.
       //
       // Video handling depends on whether the selected model can natively
       // process video frames:
@@ -362,11 +392,9 @@ export async function POST(request: NextRequest) {
       //  - !supportsVideo: substitute an extracted poster frame so the
       //    image-only provider can still produce a (less accurate) caption.
       // Per-asset poster extraction failures drop that asset from the
-      // sidecar batch and surface as a per-asset error. The
-      // sidecar→asset mapping preserves result alignment after drops.
+      // sidecar batch and surface as a per-asset error.
       const modelSupportsVideo = resolvedModel.supportsVideo === true;
-      const imagePaths: string[] = [];
-      const sidecarIndexToAsset: typeof assets = [];
+      const items: CaptionBatchItem[] = [];
       for (const asset of assets) {
         const sourcePath = path.join(
           projectPath,
@@ -389,109 +417,111 @@ export async function POST(request: NextRequest) {
           });
           continue;
         }
-        imagePaths.push(resolved);
-        sidecarIndexToAsset.push(asset);
+        items.push({ path: resolved, itemId: asset.fileId });
       }
 
       // If every asset was a failed-extraction video, there's nothing to
       // send to the sidecar — bail before opening a WebSocket.
-      if (imagePaths.length === 0) {
+      if (items.length === 0) {
         return;
       }
 
-      const batchId = `batch-${Date.now()}`;
-
-      // When the client aborts the fetch (user hit Cancel), forward the cancel
-      // to the sidecar so it stops mid-inference instead of grinding through
-      // the rest of the batch. The sidecar's cancel_check closure flips inside
-      // the running generate loop, aborts the current image, and marks the
-      // batch as cancelled. Fire-and-forget — the sidecar endpoint is idempotent.
-      const onAbort = () => {
-        cancelCaptionBatch(batchId).catch(() => {
-          /* best-effort */
-        });
-      };
-      request.signal.addEventListener('abort', onAbort, { once: true });
+      // NOTE: the client's abort (tab close, navigation) deliberately does
+      // NOT cancel the sidecar batch any more. The batch keeps running,
+      // results accumulate sidecar-side, and the client reattaches via
+      // /api/auto-tagger/batch/attach. Explicit cancellation goes through
+      // /api/auto-tagger/batch/cancel instead.
 
       // Same semantics as runOnnxBatch: `current` = images completed so far.
-      // Starts at 0 (set by the hook's initial job state), hits `total` at the end.
-      // Note: `total` is the user-requested asset count (which may include
-      // videos we couldn't extract); progress events emit against that so the
-      // top-level UI numerator reaches `total` once we add back the dropped
-      // video errors counted before the sidecar started.
-      let completed = assets.length - sidecarIndexToAsset.length;
+      // Starts at the dropped-video count so the numerator still reaches
+      // `total` (dropped videos were errored above before the sidecar runs).
+      const dropped = assets.length - items.length;
+      let completed = dropped;
 
       const generator = captionBatchViaSidecar(
         resolvedModel,
-        imagePaths,
+        items,
         vlmOptions,
         batchId,
+        projectFolderName,
       );
 
-      try {
-        for await (const event of generator) {
-          // Loading progress from the sidecar — forwarded as-is so the UI
-          // can show "Loading checkpoint shards 1/2" during the first-use
-          // model load. No completion-count bump; loading is a side-channel.
-          if ('loading' in event) {
-            sendEvent({
-              type: 'loading',
-              message: event.message,
-              current: event.current,
-              total: event.total,
-            });
-            continue;
-          }
-
-          // Load complete — emit a `loaded` event so the client can show the
-          // loading bar at 100% briefly before transitioning to the
-          // image-counter view. The client handles the 100%-fill + brief
-          // pause + switch-to-tagging dance; doing it server-side would
-          // hold the SSE stream open while the sidecar starts inference.
-          if ('loadingComplete' in event) {
-            sendEvent({
-              type: 'loaded',
-              current: completed,
-              total,
-              fileId: sidecarIndexToAsset[0]?.fileId,
-            });
-            continue;
-          }
-
-          // Map the sidecar's per-image event back to the user-facing asset
-          // via the surviving-index mapping (skips dropped videos).
-          const sidecarIndex =
-            completed - (assets.length - sidecarIndexToAsset.length);
-          const asset = sidecarIndexToAsset[sidecarIndex];
-          if ('error' in event) {
-            sendEvent({
-              type: 'error',
-              fileId: asset?.fileId,
-              error: event.error,
-            });
-          } else if (asset) {
-            sendEvent({
-              type: 'result',
-              fileId: asset.fileId,
-              caption: event.caption,
-            });
-          }
-
-          // Advance completion count after each event (success or error).
-          completed++;
-          const nextSidecarIndex =
-            completed - (assets.length - sidecarIndexToAsset.length);
-          const nextFileId =
-            sidecarIndexToAsset[nextSidecarIndex]?.fileId ?? asset?.fileId;
+      for await (const event of generator) {
+        // Waiting in the sidecar's job queue behind other GPU work
+        // (training run, another caption batch). Forwarded so the UI can
+        // show "Queued — position N" instead of a dead "Starting..." bar.
+        if ('queued' in event) {
           sendEvent({
-            type: 'progress',
+            type: 'queued',
+            position: event.position,
             current: completed,
             total,
-            fileId: nextFileId,
+          });
+          continue;
+        }
+
+        // Loading progress from the sidecar — forwarded as-is so the UI
+        // can show "Loading checkpoint shards 1/2" during the first-use
+        // model load. No completion-count bump; loading is a side-channel.
+        if ('loading' in event) {
+          sendEvent({
+            type: 'loading',
+            message: event.message,
+            current: event.current,
+            total: event.total,
+          });
+          continue;
+        }
+
+        // Sidecar-side cancellation (queue removal, cancel from another
+        // tab). Tell the browser explicitly — a bare `complete` here made
+        // a cancelled batch look like a finished one.
+        if ('cancelled' in event) {
+          sendEvent({ type: 'cancelled', current: completed, total });
+          return 'cancelled';
+        }
+
+        // Load complete — emit a `loaded` event so the client can show the
+        // loading bar at 100% briefly before transitioning to the
+        // image-counter view. The client handles the 100%-fill + brief
+        // pause + switch-to-tagging dance; doing it server-side would
+        // hold the SSE stream open while the sidecar starts inference.
+        if ('loadingComplete' in event) {
+          sendEvent({
+            type: 'loaded',
+            current: completed,
+            total,
+            fileId: items[0]?.itemId,
+          });
+          continue;
+        }
+
+        // Per-image events arrive tagged with the asset's fileId (item_id).
+        if ('error' in event) {
+          sendEvent({
+            type: 'error',
+            fileId: event.itemId,
+            error: event.error,
+          });
+        } else {
+          sendEvent({
+            type: 'result',
+            fileId: event.itemId,
+            caption: event.caption,
           });
         }
-      } finally {
-        request.signal.removeEventListener('abort', onAbort);
+
+        // Advance completion count after each event (success or error).
+        // The sidecar processes items in order, so the next item's fileId
+        // makes an accurate "currently processing" label.
+        completed++;
+        const nextFileId = items[completed - dropped]?.itemId ?? event.itemId;
+        sendEvent({
+          type: 'progress',
+          current: completed,
+          total,
+          fileId: nextFileId,
+        });
       }
     }
 

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { TrainingProjectSummary } from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { Modal } from '@/app/shared/modal';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
@@ -180,9 +181,9 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
         {isNew && (
           <div className="flex w-full flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-800">
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500" htmlFor="new-project-name">
+              <FormTitle htmlFor="new-project-name">
                 Project name
-              </label>
+              </FormTitle>
               <Input
                 id="new-project-name"
                 autoFocus
@@ -197,9 +198,9 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
               )}
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500" htmlFor="new-project-label">
+              <FormTitle htmlFor="new-project-label">
                 Version label (optional)
-              </label>
+              </FormTitle>
               <Input
                 id="new-project-label"
                 value={label}
@@ -250,9 +251,9 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500" htmlFor="existing-label">
+              <FormTitle htmlFor="existing-label">
                 Version label (optional)
-              </label>
+              </FormTitle>
               <Input
                 id="existing-label"
                 value={label}

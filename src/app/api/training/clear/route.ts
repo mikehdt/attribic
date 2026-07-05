@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import {
-  ensureSidecar,
-  getSidecarStatus,
-} from '@/app/services/training/sidecar-manager';
+import { connectSidecar } from '@/app/services/training/sidecar-manager';
 
 /**
  * POST /api/training/clear — Tell the sidecar to drop its completed job
@@ -12,12 +9,7 @@ import {
 export async function POST() {
   // If the sidecar isn't running there's nothing to clear — treat as a
   // no-op rather than booting it just to clear nothing.
-  const status = getSidecarStatus();
-  if (status.status !== 'ready') {
-    return NextResponse.json({ status: 'noop' });
-  }
-
-  const sidecar = await ensureSidecar();
+  const sidecar = await connectSidecar();
   if (sidecar.status !== 'ready') {
     return NextResponse.json({ status: 'noop' });
   }

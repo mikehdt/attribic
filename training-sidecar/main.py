@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import os
 import sys
+import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -17,7 +19,7 @@ from captioning.provider import get_provider as get_caption_provider
 from captioning.provider import unload_provider as unload_caption_provider
 from config import SidecarConfig, load_config
 from job_manager import JobManager
-from job_registry import JobRegistry, run_worker
+from job_registry import JobKind, JobRegistry, LifecycleStatus, run_worker
 from models import (
     CaptionBatchRequest,
     CaptionBatchResponse,
@@ -28,6 +30,7 @@ from models import (
 )
 from ai_toolkit_server import AiToolkitServer
 from providers.ai_toolkit_ui import AiToolkitUiProvider
+from providers.kohya import KohyaProvider
 from providers.mock import MockProvider
 from ws_manager import WebSocketManager
 
@@ -42,6 +45,54 @@ sidecar_config: SidecarConfig
 aitk_server: Optional["AiToolkitServer"] = None
 # Worker task(s) that pull jobs from the registry queue. Phase 2 runs one.
 worker_tasks: list[asyncio.Task] = []
+
+# --- Idle-shutdown watchdog ---
+#
+# The sidecar is spawned detached so it survives Node HMR restarts, but that
+# means a plain Node shutdown would leave it orphaned (holding the port + any
+# resident models). To clean up, Node sends a periodic heartbeat while it's
+# alive; if the heartbeat stops AND nothing is running/queued, the sidecar
+# exits itself. The watchdog only arms once a heartbeat has been seen, so a
+# standalone/old-Node run is never auto-killed.
+_last_activity_at: float = time.monotonic()
+_heartbeat_seen: bool = False
+# uvicorn server handle, set in __main__ so the watchdog can request a graceful
+# exit cross-platform (Windows signal handling is unreliable).
+_server: Optional["uvicorn.Server"] = None  # noqa: F821 (uvicorn imported lazily)
+# Node heartbeats ~every 30s; give ~2 min of grace so a manual dev-server
+# restart doesn't kill an otherwise-idle sidecar.
+_IDLE_SHUTDOWN_GRACE_S = 120.0
+_WATCHDOG_INTERVAL_S = 30.0
+
+
+async def _idle_watchdog():
+    """Exit the process when Node has gone away and there's no work left."""
+    while True:
+        await asyncio.sleep(_WATCHDOG_INTERVAL_S)
+
+        # Not managed by a heartbeating Node — leave it alone.
+        if not _heartbeat_seen:
+            continue
+        # Never shut down mid-job; let running/queued work finish first.
+        if job_registry.has_running() or job_registry.queued_jobs():
+            continue
+
+        idle_for = time.monotonic() - _last_activity_at
+        if idle_for < _IDLE_SHUTDOWN_GRACE_S:
+            continue
+
+        print(
+            f"[sidecar] No client for {idle_for:.0f}s and nothing to do — "
+            "shutting down.",
+            flush=True,
+        )
+        if _server is not None:
+            _server.should_exit = True
+        else:
+            # No server handle (only if imported under an external uvicorn) —
+            # exit hard as a last resort.
+            os._exit(0)
+        return
 
 
 def _register_providers(jm: JobManager, config: SidecarConfig):
@@ -63,12 +114,14 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
             f"(server logs -> {log_path})"
         )
 
-    # TODO Phase 6: Kohya provider (will use the stderr-scraping pattern
-    # in providers/ai_toolkit.py since sd-scripts has no equivalent UI/API)
-    # kohya_path = backends.get("kohya")
-    # if kohya_path:
-    #     provider = KohyaProvider(kohya_path)
-    #     jm.register_provider("kohya", provider)
+    # Kohya (sd-scripts) — subprocess-driven, stderr-scraped (sd-scripts has no
+    # UI/API of its own). Currently supports Anima; SDXL/Flux scripts can be
+    # added to KohyaProvider.SUPPORTED_MODELS later.
+    kohya_path = backends.get("kohya")
+    if kohya_path:
+        provider = KohyaProvider(kohya_path)
+        jm.register_provider("kohya", provider)
+        print(f"[sidecar] Registered kohya provider at {kohya_path}")
 
     # Mock provider is always registered — it needs no external tooling and
     # lets the UI be exercised end-to-end (including GPU-busy blocking)
@@ -121,12 +174,22 @@ async def lifespan(app: FastAPI):
         )
         print(f"[sidecar] Worker {i} pinned to GPU {wc.gpu_id}")
 
+    # Watchdog that exits the process once Node stops heartbeating and there's
+    # nothing left to do (see _idle_watchdog).
+    watchdog_task = asyncio.create_task(_idle_watchdog())
+
     # Signal to the Node.js process manager that we're ready
     print(f"SIDECAR_READY port={sidecar_config.port}", flush=True)
 
     yield
 
     # Cleanup on shutdown
+    watchdog_task.cancel()
+    try:
+        await watchdog_task
+    except asyncio.CancelledError:
+        pass
+
     for task in worker_tasks:
         task.cancel()
     for task in worker_tasks:
@@ -153,12 +216,30 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _stamp_activity(request, call_next):
+    """Any request counts as a client being present (keeps the sidecar alive)."""
+    global _last_activity_at
+    _last_activity_at = time.monotonic()
+    return await call_next(request)
+
+
 # --- Health ---
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(active_job=job_manager.active_job_id)
+
+
+@app.post("/heartbeat")
+async def heartbeat():
+    """Node's keepalive. Arms the idle watchdog and refreshes the activity
+    timestamp — when these stop arriving, the sidecar knows Node has gone."""
+    global _heartbeat_seen, _last_activity_at
+    _heartbeat_seen = True
+    _last_activity_at = time.monotonic()
+    return {"ok": True}
 
 
 # --- Provider info ---
@@ -252,26 +333,58 @@ async def ws_progress(websocket: WebSocket):
 
 @app.post("/caption", response_model=CaptionResponse)
 async def caption_single(request: CaptionRequest):
-    """Caption a single image synchronously. Used for testing or small jobs."""
-    # GPU guard — don't run captioning while another GPU job is active
-    if job_registry.has_running():
+    """Caption a single image, waiting for the result.
+
+    Runs through the job registry queue so it serialises with training runs
+    and caption batches instead of contending for the GPU. The request still
+    409s if anything else is running or queued — a single caption behind a
+    multi-hour training job would just be an HTTP timeout in disguise.
+    """
+    if job_registry.has_running() or job_registry.queued_jobs():
         return JSONResponse(
             {"error": "Cannot caption while another GPU job is running"},
             status_code=409,
         )
 
+    job_id = f"caption-single-{uuid.uuid4().hex[:8]}"
+    result: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+
+    async def runner() -> None:
+        try:
+            provider = get_caption_provider(request.runtime)
+            caption = await provider.caption_image(
+                image_path=request.image_path,
+                model_path=request.model_path,
+                prompt=request.prompt,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                video_options=request.video,
+            )
+        except Exception as err:  # noqa: BLE001 — surfaced via the future
+            job_registry.finish(job_id, LifecycleStatus.FAILED)
+            if not result.done():
+                result.set_exception(err)
+            return
+        job_registry.finish(job_id, LifecycleStatus.COMPLETED)
+        if not result.done():
+            result.set_result(caption)
+
+    job_registry.create(
+        job_id,
+        JobKind.CAPTION_SINGLE,
+        metadata={"image_path": request.image_path},
+    )
+    job_registry.enqueue(job_id, runner)
+
     try:
-        provider = get_caption_provider(request.runtime)
-        caption = await provider.caption_image(
-            image_path=request.image_path,
-            model_path=request.model_path,
-            prompt=request.prompt,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-        )
+        caption = await result
         return CaptionResponse(image_path=request.image_path, caption=caption)
     except Exception as err:
         return JSONResponse({"error": str(err)}, status_code=500)
+    finally:
+        # Single captions aren't part of any history view — drop the record
+        # so they don't accumulate in the registry.
+        job_registry.remove(job_id)
 
 
 @app.post("/caption/batch", response_model=CaptionBatchResponse)
@@ -295,12 +408,47 @@ async def caption_batch(request: CaptionBatchRequest):
 @app.post("/caption/batch/{batch_id}/cancel")
 async def cancel_caption_batch(batch_id: str):
     """Cancel an in-progress caption batch."""
-    success = caption_manager.cancel_batch(batch_id)
+    success = await caption_manager.cancel_batch(batch_id)
     if not success:
         return JSONResponse(
             {"error": f"Batch {batch_id} not running"}, status_code=404
         )
     return {"status": "cancelling"}
+
+
+@app.get("/caption/batches")
+async def list_caption_batches(project: Optional[str] = None):
+    """List batches (optionally filtered by project), without results.
+
+    Terminal batches stay listed until cleared, so a client that lost its
+    connection mid-run can discover the batch finished and collect results.
+    """
+    return {"batches": caption_manager.list_batches(project)}
+
+
+@app.get("/caption/batch/{batch_id}")
+async def get_caption_batch(batch_id: str):
+    """Full snapshot of one batch including accumulated per-image results.
+    Reconnecting clients replay these before streaming live progress."""
+    snapshot = caption_manager.get_snapshot(batch_id)
+    if snapshot is None:
+        return JSONResponse(
+            {"error": f"Batch {batch_id} not found"}, status_code=404
+        )
+    return snapshot
+
+
+@app.post("/caption/batch/{batch_id}/clear")
+async def clear_caption_batch(batch_id: str):
+    """Drop a terminal batch (and its stored results) from the manager.
+    Called by the client after it has flushed the results."""
+    success = caption_manager.clear_batch(batch_id)
+    if not success:
+        return JSONResponse(
+            {"error": f"Batch {batch_id} not found or still active"},
+            status_code=409,
+        )
+    return {"status": "cleared"}
 
 
 @app.post("/caption/unload")
@@ -340,19 +488,25 @@ def main():
 
     import uvicorn
 
-    uvicorn.run(
-        app,
-        host=config.host,
-        port=config.port,
-        log_level="info",
-        # Disable WebSocket ping timeout on localhost. Long-running inference
-        # (several minutes for VLM captioning on CPU) exceeds the default 20s
-        # ping interval / 20s timeout, and uvicorn drops the connection even
-        # though the server is still processing. Localhost IPC doesn't need
-        # liveness checks.
-        ws_ping_interval=None,
-        ws_ping_timeout=None,
+    # Construct the Server explicitly (rather than uvicorn.run) so the idle
+    # watchdog can request a graceful exit via `_server.should_exit`.
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app,
+            host=config.host,
+            port=config.port,
+            log_level="info",
+            # Disable WebSocket ping timeout on localhost. Long-running
+            # inference (several minutes for VLM captioning on CPU) exceeds the
+            # default 20s ping interval / 20s timeout, and uvicorn drops the
+            # connection even though the server is still processing. Localhost
+            # IPC doesn't need liveness checks.
+            ws_ping_interval=None,
+            ws_ping_timeout=None,
+        )
     )
+    _server = server
+    server.run()
 
 
 if __name__ == "__main__":

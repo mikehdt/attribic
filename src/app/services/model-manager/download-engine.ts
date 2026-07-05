@@ -13,6 +13,31 @@ import path from 'path';
 import type { DownloadProgress, ModelFile } from './types';
 
 /**
+ * Sidecar file holding the ETag of the response a partial download came
+ * from, so a resume can validate via If-Range. Written when a file starts
+ * downloading fresh, removed when it completes.
+ */
+function metaPathFor(filePath: string): string {
+  return `${filePath}.download-meta.json`;
+}
+
+function readDownloadMeta(filePath: string): { etag?: string } | null {
+  try {
+    return JSON.parse(fs.readFileSync(metaPathFor(filePath), 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function removeQuietly(filePath: string): void {
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    // Already gone — fine.
+  }
+}
+
+/**
  * Download model files from HuggingFace into `targetDir`.
  * Yields progress updates as an async generator.
  *
@@ -42,6 +67,21 @@ export async function* downloadModelFiles(
     : {};
 
   fs.mkdirSync(targetDir, { recursive: true });
+
+  // Remember what a previous download of this model left on disk so files
+  // that are no longer part of the layout (e.g. after switching variants)
+  // can be swept once this download completes. Only files from our own old
+  // manifest are ever deleted — other models sharing targetDir are untouched.
+  const manifestPath = path.join(targetDir, `${modelId}.manifest.json`);
+  let previousFiles: string[] = [];
+  try {
+    const prev = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as {
+      files?: { name: string }[];
+    };
+    previousFiles = (prev.files ?? []).map((f) => f.name);
+  } catch {
+    // No previous manifest — nothing to sweep later.
+  }
 
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
   const totalFiles = files.length;
@@ -115,11 +155,23 @@ export async function* downloadModelFiles(
 
     let fileStream: fs.WriteStream | null = null;
     try {
+      // Validate resumes with If-Range: if the repo's file changed since
+      // the partial was written, the server ignores the Range and returns
+      // the full file (200), which the reset path below already handles.
+      // Without it, a resume appends new-revision bytes onto old-revision
+      // bytes and the corruption passes every later size check. Weak ETags
+      // aren't valid for If-Range; fall back to an unvalidated resume.
+      const resumeEtag = canResume
+        ? readDownloadMeta(filePath)?.etag
+        : undefined;
       const response = await fetch(url, {
         signal,
         headers: {
           ...authHeaders,
           ...(canResume ? { Range: `bytes=${existingSize}-` } : {}),
+          ...(resumeEtag && !resumeEtag.startsWith('W/')
+            ? { 'If-Range': resumeEtag }
+            : {}),
         },
       });
 
@@ -130,13 +182,19 @@ export async function* downloadModelFiles(
             : `Access denied (${response.status}). This repo may be gated. Set a HuggingFace token in Model Manager → Settings, and accept the license at https://huggingface.co/${repoId}`;
           throw new Error(hint);
         }
-        // 416 = range not satisfiable; treat the partial as garbage and retry fresh next time.
+        // 416 = range not satisfiable. Its Content-Range is "bytes */<total>";
+        // if our on-disk size already matches the total, the file is complete
+        // and only the registry's size estimate was wrong — deleting it here
+        // (the old behaviour) threw away good multi-gigabyte downloads.
         if (response.status === 416) {
-          try {
-            fs.unlinkSync(filePath);
-          } catch {
-            // ignore
+          const contentRange = response.headers.get('content-range');
+          const totalMatch = contentRange?.match(/\*\/(\d+)/);
+          if (totalMatch && parseInt(totalMatch[1], 10) === existingSize) {
+            removeQuietly(metaPathFor(filePath));
+            continue;
           }
+          removeQuietly(filePath);
+          removeQuietly(metaPathFor(filePath));
           throw new Error('Existing partial file is unusable. Try again.');
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -153,6 +211,25 @@ export async function* downloadModelFiles(
         // Server returned the full file — undo our optimistic credit and overwrite.
         bytesDownloaded -= existingSize;
         existingSize = 0;
+      }
+
+      // Starting (or restarting) from byte 0 — persist the entity tag so a
+      // later resume of this file can validate the partial against it.
+      if (!isResuming) {
+        const etag = response.headers.get('etag');
+        try {
+          if (etag) {
+            fs.writeFileSync(
+              metaPathFor(filePath),
+              JSON.stringify({ etag }),
+              'utf-8',
+            );
+          } else {
+            removeQuietly(metaPathFor(filePath));
+          }
+        } catch {
+          // Best-effort — resume just falls back to unvalidated.
+        }
       }
 
       fileStream = fs.createWriteStream(filePath, {
@@ -215,6 +292,9 @@ export async function* downloadModelFiles(
         completedStream.once('error', reject);
         completedStream.end();
       });
+
+      // File is complete — the resume-validation meta is no longer needed.
+      removeQuietly(metaPathFor(filePath));
     } catch (error) {
       // Drain any open write stream and *await* its close before returning.
       // This is critical: if we returned while writes were still queued,
@@ -283,11 +363,19 @@ export async function* downloadModelFiles(
         });
       }
     }
-    fs.writeFileSync(
-      path.join(targetDir, `${modelId}.manifest.json`),
-      JSON.stringify(manifest, null, 2),
-      'utf-8',
-    );
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+
+    // Sweep files from the previous manifest that aren't part of this
+    // layout any more (e.g. the user switched quantisation variants).
+    // Left in place, they shadow the new layout at model load time.
+    const currentNames = new Set(files.map((f) => f.name));
+    for (const oldName of previousFiles) {
+      if (currentNames.has(oldName)) continue;
+      const oldPath = path.join(targetDir, oldName);
+      removeQuietly(oldPath);
+      removeQuietly(`${oldPath}.model.json`);
+      removeQuietly(metaPathFor(oldPath));
+    }
   } catch {
     // Manifest write is best-effort; status check falls back to declared sizes
   }

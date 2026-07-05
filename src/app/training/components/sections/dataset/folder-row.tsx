@@ -10,6 +10,7 @@ import {
 
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 
 import type { FolderAugmentation } from '../../training-config-form/use-training-config-form';
@@ -167,9 +168,9 @@ export function FolderRow({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               Keep Tokens
-            </label>
+            </FormTitle>
             <Input
               type="number"
               min={0}
@@ -192,9 +193,9 @@ export function FolderRow({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               Caption Dropout
-            </label>
+            </FormTitle>
             <Input
               type="text"
               value={augmentation.captionDropoutRate}
@@ -241,9 +242,9 @@ export function FolderRow({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               LoRA Weight
-            </label>
+            </FormTitle>
             <Input
               type="text"
               value={augmentation.loraWeight}

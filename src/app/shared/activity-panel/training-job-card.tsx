@@ -16,6 +16,19 @@ import { formatDuration } from './helpers';
 
 const TQDM_RE = /(\d+)\/(\d+)\s+\[/;
 
+/** Format an ETA in seconds as a compact "1h 3m" / "4m 12s" / "45s". */
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 /**
  * Turn the most recent sidecar log lines into a short, readable phase
  * label so the activity card can show "Caching latents (3/4)" instead of
@@ -69,11 +82,18 @@ export function TrainingJobCard({ job }: { job: TrainingJob }) {
   const progress = job.progress;
   const config = job.config;
 
-  // If totalSteps was never reported, training never got past preparing.
-  // Don't render the bar / "Step 0 of 0" — show the error (or status) only.
-  const hasStepInfo = (progress?.totalSteps ?? 0) > 0;
+  const isPreparing = job.status === 'preparing';
+
+  // During preparing, currentStep/totalSteps carry the setup phase's own
+  // item count (e.g. latents cached), not training steps — keep the two
+  // apart so caching doesn't render as "Step 45 / 98".
+  const hasStepInfo = !isPreparing && (progress?.totalSteps ?? 0) > 0;
+  const hasPrepCount = isPreparing && (progress?.totalSteps ?? 0) > 0;
 
   const pct = hasStepInfo
+    ? Math.round((progress!.currentStep / progress!.totalSteps) * 100)
+    : 0;
+  const prepPct = hasPrepCount
     ? Math.round((progress!.currentStep / progress!.totalSteps) * 100)
     : 0;
 
@@ -85,9 +105,12 @@ export function TrainingJobCard({ job }: { job: TrainingJob }) {
   const checkpointPositions = progress?.checkpointSteps ?? [];
   const savedCount = checkpointPositions.length;
 
+  // Prefer the phase label the provider sends (survives rapid tqdm redraws);
+  // fall back to scraping it out of the recent log lines (ai-toolkit, and
+  // early phases before any structured phase is reported).
   const preparingPhase = useMemo(
-    () => derivePreparingPhase(progress?.logLines),
-    [progress?.logLines],
+    () => progress?.phase ?? derivePreparingPhase(progress?.logLines),
+    [progress?.phase, progress?.logLines],
   );
 
   const schedulerCurve = useMemo(() => {
@@ -186,6 +209,31 @@ export function TrainingJobCard({ job }: { job: TrainingJob }) {
               </span>
               <span className="font-medium text-(--foreground)">{pct}%</span>
             </div>
+
+            {/* Activity line — names what the trainer is doing right now, so a
+                frozen step bar (mid checkpoint save) doesn't look hung. */}
+            {isRunning && (
+              <div className="mt-1 text-xs">
+                <span className="truncate text-sky-600 dark:text-sky-400">
+                  {progress!.phase ?? 'Training'}
+                </span>
+              </div>
+            )}
+          </>
+        ) : isRunning && hasPrepCount ? (
+          <>
+            <ProgressBar
+              value={progress!.currentStep}
+              max={progress!.totalSteps}
+              color="sky"
+            />
+            <div className="mt-2 flex items-baseline justify-between text-xs tabular-nums">
+              <span className="text-slate-500">
+                {preparingPhase ?? 'Preparing'}{' '}
+                {`${progress!.currentStep.toLocaleString()} / ${progress!.totalSteps.toLocaleString()}`}
+              </span>
+              <span className="font-medium text-(--foreground)">{prepPct}%</span>
+            </div>
           </>
         ) : isRunning ? (
           <>
@@ -204,19 +252,32 @@ export function TrainingJobCard({ job }: { job: TrainingJob }) {
           </>
         ) : null}
 
-        {progress && progress.loss !== null && (
+        {progress &&
+          (progress.loss !== null ||
+            progress.speed !== null ||
+            (progress.etaSeconds !== null && progress.etaSeconds > 0)) && (
           <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-400">
-            <span>
-              Loss{' '}
-              <span className="font-medium text-(--foreground)">
-                {progress.loss}
+            {progress.loss !== null && (
+              <span>
+                Loss{' '}
+                <span className="font-medium text-(--foreground)">
+                  {progress.loss}
+                </span>
               </span>
-            </span>
+            )}
+            {progress.speed && (
+              <span>
+                Speed{' '}
+                <span className="font-medium text-(--foreground)">
+                  {progress.speed}
+                </span>
+              </span>
+            )}
             {progress.etaSeconds !== null && progress.etaSeconds > 0 && (
               <span>
                 ETA{' '}
                 <span className="font-medium text-(--foreground)">
-                  {progress.etaSeconds}s
+                  {formatEta(progress.etaSeconds)}
                 </span>
               </span>
             )}

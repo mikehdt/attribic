@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
 
-import { ensureSidecar } from '@/app/services/training/sidecar-manager';
+import { connectSidecar } from '@/app/services/training/sidecar-manager';
 
 /**
  * GET /api/training/status — Get current training job status.
+ *
+ * Read-only: connects to a running sidecar (or reconnects to an orphan)
+ * but never spawns one. Polling a status endpoint shouldn't boot a Python
+ * server — starting a job does that.
  */
 export async function GET() {
-  const sidecar = await ensureSidecar();
+  const sidecar = await connectSidecar();
   if (sidecar.status !== 'ready') {
     return NextResponse.json(
-      { active: false, sidecar_status: sidecar.status, error: sidecar.error },
+      { active: false, sidecar_status: sidecar.status },
       { status: 200 },
     );
   }

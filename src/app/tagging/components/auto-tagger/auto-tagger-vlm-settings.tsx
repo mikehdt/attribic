@@ -96,7 +96,7 @@ export function AutoTaggerVlmSettings({
 
       {/* Model selection */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span">Model</FormTitle>
+        <FormTitle as="span" size="sm">Model</FormTitle>
         <Dropdown
           items={modelItems}
           selectedValue={selectedModelId || ''}
@@ -107,7 +107,7 @@ export function AutoTaggerVlmSettings({
       {/* Prompt */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <FormTitle as="span">Prompt</FormTitle>
+          <FormTitle as="span" size="sm">Prompt</FormTitle>
           {vlmOptions.prompt !== DEFAULT_VLM_OPTIONS.prompt && (
             <Button
               onClick={() =>
@@ -140,9 +140,9 @@ export function AutoTaggerVlmSettings({
       {/* Generation params */}
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-400">
+          <FormTitle as="span" size="sm">
             Max Tokens
-          </label>
+          </FormTitle>
           <Input
             type="number"
             min={32}
@@ -162,9 +162,9 @@ export function AutoTaggerVlmSettings({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-400">
+          <FormTitle as="span" size="sm">
             Temperature: {vlmOptions.temperature.toFixed(2)}
-          </label>
+          </FormTitle>
           <input
             type="range"
             min="0"
@@ -186,7 +186,7 @@ export function AutoTaggerVlmSettings({
       {showVideoControls && (
         <div className="flex flex-col gap-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
           <div className="flex items-center justify-between">
-            <FormTitle as="span">
+            <FormTitle as="span" size="sm">
               Video sampling ({selectedVideoCount}{' '}
               {selectedVideoCount === 1 ? 'video' : 'videos'})
             </FormTitle>
@@ -197,9 +197,9 @@ export function AutoTaggerVlmSettings({
           </p>
           <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-700 dark:text-slate-400">
+              <FormTitle as="span">
                 Frame budget
-              </label>
+              </FormTitle>
               <Input
                 type="number"
                 min={4}
@@ -218,9 +218,9 @@ export function AutoTaggerVlmSettings({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-700 dark:text-slate-400">
+              <FormTitle as="span">
                 Max FPS
-              </label>
+              </FormTitle>
               <Input
                 type="number"
                 min={0.1}
@@ -239,9 +239,9 @@ export function AutoTaggerVlmSettings({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-slate-700 dark:text-slate-400">
+              <FormTitle as="span">
                 Quality
-              </label>
+              </FormTitle>
               <Dropdown
                 items={VIDEO_QUALITY_OPTIONS}
                 selectedValue={vlmOptions.video.quality}
@@ -284,7 +284,7 @@ export function AutoTaggerVlmSettings({
           </p>
           {vlmOptions.injectTriggerPhrases && (
             <div className="mt-2 ml-7 flex flex-col gap-2">
-              <FormTitle as="span">Phrase position</FormTitle>
+              <FormTitle as="span" size="sm">Phrase position</FormTitle>
               <RadioGroup
                 name="triggerPhraseInsertMode"
                 options={triggerPhraseInsertModeOptions}

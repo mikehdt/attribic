@@ -3,6 +3,7 @@ import { memo } from 'react';
 
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 
@@ -99,12 +100,12 @@ const SamplingSectionComponent = ({
 
         {samplingEnabled && (
           <>
-            {/* Sample Prompts — array of editable items */}
+            {/* Sample Prompts — full width */}
             {visibleFields.has('samplePrompts' satisfies keyof FormState) && (
               <div>
-                <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+                <FormTitle>
                   Sample Prompts
-                </label>
+                </FormTitle>
                 <div className="space-y-1.5">
                   {samplePrompts.map((prompt, i) => (
                     <div key={i} className="flex items-center gap-1.5">
@@ -139,124 +140,121 @@ const SamplingSectionComponent = ({
               </div>
             )}
 
-            {/* Sample Frequency */}
-            {(visibleFields.has(
-              'sampleEveryEpochs' satisfies keyof FormState,
-            ) ||
-              visibleFields.has(
-                'sampleEverySteps' satisfies keyof FormState,
-              )) && (
-              <div>
-                <div className="mb-1 flex items-center gap-2">
-                  <label className="text-xs font-medium text-(--foreground)/70">
-                    Generate Samples Every
-                  </label>
+            {/* Frequency + Steps + Guidance + Noise row */}
+            <div className="grid grid-cols-4 gap-x-4 gap-y-3">
+              {(visibleFields.has(
+                'sampleEveryEpochs' satisfies keyof FormState,
+              ) ||
+                visibleFields.has(
+                  'sampleEverySteps' satisfies keyof FormState,
+                )) && (
+                <div>
+                  <FormTitle>
+                    Generate Every
+                  </FormTitle>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={activeValue}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (val > 0) onFieldChange(activeField, val);
+                    }}
+                    className="w-full"
+                  />
+                  <SegmentedControl
+                    options={[
+                      { value: 'epochs', label: 'Epochs' },
+                      { value: 'steps', label: 'Steps' },
+                    ]}
+                    value={sampleMode}
+                    onChange={(val) => onFieldChange('sampleMode', val)}
+                    size="sm"
+                  />
                 </div>
-                <Input
-                  type="number"
-                  min={1}
-                  value={activeValue}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (val > 0) onFieldChange(activeField, val);
-                  }}
-                  className="w-32"
-                />
-                <SegmentedControl
-                  options={[
-                    { value: 'epochs', label: 'Epochs' },
-                    { value: 'steps', label: 'Steps' },
-                  ]}
-                  value={sampleMode}
-                  onChange={(val) => onFieldChange('sampleMode', val)}
-                  size="sm"
-                />
-              </div>
-            )}
+              )}
 
-            {/* Sample Steps */}
-            {visibleFields.has('sampleSteps' satisfies keyof FormState) && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-                  Sample Steps
-                </label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={sampleSteps}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (val > 0) onFieldChange('sampleSteps', val);
-                  }}
-                  className="w-20"
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Inference steps when generating sample images
-                </p>
-              </div>
-            )}
+              {visibleFields.has('sampleSteps' satisfies keyof FormState) && (
+                <div>
+                  <FormTitle>
+                    Sample Steps
+                  </FormTitle>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={sampleSteps}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (val > 0) onFieldChange('sampleSteps', val);
+                    }}
+                    className="w-full"
+                  />
+                </div>
+              )}
 
-            {/* Guidance Scale */}
-            {visibleFields.has('guidanceScale' satisfies keyof FormState) && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-                  Guidance Scale
-                </label>
-                <Input
-                  type="text"
-                  value={guidanceScale}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val >= 0)
-                      onFieldChange('guidanceScale', val);
-                  }}
-                  className="w-20 tabular-nums"
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Classifier-free guidance strength for sampling
-                </p>
-              </div>
-            )}
+              {visibleFields.has(
+                'guidanceScale' satisfies keyof FormState,
+              ) && (
+                <div>
+                  <FormTitle>
+                    Guidance Scale
+                  </FormTitle>
+                  <Input
+                    type="text"
+                    value={guidanceScale}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val) && val >= 0)
+                        onFieldChange('guidanceScale', val);
+                    }}
+                    className="w-full tabular-nums"
+                  />
+                </div>
+              )}
 
-            {/* Noise Scheduler */}
-            {visibleFields.has('noiseScheduler' satisfies keyof FormState) && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-                  Noise Scheduler
-                </label>
-                <Input
-                  type="text"
-                  value={noiseScheduler}
-                  onChange={(e) =>
-                    onFieldChange('noiseScheduler', e.target.value)
-                  }
-                  className="w-40"
-                />
-              </div>
-            )}
+              {visibleFields.has(
+                'noiseScheduler' satisfies keyof FormState,
+              ) && (
+                <div>
+                  <FormTitle>
+                    Noise Scheduler
+                  </FormTitle>
+                  <Input
+                    type="text"
+                    value={noiseScheduler}
+                    onChange={(e) =>
+                      onFieldChange('noiseScheduler', e.target.value)
+                    }
+                    className="w-full"
+                  />
+                </div>
+              )}
+            </div>
           </>
         )}
 
         {/* Seed — always visible regardless of samplingEnabled */}
         {visibleFields.has('seed' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Seed
-            </label>
-            <Input
-              type="number"
-              min={-1}
-              value={seed}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val >= -1) onFieldChange('seed', val);
-              }}
-              className="w-32"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              -1 for random, or a fixed number for reproducibility
-            </p>
+          <div className="grid grid-cols-4 gap-x-4">
+            <div>
+              <FormTitle>
+                Seed
+              </FormTitle>
+              <Input
+                type="number"
+                min={-1}
+                value={seed}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val >= -1) onFieldChange('seed', val);
+                }}
+                className="w-full"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                -1 for random, fixed for reproducibility
+              </p>
+            </div>
           </div>
         )}
       </div>

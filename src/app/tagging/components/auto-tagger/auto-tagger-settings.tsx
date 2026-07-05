@@ -55,7 +55,7 @@ export function AutoTaggerSettings({
 
       {/* Model selection */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span">Model</FormTitle>
+        <FormTitle as="span" size="sm">Model</FormTitle>
         <Dropdown
           items={modelItems}
           selectedValue={selectedModelId || ''}
@@ -66,9 +66,9 @@ export function AutoTaggerSettings({
       {/* Thresholds */}
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-400">
+          <FormTitle as="span" size="sm">
             General Threshold: {options.generalThreshold.toFixed(2)}
-          </label>
+          </FormTitle>
           <input
             type="range"
             min="0"
@@ -83,9 +83,9 @@ export function AutoTaggerSettings({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-400">
+          <FormTitle as="span" size="sm">
             Character Threshold: {options.characterThreshold.toFixed(2)}
-          </label>
+          </FormTitle>
           <input
             type="range"
             min="0"
@@ -130,7 +130,7 @@ export function AutoTaggerSettings({
 
       {/* Tag insert mode */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span">New tags</FormTitle>
+        <FormTitle as="span" size="sm">New tags</FormTitle>
         <RadioGroup
           name="tagInsertMode"
           options={insertModeOptions}
@@ -141,7 +141,7 @@ export function AutoTaggerSettings({
 
       {/* Include tags */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span">Always Include Tags</FormTitle>
+        <FormTitle as="span" size="sm">Always Include Tags</FormTitle>
         <MultiTagInput
           tags={options.includeTags}
           onTagsChange={(tags) => onOptionChange('includeTags', tags)}
@@ -152,7 +152,7 @@ export function AutoTaggerSettings({
 
       {/* Exclude tags */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span">Exclude Tags</FormTitle>
+        <FormTitle as="span" size="sm">Exclude Tags</FormTitle>
         <MultiTagInput
           tags={options.excludeTags}
           onTagsChange={(tags) => onOptionChange('excludeTags', tags)}

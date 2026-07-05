@@ -6,7 +6,13 @@
 
 import type { TrainingProvider } from './types';
 
-export type ModelArchitecture = 'flux' | 'sdxl' | 'zimage' | 'wan' | 'ltx';
+export type ModelArchitecture =
+  | 'flux'
+  | 'sdxl'
+  | 'zimage'
+  | 'anima'
+  | 'wan'
+  | 'ltx';
 
 export type ModelComponentType =
   | 'checkpoint'
@@ -663,6 +669,94 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     },
   },
   {
+    id: 'anima',
+    name: 'Anima',
+    architecture: 'anima',
+    description:
+      'Compact anime-focused DiT (~2B). Light on VRAM, trains fast on consumer GPUs',
+    providers: ['kohya', 'mock'],
+    components: [
+      {
+        type: 'checkpoint',
+        label: 'Anima DiT Model',
+        required: true,
+        downloadId: 'dl-anima-dit',
+      },
+      {
+        type: 'qwen',
+        label: 'Qwen3 0.6B Text Encoder',
+        required: true,
+        downloadId: 'shared-anima-qwen3',
+      },
+      {
+        type: 'vae',
+        label: 'Qwen-Image VAE',
+        required: true,
+        downloadId: 'shared-anima-vae',
+      },
+    ],
+    tips: [
+      'Rank 32 is the community standard for Anima — unlike SDXL, dim 16 tends to underfit',
+      'Around 16 epochs is plenty; much more and it starts memorising the dataset',
+      'Batch 2+ trains more reliably than batch 1 (bump the LR if you raise it to 4)',
+      'The Qwen3 text encoder (LLM adapter) stays frozen; leave text-encoder training off',
+      'fp8 quantization is not supported for Anima and is disabled',
+    ],
+    availableResolutions: [512, 768, 1024, 1536],
+    hiddenFields: [
+      'noiseScheduler',
+      'timestepBias',
+      'transformerQuantization',
+      'textEncoderQuantization',
+    ],
+    defaults: {
+      steps: 1600,
+      epochs: 16,
+      learningRate: 5e-5,
+      optimizer: 'adamw8bit',
+      scheduler: 'cosine',
+      warmupSteps: 100,
+      numRestarts: 3,
+      batchSize: 2,
+      networkDim: 32,
+      networkAlpha: 32,
+      resolution: [768, 1024],
+      mixedPrecision: 'bf16',
+      gradientAccumulationSteps: 1,
+      gradientCheckpointing: true,
+      cacheLatents: true,
+      weightDecay: 0,
+      maxGradNorm: 1.0,
+      networkDropout: 0,
+      keepTokens: 0,
+      captionDropoutRate: 0,
+      captionShuffling: false,
+      flipAugment: false,
+      flipVAugment: false,
+      seed: -1,
+      saveFormat: 'fp16',
+      saveEvery: 1,
+      maxSavesToKeep: 4,
+      trainTextEncoder: false,
+      backboneLR: 0,
+      textEncoderLR: 0,
+      transformerQuantization: 'none',
+      textEncoderQuantization: 'none',
+      cacheTextEmbeddings: false,
+      unloadTextEncoder: false,
+      loraWeight: 1,
+      isRegularization: false,
+      ema: false,
+      lossType: 'mse',
+      timestepType: 'sigmoid',
+      timestepBias: 'balanced',
+      sampleEvery: 250,
+      noiseScheduler: 'flowmatch',
+      guidanceScale: 4,
+      sampleSteps: 20,
+    },
+  },
+  {
     id: 'wan22-14b',
     name: 'Wan 2.2 14B',
     architecture: 'wan',
@@ -848,6 +942,7 @@ export const ARCHITECTURE_LABELS: Record<ModelArchitecture, string> = {
   flux: 'Flux',
   sdxl: 'Stable Diffusion',
   zimage: 'Z-Image',
+  anima: 'Anima',
   wan: 'Wan',
   ltx: 'LTX-Video',
 };

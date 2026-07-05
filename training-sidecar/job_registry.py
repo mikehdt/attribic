@@ -72,6 +72,21 @@ class JobRegistry:
         self._pending_ids: list[str] = []
         self._runners: dict[str, JobRunner] = {}
         self._wake = asyncio.Event()
+        self._queue_listeners: list[Callable[[], None]] = []
+
+    def add_queue_listener(self, listener: Callable[[], None]) -> None:
+        """Register a callback fired whenever queue composition changes
+        (enqueue, dequeue-pick, cancel-while-queued). Called synchronously on
+        the event loop thread — listeners should schedule async work rather
+        than block."""
+        self._queue_listeners.append(listener)
+
+    def _notify_queue_change(self) -> None:
+        for listener in self._queue_listeners:
+            try:
+                listener()
+            except Exception:  # noqa: BLE001 — listeners must not break the queue
+                pass
 
     def create(
         self,
@@ -88,6 +103,7 @@ class JobRegistry:
             status=status,
             created_at=now,
             started_at=now if status == LifecycleStatus.RUNNING else None,
+            completed_at=now if status in TERMINAL_STATUSES else None,
             metadata=metadata or {},
         )
         self._records[job_id] = record
@@ -145,6 +161,7 @@ class JobRegistry:
         self._runners[job_id] = runner
         self._pending_ids.append(job_id)
         self._wake.set()
+        self._notify_queue_change()
 
     async def dequeue(self) -> tuple[str, JobRunner]:
         """Wait for the next pending runnable job.
@@ -162,6 +179,7 @@ class JobRegistry:
                     and record.status == LifecycleStatus.QUEUED
                     and runner is not None
                 ):
+                    self._notify_queue_change()
                     return job_id, runner
                 # Skipped — cancelled-while-queued or inconsistent state.
             self._wake.clear()
@@ -176,6 +194,7 @@ class JobRegistry:
         record.completed_at = _now()
         self._runners.pop(job_id, None)
         # The id stays in _pending_ids — the worker skips it on dequeue.
+        self._notify_queue_change()
         return True
 
     def queue_position(self, job_id: str) -> int:

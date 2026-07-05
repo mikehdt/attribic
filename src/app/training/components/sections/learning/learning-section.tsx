@@ -8,7 +8,9 @@ import {
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
+import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 import { Slider } from '@/app/shared/slider/slider';
 import type { TrainingViewMode } from '@/app/store/preferences';
@@ -201,91 +203,92 @@ const LearningSectionComponent = ({
       }
     >
       <div className="space-y-3">
-        {/* Duration */}
-        {showDuration && (
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <label className="text-xs font-medium text-(--foreground)/70">
-                Duration
-              </label>
-            </div>
-
+        {/* Duration + Batch Size row */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          {showDuration && (
             <div>
+              <FormTitle>
+                Duration
+              </FormTitle>
+
+              <InputTray size="md" gap="sm">
+                <Input
+                  type="number"
+                  min={1}
+                  value={durationMode === 'epochs' ? epochs : steps}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (val > 0) {
+                      onFieldChange(
+                        durationMode === 'epochs' ? 'epochs' : 'steps',
+                        val,
+                      );
+                    }
+                  }}
+                  className="w-32"
+                  size="md"
+                />
+
+                <SegmentedControl
+                  options={[
+                    { value: 'epochs', label: 'Epochs' },
+                    { value: 'steps', label: 'Steps' },
+                  ]}
+                  value={durationMode}
+                  onChange={(val) => onFieldChange('durationMode', val)}
+                  size="md"
+                />
+              </InputTray>
+
+              {totalEffective > 0 && (
+                <p className="mt-1 text-xs text-slate-400 tabular-nums">
+                  {totalEffective} images/epoch &times;{' '}
+                  {durationMode === 'epochs'
+                    ? `${epochs}`
+                    : `${calculatedEpochs}`}{' '}
+                  epochs &divide; {batchSize} batch ={' '}
+                  <span className="font-medium text-slate-500">
+                    {durationMode === 'epochs'
+                      ? calculatedSteps.toLocaleString()
+                      : steps.toLocaleString()}{' '}
+                    steps
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {visibleFields.has('batchSize' satisfies keyof FormState) && (
+            <div>
+              <FormTitle>
+                Batch Size
+              </FormTitle>
               <Input
                 type="number"
                 min={1}
-                value={durationMode === 'epochs' ? epochs : steps}
+                max={8}
+                value={batchSize}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  if (val > 0) {
-                    onFieldChange(
-                      durationMode === 'epochs' ? 'epochs' : 'steps',
-                      val,
-                    );
-                  }
+                  if (val > 0) onFieldChange('batchSize', val);
                 }}
-                className="w-32"
-                size="md"
+                className="w-20"
               />
-
-              <SegmentedControl
-                options={[
-                  { value: 'epochs', label: 'Epochs' },
-                  { value: 'steps', label: 'Steps' },
-                ]}
-                value={durationMode}
-                onChange={(val) => onFieldChange('durationMode', val)}
-                size="md"
-              />
+              {batchSize > 1 && (
+                <p className="mt-1 text-xs text-amber-500">
+                  Higher batch sizes use significantly more VRAM
+                </p>
+              )}
             </div>
+          )}
+        </div>
 
-            {totalEffective > 0 && (
-              <p className="mt-1 text-xs text-slate-400 tabular-nums">
-                {totalEffective} images/epoch &times;{' '}
-                {durationMode === 'epochs' ? epochs : calculatedEpochs} epochs
-                &divide; {batchSize} batch ={' '}
-                <span className="font-medium text-slate-500">
-                  {durationMode === 'epochs'
-                    ? calculatedSteps.toLocaleString()
-                    : steps.toLocaleString()}{' '}
-                  steps
-                </span>
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Batch Size */}
-        {visibleFields.has('batchSize' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Batch Size
-            </label>
-            <Input
-              type="number"
-              min={1}
-              max={8}
-              value={batchSize}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (val > 0) onFieldChange('batchSize', val);
-              }}
-              className="w-20"
-            />
-            {batchSize > 1 && (
-              <p className="mt-1 text-xs text-amber-500">
-                Higher batch sizes use significantly more VRAM
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Learning Rate */}
+        {/* Learning Rate — full width (slider in simple, input in intermediate+) */}
         {visibleFields.has('learningRate' satisfies keyof FormState) && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               Learning Rate
-            </label>
+            </FormTitle>
             {isSimple ? (
               <Slider
                 min={0}
@@ -303,7 +306,6 @@ const LearningSectionComponent = ({
                 ariaLabel="Learning rate"
               />
             ) : (
-              /* Intermediate+: direct number input */
               <Input
                 type="text"
                 value={learningRate}
@@ -320,12 +322,12 @@ const LearningSectionComponent = ({
           </div>
         )}
 
-        {/* Optimizer — read-only in Simple, interactive in Intermediate+ */}
+        {/* Optimizer — full width (read-only in Simple, dropdown in Intermediate+) */}
         {visibleFields.has('optimizer' satisfies keyof FormState) && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               Optimiser
-            </label>
+            </FormTitle>
             {isSimple ? (
               <p className="text-sm text-(--foreground)/80">
                 {selectedOptimizer?.label ?? optimizer}
@@ -358,12 +360,12 @@ const LearningSectionComponent = ({
           </div>
         )}
 
-        {/* Scheduler — read-only in Simple, interactive in Intermediate+ */}
+        {/* Scheduler — full width (read-only in Simple, dropdown in Intermediate+) */}
         {visibleFields.has('scheduler' satisfies keyof FormState) && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               LR Scheduler
-            </label>
+            </FormTitle>
             {isSimple ? (
               <div className="flex items-center gap-2 text-sm text-(--foreground)/80">
                 {selectedScheduler && (
@@ -410,95 +412,104 @@ const LearningSectionComponent = ({
           </div>
         )}
 
-        {/* Warmup */}
-        {visibleFields.has('warmupSteps' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Warmup Steps
-            </label>
-            <Input
-              type="number"
-              min={0}
-              value={warmupSteps}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (val >= 0) onFieldChange('warmupSteps', val);
-              }}
-              placeholder={String(defaults.warmupSteps)}
-              className="w-32"
-            />
+        {/* Warmup + Restarts row */}
+        {(visibleFields.has('warmupSteps' satisfies keyof FormState) ||
+          visibleFields.has('numRestarts' satisfies keyof FormState)) && (
+          <div className="grid grid-cols-4 gap-x-4 gap-y-3">
+            {visibleFields.has('warmupSteps' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Warmup Steps
+                </FormTitle>
+                <Input
+                  type="number"
+                  min={0}
+                  value={warmupSteps}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (val >= 0) onFieldChange('warmupSteps', val);
+                  }}
+                  placeholder={String(defaults.warmupSteps)}
+                  className="w-full"
+                />
+              </div>
+            )}
+
+            {visibleFields.has('numRestarts' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Restarts
+                </FormTitle>
+                <Input
+                  type="number"
+                  min={1}
+                  value={numRestarts}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (val >= 1) onFieldChange('numRestarts', val);
+                  }}
+                  placeholder={String(defaults.numRestarts)}
+                  className="w-full"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Cosine cycles
+                </p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Restarts (cosine_with_restarts only) */}
-        {visibleFields.has('numRestarts' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Restarts
-            </label>
-            <Input
-              type="number"
-              min={1}
-              value={numRestarts}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (val >= 1) onFieldChange('numRestarts', val);
-              }}
-              placeholder={String(defaults.numRestarts)}
-              className="w-32"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Number of cosine cycles during training
-            </p>
+        {/* Weight Decay + Max Grad Norm row */}
+        {(visibleFields.has('weightDecay' satisfies keyof FormState) ||
+          visibleFields.has('maxGradNorm' satisfies keyof FormState)) && (
+          <div className="grid grid-cols-4 gap-x-4 gap-y-3">
+            {visibleFields.has('weightDecay' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Weight Decay
+                </FormTitle>
+                <Input
+                  type="text"
+                  value={weightDecay}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0)
+                      onFieldChange('weightDecay', val);
+                  }}
+                  placeholder={String(defaults.weightDecay)}
+                  className="w-full tabular-nums"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  L2 regularisation (0 = disabled)
+                </p>
+              </div>
+            )}
+
+            {visibleFields.has('maxGradNorm' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Max Gradient Norm
+                </FormTitle>
+                <Input
+                  type="text"
+                  value={maxGradNorm}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0)
+                      onFieldChange('maxGradNorm', val);
+                  }}
+                  placeholder={String(defaults.maxGradNorm)}
+                  className="w-full tabular-nums"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Clip gradients (0 = disabled, 1.0 standard)
+                </p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Weight Decay */}
-        {visibleFields.has('weightDecay' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Weight Decay
-            </label>
-            <Input
-              type="text"
-              value={weightDecay}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0) onFieldChange('weightDecay', val);
-              }}
-              placeholder={String(defaults.weightDecay)}
-              className="w-32 tabular-nums"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              L2 regularisation to prevent overfitting (0 = disabled)
-            </p>
-          </div>
-        )}
-
-        {/* Max Gradient Norm */}
-        {visibleFields.has('maxGradNorm' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Max Gradient Norm
-            </label>
-            <Input
-              type="text"
-              value={maxGradNorm}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0) onFieldChange('maxGradNorm', val);
-              }}
-              placeholder={String(defaults.maxGradNorm)}
-              className="w-32 tabular-nums"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Clip gradients to keep training stable (0 = disabled, 1.0 is
-              standard)
-            </p>
-          </div>
-        )}
-
-        {/* Train Text Encoder */}
+        {/* Train Text Encoder + EMA checkboxes */}
         {visibleFields.has('trainTextEncoder' satisfies keyof FormState) && (
           <div className="flex items-center gap-2">
             <Checkbox
@@ -515,52 +526,56 @@ const LearningSectionComponent = ({
           </div>
         )}
 
-        {/* Backbone Learning Rate */}
-        {visibleFields.has('backboneLR' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Backbone Learning Rate
-            </label>
-            <Input
-              type="text"
-              value={backboneLR}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0) onFieldChange('backboneLR', val);
-              }}
-              placeholder={String(defaults.backboneLR)}
-              className="w-32 tabular-nums"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Override the main LR for the backbone (0 = use main LR)
-            </p>
+        {/* Backbone LR + Text Encoder LR row */}
+        {(visibleFields.has('backboneLR' satisfies keyof FormState) ||
+          visibleFields.has('textEncoderLR' satisfies keyof FormState)) && (
+          <div className="grid grid-cols-4 gap-x-4 gap-y-3">
+            {visibleFields.has('backboneLR' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Backbone LR
+                </FormTitle>
+                <Input
+                  type="text"
+                  value={backboneLR}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0)
+                      onFieldChange('backboneLR', val);
+                  }}
+                  placeholder={String(defaults.backboneLR)}
+                  className="w-full tabular-nums"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  0 = use main LR
+                </p>
+              </div>
+            )}
+
+            {visibleFields.has('textEncoderLR' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Text Encoder LR
+                </FormTitle>
+                <Input
+                  type="text"
+                  value={textEncoderLR}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0)
+                      onFieldChange('textEncoderLR', val);
+                  }}
+                  placeholder={String(defaults.textEncoderLR)}
+                  className="w-full tabular-nums"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  0 = use main LR
+                </p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Text Encoder Learning Rate — only visible when trainTextEncoder is on */}
-        {visibleFields.has('textEncoderLR' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Text Encoder Learning Rate
-            </label>
-            <Input
-              type="text"
-              value={textEncoderLR}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0)
-                  onFieldChange('textEncoderLR', val);
-              }}
-              placeholder={String(defaults.textEncoderLR)}
-              className="w-32 tabular-nums"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Override the main LR for the text encoder (0 = use main LR)
-            </p>
-          </div>
-        )}
-
-        {/* EMA */}
         {visibleFields.has('ema' satisfies keyof FormState) && (
           <div className="flex items-center gap-2">
             <Checkbox
@@ -575,55 +590,59 @@ const LearningSectionComponent = ({
           </div>
         )}
 
-        {/* Loss Type */}
-        {visibleFields.has('lossType' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Loss Type
-            </label>
-            <Dropdown
-              items={LOSS_TYPE_ITEMS}
-              selectedValue={lossType}
-              onChange={(val) =>
-                onFieldChange('lossType', val as FormState['lossType'])
-              }
-              aria-label="Loss type"
-            />
-          </div>
-        )}
+        {/* Loss + Timestep row */}
+        {(visibleFields.has('lossType' satisfies keyof FormState) ||
+          visibleFields.has('timestepType' satisfies keyof FormState) ||
+          visibleFields.has('timestepBias' satisfies keyof FormState)) && (
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3">
+            {visibleFields.has('lossType' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Loss Type
+                </FormTitle>
+                <Dropdown
+                  items={LOSS_TYPE_ITEMS}
+                  selectedValue={lossType}
+                  onChange={(val) =>
+                    onFieldChange('lossType', val as FormState['lossType'])
+                  }
+                  aria-label="Loss type"
+                />
+              </div>
+            )}
 
-        {/* Timestep Type (flow-matching models) */}
-        {visibleFields.has('timestepType' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Timestep Type
-            </label>
-            <Dropdown
-              items={TIMESTEP_TYPE_ITEMS}
-              selectedValue={timestepType}
-              onChange={(val) => onFieldChange('timestepType', val)}
-              aria-label="Timestep type"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Sampling distribution for training timesteps (flow-matching)
-            </p>
-          </div>
-        )}
+            {visibleFields.has('timestepType' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Timestep Type
+                </FormTitle>
+                <Dropdown
+                  items={TIMESTEP_TYPE_ITEMS}
+                  selectedValue={timestepType}
+                  onChange={(val) => onFieldChange('timestepType', val)}
+                  aria-label="Timestep type"
+                />
+              </div>
+            )}
 
-        {/* Timestep Bias */}
-        {visibleFields.has('timestepBias' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Timestep Bias
-            </label>
-            <Dropdown
-              items={TIMESTEP_BIAS_ITEMS}
-              selectedValue={timestepBias}
-              onChange={(val) =>
-                onFieldChange('timestepBias', val as FormState['timestepBias'])
-              }
-              aria-label="Timestep bias"
-            />
+            {visibleFields.has('timestepBias' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Timestep Bias
+                </FormTitle>
+                <Dropdown
+                  items={TIMESTEP_BIAS_ITEMS}
+                  selectedValue={timestepBias}
+                  onChange={(val) =>
+                    onFieldChange(
+                      'timestepBias',
+                      val as FormState['timestepBias'],
+                    )
+                  }
+                  aria-label="Timestep bias"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

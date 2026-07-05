@@ -55,6 +55,7 @@ const TrainingConfigFormComponent = ({
     removeSamplePrompt,
     setSamplePrompt,
     setAppModelDefaults,
+    outputFolder,
   } = useTrainingConfigForm();
 
   const { isOpen: isDefaultsModalOpen, closeModal: closeDefaultsModal } =
@@ -312,6 +313,7 @@ const TrainingConfigFormComponent = ({
         <div className="lg:sticky lg:top-24 lg:w-full lg:max-w-60 xl:max-w-100">
           <TrainingSummary
             outputName={state.outputName}
+            outputFolder={outputFolder}
             currentModel={currentModel}
             selectedProvider={state.selectedProvider}
             modelPaths={state.modelPaths}

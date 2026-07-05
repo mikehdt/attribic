@@ -13,7 +13,10 @@ import {
   type ModelArchitecture,
 } from '@/app/services/training/models';
 import { useAppSelector } from '@/app/store/hooks';
-import { selectDownloadJobByModelId } from '@/app/store/jobs';
+import {
+  selectDownloadingModelIds,
+  selectDownloadJobByModelId,
+} from '@/app/store/jobs';
 import {
   selectAllModelStatuses,
   selectIsScanningModels,
@@ -39,6 +42,7 @@ function getTrainingModelGroups(): TrainingModelGroup[] {
   const archOrder: ModelArchitecture[] = [
     'flux',
     'sdxl',
+    'anima',
     'zimage',
     'wan',
     'ltx',
@@ -66,6 +70,7 @@ function getTrainingModelGroups(): TrainingModelGroup[] {
 export function TrainingTab() {
   const statuses = useAppSelector(selectAllModelStatuses);
   const loading = useAppSelector(selectIsScanningModels);
+  const downloadingIds = useAppSelector(selectDownloadingModelIds);
 
   const groups = useMemo(() => getTrainingModelGroups(), []);
 
@@ -134,12 +139,15 @@ export function TrainingTab() {
           </div>
           <div className="flex flex-col gap-2">
             {usedSharedComponents.map((comp) => {
-              // Fade if no checkpoint that depends on this component is installed
-              const hasInstalledDependent = groups.some((g) =>
+              // Un-fade once any checkpoint that depends on this component is
+              // installed *or* has a download in flight/queued — a component
+              // its model is actively pulling isn't "not yet needed".
+              const hasActiveDependent = groups.some((g) =>
                 g.checkpoints.some(
                   (cp) =>
                     cp.dependencies?.includes(comp.sharedId!) &&
-                    getModelStatus(statuses, cp.id) === 'ready',
+                    (getModelStatus(statuses, cp.id) === 'ready' ||
+                      downloadingIds.has(cp.id)),
                 ),
               );
               return (
@@ -147,7 +155,7 @@ export function TrainingTab() {
                   key={comp.id}
                   model={comp}
                   status={getModelStatus(statuses, comp.id)}
-                  faded={!hasInstalledDependent}
+                  faded={!hasActiveDependent}
                 />
               );
             })}

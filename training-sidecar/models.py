@@ -57,6 +57,14 @@ class JobProgress(BaseModel):
     sample_image_paths: list[str] = []
     log_lines: list[str] = []
     error: Optional[str] = None
+    # Human-readable activity label. During PREPARING it names the setup phase
+    # (e.g. "Caching latents"), and current_step/total_steps carry that phase's
+    # item count rather than training steps. During TRAINING it names a
+    # transient activity between steps (e.g. "Saving checkpoint"), or is null
+    # while steps are actively advancing.
+    phase: Optional[str] = None
+    # Iteration rate as reported by the trainer, e.g. "2.30 it/s" / "23.01 s/it".
+    speed: Optional[str] = None
 
 
 class JobState(BaseModel):
@@ -132,6 +140,14 @@ class CaptionBatchRequest(BaseModel):
 
     batch_id: str
     image_paths: list[str]
+    # Opaque per-image IDs, parallel to image_paths. The client supplies its
+    # own identifiers (fileIds) so progress events and stored results can be
+    # matched back without fragile index-based mapping. Falls back to the
+    # image path when omitted.
+    item_ids: Optional[list[str]] = None
+    # Client-side grouping key (project folder name) so a reconnecting
+    # client can find its batches via GET /caption/batches.
+    project: Optional[str] = None
     model_path: str
     runtime: VlmRuntime = "llama-cpp"
     prompt: str = "Describe this image in detail for AI training purposes."
@@ -145,6 +161,8 @@ class CaptionBatchProgress(BaseModel):
     Progress update for a batch caption run. Broadcast via /ws/caption.
 
     Status meanings:
+    - 'queued':    waiting in the job queue behind other GPU work.
+                   `queue_position` is the 1-indexed place in line.
     - 'loading':   model is being loaded onto GPU/CPU. `current`/`total` reflect
                    loading-step progress (e.g. safetensors shards), not image count.
                    `message` describes what's happening.
@@ -156,11 +174,16 @@ class CaptionBatchProgress(BaseModel):
     current: int
     total: int
     image_path: Optional[str] = None
+    # Client-supplied ID for the image this event refers to (see
+    # CaptionBatchRequest.item_ids).
+    item_id: Optional[str] = None
     caption: Optional[str] = None
-    status: str = "running"  # loading, running, completed, failed, cancelled
+    status: str = "running"  # queued, loading, running, completed, failed, cancelled
     error: Optional[str] = None
     # Free-form status text, used for loading messages like "Loading checkpoint shards"
     message: Optional[str] = None
+    # 1-indexed place in the job queue; only set on 'queued' events.
+    queue_position: Optional[int] = None
 
 
 class CaptionBatchResponse(BaseModel):

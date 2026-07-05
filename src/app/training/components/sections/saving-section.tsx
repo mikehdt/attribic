@@ -5,6 +5,7 @@ import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
@@ -101,41 +102,39 @@ const SavingSectionComponent = ({
       }
     >
       <div className="space-y-3">
-        {/* Output Name */}
-        {visibleFields.has('outputName' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Output Name
-            </label>
-            <Input
-              type="text"
-              value={outputName}
-              onChange={(e) => onOutputNameChange(e.target.value)}
-              placeholder="my-lora"
-              className="w-full"
-            />
-          </div>
-        )}
+        {/* Output Name + Format row */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          {visibleFields.has('outputName' satisfies keyof FormState) && (
+            <div>
+              <FormTitle>
+                Output Name
+              </FormTitle>
+              <Input
+                type="text"
+                value={outputName}
+                onChange={(e) => onOutputNameChange(e.target.value)}
+                placeholder="my-lora"
+                className="w-full"
+              />
+            </div>
+          )}
 
-        {/* Save Format */}
-        {visibleFields.has('saveFormat' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Output Precision
-            </label>
-            <Dropdown
-              items={SAVE_FORMAT_ITEMS}
-              selectedValue={saveFormat}
-              onChange={(val) =>
-                onFieldChange('saveFormat', val as FormState['saveFormat'])
-              }
-              aria-label="Save format"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Precision of the saved .safetensors file
-            </p>
-          </div>
-        )}
+          {visibleFields.has('saveFormat' satisfies keyof FormState) && (
+            <div>
+              <FormTitle>
+                Output Precision
+              </FormTitle>
+              <Dropdown
+                items={SAVE_FORMAT_ITEMS}
+                selectedValue={saveFormat}
+                onChange={(val) =>
+                  onFieldChange('saveFormat', val as FormState['saveFormat'])
+                }
+                aria-label="Save format"
+              />
+            </div>
+          )}
+        </div>
 
         {/* Save Checkpoints */}
         {(visibleFields.has('saveEveryEpochs' satisfies keyof FormState) ||
@@ -149,13 +148,11 @@ const SavingSectionComponent = ({
             />
 
             {saveEnabled && (
-              <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <div>
-                  <div className="mb-1 flex items-center gap-2">
-                    <label className="text-xs font-medium text-(--foreground)/70">
-                      Save Every
-                    </label>
-                  </div>
+                  <FormTitle>
+                    Save Every
+                  </FormTitle>
                   <InputTray size="md">
                     <Input
                       type="number"
@@ -183,9 +180,9 @@ const SavingSectionComponent = ({
                   'maxSavesToKeep' satisfies keyof FormState,
                 ) && (
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+                    <FormTitle>
                       Max Saves to Keep
-                    </label>
+                    </FormTitle>
                     <Input
                       type="number"
                       min={0}
@@ -195,11 +192,10 @@ const SavingSectionComponent = ({
                         if (!isNaN(val) && val >= 0)
                           onFieldChange('maxSavesToKeep', val);
                       }}
-                      className="w-20"
+                      className="w-full"
                     />
                     <p className="mt-1 text-xs text-slate-400">
-                      Rolling window of recent checkpoints. 1 = only the latest,
-                      0 = keep all.
+                      1 = only the latest, 0 = keep all
                     </p>
                   </div>
                 )}
@@ -208,7 +204,7 @@ const SavingSectionComponent = ({
           </>
         )}
 
-        {/* Save Training State — advanced, enables resumable runs */}
+        {/* Save Training State */}
         {visibleFields.has('saveState' satisfies keyof FormState) && (
           <div className="flex items-center gap-2">
             <Checkbox
@@ -218,8 +214,7 @@ const SavingSectionComponent = ({
               size="sm"
             />
             <span className="text-xs text-slate-400">
-              Writes optimiser state alongside each checkpoint so training can
-              be resumed
+              Writes optimiser state so training can be resumed
             </span>
           </div>
         )}
@@ -227,9 +222,9 @@ const SavingSectionComponent = ({
         {/* Resume From State */}
         {visibleFields.has('resumeState' satisfies keyof FormState) && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               Resume From State
-            </label>
+            </FormTitle>
             <InputTray size="md" width="full">
               <Input
                 type="text"

@@ -80,6 +80,14 @@ export type TaggingProgress = {
     current: number;
     total: number;
   };
+  /**
+   * Queue sub-state. Present while the batch is waiting in the sidecar's
+   * job queue behind other GPU work (a training run, another batch).
+   * When set, the UI shows "Queued — position N" instead of progress.
+   */
+  queued?: {
+    position: number;
+  };
 };
 
 export type TaggingSummary = {

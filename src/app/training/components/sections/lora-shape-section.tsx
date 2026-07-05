@@ -4,6 +4,7 @@ import { memo, useCallback } from 'react';
 import { Button } from '@/app/shared/button/button';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { Slider } from '@/app/shared/slider/slider';
 
@@ -102,28 +103,61 @@ const LoraShapeSectionComponent = ({
       }
     >
       <div className="space-y-3">
-        {visibleFields.has('networkType' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Type
-            </label>
-            <Dropdown
-              items={NETWORK_TYPE_ITEMS}
-              selectedValue={networkType}
-              onChange={(val) =>
-                onFieldChange('networkType', val as FormState['networkType'])
-              }
-              aria-label="Network type"
-            />
+        {/* Type + Dropout row */}
+        {(visibleFields.has('networkType' satisfies keyof FormState) ||
+          visibleFields.has('networkDropout' satisfies keyof FormState)) && (
+          <div className="grid grid-cols-4 gap-x-4 gap-y-3">
+            {visibleFields.has('networkType' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Type
+                </FormTitle>
+                <Dropdown
+                  items={NETWORK_TYPE_ITEMS}
+                  selectedValue={networkType}
+                  onChange={(val) =>
+                    onFieldChange(
+                      'networkType',
+                      val as FormState['networkType'],
+                    )
+                  }
+                  aria-label="Network type"
+                />
+              </div>
+            )}
+
+            {visibleFields.has('networkDropout' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>
+                  Dropout
+                </FormTitle>
+                <Input
+                  type="text"
+                  value={networkDropout}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0 && val <= 1) {
+                      onFieldChange('networkDropout', val);
+                    }
+                  }}
+                  placeholder="0"
+                  className="w-full tabular-nums"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  0 = disabled, 0.1–0.3 typical
+                </p>
+              </div>
+            )}
           </div>
         )}
 
+        {/* Rank + Alpha sliders */}
         <div className="flex items-end gap-2">
           {visibleFields.has('networkDim' satisfies keyof FormState) && (
             <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+              <FormTitle>
                 Rank (dim)
-              </label>
+              </FormTitle>
               <Slider
                 min={1}
                 max={128}
@@ -164,9 +198,9 @@ const LoraShapeSectionComponent = ({
 
           {visibleFields.has('networkAlpha' satisfies keyof FormState) && (
             <div className="flex-1">
-              <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+              <FormTitle>
                 Alpha
-              </label>
+              </FormTitle>
               <Slider
                 min={1}
                 max={128}
@@ -184,30 +218,6 @@ const LoraShapeSectionComponent = ({
         <p className="text-xs text-slate-400">
           Higher rank = more expressive, but uses more VRAM and can overfit
         </p>
-
-        {visibleFields.has('networkDropout' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Network Dropout
-            </label>
-            <Input
-              type="text"
-              value={networkDropout}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0 && val <= 1) {
-                  onFieldChange('networkDropout', val);
-                }
-              }}
-              placeholder="0"
-              className="w-20 tabular-nums"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Randomly drop LoRA activations during training (0 = disabled,
-              0.1–0.3 typical)
-            </p>
-          </div>
-        )}
       </div>
     </CollapsibleSection>
   );

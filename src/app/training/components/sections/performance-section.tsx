@@ -4,6 +4,7 @@ import type { TrainingProvider } from '@/app/services/training/types';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 
 import type {
@@ -125,119 +126,85 @@ const PerformanceSectionComponent = ({
       }
     >
       <div className="space-y-3">
-        {/* Mixed Precision */}
-        {visibleFields.has('mixedPrecision' satisfies keyof FormState) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Training Precision
-            </label>
-            <Dropdown
-              items={PRECISION_ITEMS}
-              selectedValue={mixedPrecision}
-              onChange={(val) =>
-                onFieldChange(
-                  'mixedPrecision',
-                  val as FormState['mixedPrecision'],
-                )
-              }
-              aria-label="Training precision"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Compute dtype. BF16 is more stable on modern GPUs (RTX 3000+)
-            </p>
-          </div>
-        )}
+        {/* Precision + Quantization row */}
+        <div className="grid grid-cols-3 gap-x-4 gap-y-3">
+          {visibleFields.has('mixedPrecision' satisfies keyof FormState) && (
+            <div>
+              <FormTitle>
+                Training Precision
+              </FormTitle>
+              <Dropdown
+                items={PRECISION_ITEMS}
+                selectedValue={mixedPrecision}
+                onChange={(val) =>
+                  onFieldChange(
+                    'mixedPrecision',
+                    val as FormState['mixedPrecision'],
+                  )
+                }
+                aria-label="Training precision"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                BF16 is more stable on RTX 3000+
+              </p>
+            </div>
+          )}
 
-        {/* Transformer Quantization */}
-        {visibleFields.has(
-          'transformerQuantization' satisfies keyof FormState,
-        ) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Transformer Quantization
-            </label>
-            <Dropdown
-              items={QUANTIZATION_ITEMS}
-              selectedValue={transformerQuantization}
-              onChange={(val) =>
-                onFieldChange(
-                  'transformerQuantization',
-                  val as FormState['transformerQuantization'],
-                )
-              }
-              aria-label="Transformer quantization"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Quantise base-model weights to fit larger models in VRAM
-            </p>
-          </div>
-        )}
+          {visibleFields.has(
+            'transformerQuantization' satisfies keyof FormState,
+          ) && (
+            <div>
+              <FormTitle>
+                Transformer Quantization
+              </FormTitle>
+              <Dropdown
+                items={QUANTIZATION_ITEMS}
+                selectedValue={transformerQuantization}
+                onChange={(val) =>
+                  onFieldChange(
+                    'transformerQuantization',
+                    val as FormState['transformerQuantization'],
+                  )
+                }
+                aria-label="Transformer quantization"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Quantise weights to save VRAM
+              </p>
+            </div>
+          )}
 
-        {/* Text Encoder Quantization */}
-        {visibleFields.has(
-          'textEncoderQuantization' satisfies keyof FormState,
-        ) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Text Encoder Quantization
-            </label>
-            <Dropdown
-              items={QUANTIZATION_ITEMS}
-              selectedValue={textEncoderQuantization}
-              onChange={(val) =>
-                onFieldChange(
-                  'textEncoderQuantization',
-                  val as FormState['textEncoderQuantization'],
-                )
-              }
-              aria-label="Text encoder quantization"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              Applies to T5, CLIP or Qwen text encoders as relevant
-            </p>
-          </div>
-        )}
-
-        {/* Cache Text Embeddings */}
-        {visibleFields.has('cacheTextEmbeddings' satisfies keyof FormState) && (
-          <div className="flex items-center gap-2">
-            <Checkbox
-              isSelected={cacheTextEmbeddings}
-              onChange={() =>
-                onFieldChange('cacheTextEmbeddings', !cacheTextEmbeddings)
-              }
-              label="Cache Text Embeddings"
-              size="sm"
-            />
-            <span className="text-xs text-slate-400">
-              Pre-compute caption embeddings once, reuse every epoch
-            </span>
-          </div>
-        )}
-
-        {/* Unload Text Encoder */}
-        {visibleFields.has('unloadTextEncoder' satisfies keyof FormState) && (
-          <div className="flex items-center gap-2">
-            <Checkbox
-              isSelected={unloadTextEncoder}
-              onChange={() =>
-                onFieldChange('unloadTextEncoder', !unloadTextEncoder)
-              }
-              label="Unload Text Encoder"
-              size="sm"
-            />
-            <span className="text-xs text-slate-400">
-              Drop TE from VRAM after caching embeddings (requires caching)
-            </span>
-          </div>
-        )}
+          {visibleFields.has(
+            'textEncoderQuantization' satisfies keyof FormState,
+          ) && (
+            <div>
+              <FormTitle>
+                Text Encoder Quantization
+              </FormTitle>
+              <Dropdown
+                items={QUANTIZATION_ITEMS}
+                selectedValue={textEncoderQuantization}
+                onChange={(val) =>
+                  onFieldChange(
+                    'textEncoderQuantization',
+                    val as FormState['textEncoderQuantization'],
+                  )
+                }
+                aria-label="Text encoder quantization"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                T5, CLIP or Qwen encoders
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Resolution */}
         {visibleFields.has('resolution' satisfies keyof FormState) && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+            <FormTitle>
               {isKohya ? 'Base Resolution' : 'Training Resolutions'}
-            </label>
+            </FormTitle>
             <div className="flex flex-wrap gap-1.5">
               {availableResolutions.map((res) => {
                 const isActive = resolution.includes(res);
@@ -264,66 +231,108 @@ const PerformanceSectionComponent = ({
         {visibleFields.has(
           'gradientAccumulationSteps' satisfies keyof FormState,
         ) && (
-          <div>
-            <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
-              Gradient Accumulation Steps
-            </label>
-            <Input
-              type="number"
-              min={1}
-              max={16}
-              value={gradientAccumulationSteps}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (val > 0) onFieldChange('gradientAccumulationSteps', val);
-              }}
-              className="w-20"
-            />
-            {gradientAccumulationSteps > 1 && (
-              <p className="mt-1 text-xs text-slate-400">
-                Effective batch size:{' '}
-                <span className="font-medium">
-                  {batchSize * gradientAccumulationSteps}
-                </span>{' '}
-                ({batchSize} &times; {gradientAccumulationSteps})
-              </p>
-            )}
+          <div className="grid grid-cols-4 gap-x-4">
+            <div>
+              <FormTitle>
+                Gradient Accumulation Steps
+              </FormTitle>
+              <Input
+                type="number"
+                min={1}
+                max={16}
+                value={gradientAccumulationSteps}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (val > 0) onFieldChange('gradientAccumulationSteps', val);
+                }}
+                className="w-full"
+              />
+              {gradientAccumulationSteps > 1 && (
+                <p className="mt-1 text-xs text-slate-400">
+                  Effective batch size:{' '}
+                  <span className="font-medium">
+                    {batchSize * gradientAccumulationSteps}
+                  </span>{' '}
+                  ({batchSize} &times; {gradientAccumulationSteps})
+                </p>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Gradient Checkpointing */}
-        {visibleFields.has(
-          'gradientCheckpointing' satisfies keyof FormState,
-        ) && (
-          <div className="flex items-center gap-2">
-            <Checkbox
-              isSelected={gradientCheckpointing}
-              onChange={() =>
-                onFieldChange('gradientCheckpointing', !gradientCheckpointing)
-              }
-              label="Gradient Checkpointing"
-              size="sm"
-            />
-            <span className="text-xs text-slate-400">
-              Reduces VRAM at cost of speed
-            </span>
-          </div>
-        )}
+        {/* Checkboxes */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+          {visibleFields.has(
+            'cacheTextEmbeddings' satisfies keyof FormState,
+          ) && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                isSelected={cacheTextEmbeddings}
+                onChange={() =>
+                  onFieldChange('cacheTextEmbeddings', !cacheTextEmbeddings)
+                }
+                label="Cache Text Embeddings"
+                size="sm"
+              />
+              <span className="text-xs text-slate-400">
+                Pre-compute once, reuse every epoch
+              </span>
+            </div>
+          )}
 
-        {/* Cache Latents */}
-        {visibleFields.has('cacheLatents' satisfies keyof FormState) && (
-          <div className="flex items-center gap-2">
-            <Checkbox
-              isSelected={cacheLatents}
-              onChange={() => onFieldChange('cacheLatents', !cacheLatents)}
-              label="Cache Latents"
-              size="sm"
-            />
-            <span className="text-xs text-slate-400">
-              Caches VAE outputs for faster training
-            </span>
-          </div>
-        )}
+          {visibleFields.has(
+            'unloadTextEncoder' satisfies keyof FormState,
+          ) && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                isSelected={unloadTextEncoder}
+                onChange={() =>
+                  onFieldChange('unloadTextEncoder', !unloadTextEncoder)
+                }
+                label="Unload Text Encoder"
+                size="sm"
+              />
+              <span className="text-xs text-slate-400">
+                Drop TE from VRAM after caching
+              </span>
+            </div>
+          )}
+
+          {visibleFields.has(
+            'gradientCheckpointing' satisfies keyof FormState,
+          ) && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                isSelected={gradientCheckpointing}
+                onChange={() =>
+                  onFieldChange(
+                    'gradientCheckpointing',
+                    !gradientCheckpointing,
+                  )
+                }
+                label="Gradient Checkpointing"
+                size="sm"
+              />
+              <span className="text-xs text-slate-400">
+                Reduces VRAM at cost of speed
+              </span>
+            </div>
+          )}
+
+          {visibleFields.has('cacheLatents' satisfies keyof FormState) && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                isSelected={cacheLatents}
+                onChange={() => onFieldChange('cacheLatents', !cacheLatents)}
+                label="Cache Latents"
+                size="sm"
+              />
+              <span className="text-xs text-slate-400">
+                Caches VAE outputs for faster training
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </CollapsibleSection>
   );

@@ -10,7 +10,10 @@ import path from 'path';
 
 const SIDECAR_PORT = 9733;
 const HEALTH_TIMEOUT_MS = 5000;
-const READY_TIMEOUT_MS = 30000;
+// Generous because the first `uv run` provisions the whole venv (torch is
+// multiple GB). Real failures resolve early via the process exit handler —
+// this ceiling only bites when startup genuinely hangs.
+const READY_TIMEOUT_MS = 10 * 60 * 1000;
 
 type SidecarState = {
   process: ChildProcess | null;
@@ -114,6 +117,18 @@ function getSpawnCommand(): { command: string; args: string[] } {
 }
 
 /**
+ * Kill a process and its children (uv/shell wrappers spawn python as a child).
+ */
+function killProcessTree(proc: ChildProcess): void {
+  if (!proc.pid) return;
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)]);
+  } else {
+    proc.kill('SIGTERM');
+  }
+}
+
+/**
  * Check if a process with the given PID is still running.
  */
 function isProcessAlive(pid: number): boolean {
@@ -144,6 +159,7 @@ async function tryReconnect(): Promise<boolean> {
     if (healthy) {
       state.status = 'ready';
       state.error = null;
+      startHeartbeat();
       return true;
     }
   } catch {
@@ -171,11 +187,58 @@ async function checkHealth(): Promise<boolean> {
   }
 }
 
+// --- Heartbeat -------------------------------------------------------------
+//
+// While Node is alive we ping the sidecar's /heartbeat so it knows a client is
+// present. When Node exits (or crashes) the pings stop, and the sidecar's idle
+// watchdog shuts it down once nothing is running — so a detached sidecar isn't
+// left orphaned. The interval is unref'd so it never keeps Node alive by itself.
+const HEARTBEAT_INTERVAL_MS = 30_000;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+async function sendHeartbeat(): Promise<void> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+    await fetch(`http://127.0.0.1:${state.port}/heartbeat`, {
+      method: 'POST',
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+  } catch {
+    // Sidecar down or restarting — nothing to do; the watchdog only acts
+    // after a couple of minutes of silence anyway.
+  }
+}
+
+/** Begin heartbeating the sidecar (idempotent). */
+function startHeartbeat(): void {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => {
+    void sendHeartbeat();
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeatTimer.unref?.();
+  // Send one immediately so the watchdog arms without waiting a full interval.
+  void sendHeartbeat();
+}
+
+// In-flight startup, shared so concurrent callers await the same spawn
+// instead of the second one seeing 'starting' and bailing with a
+// spurious "not ready" error.
+let startingPromise: Promise<void> | null = null;
+
 /**
- * Spawn the Python sidecar process.
+ * Spawn the Python sidecar process. Concurrent calls share one attempt.
  */
-async function spawnSidecar(): Promise<void> {
-  if (state.status === 'starting') return;
+function spawnSidecar(): Promise<void> {
+  if (startingPromise) return startingPromise;
+  startingPromise = doSpawnSidecar().finally(() => {
+    startingPromise = null;
+  });
+  return startingPromise;
+}
+
+async function doSpawnSidecar(): Promise<void> {
   state.status = 'starting';
   state.error = null;
 
@@ -194,7 +257,9 @@ async function spawnSidecar(): Promise<void> {
     cwd: sidecarDir,
     env: { ...process.env, PYTHONUNBUFFERED: '1' },
     stdio: ['pipe', 'pipe', 'pipe'],
-    // On Windows, detach so the process survives Node.js HMR restarts
+    // On POSIX, detach into its own process group so the sidecar survives
+    // Node.js HMR restarts. Windows children already outlive the parent by
+    // default, and detaching there would open a console window.
     detached: process.platform !== 'win32',
     // Use shell on Windows so `uv` resolves via PATH (uv is a .exe/.cmd shim)
     shell: process.platform === 'win32' && command === 'uv',
@@ -208,6 +273,10 @@ async function spawnSidecar(): Promise<void> {
   // Wait for the SIDECAR_READY signal on stdout
   const ready = await new Promise<boolean>((resolve) => {
     const timeout = setTimeout(() => {
+      // Kill the hung process — leaving it running meant the next spawn
+      // attempt lost the port race to an orphan we'd given up on.
+      console.error('[sidecar] Timed out waiting for ready — killing process');
+      killProcessTree(proc);
       resolve(false);
     }, READY_TIMEOUT_MS);
 
@@ -262,6 +331,7 @@ async function spawnSidecar(): Promise<void> {
   if (ready) {
     state.status = 'ready';
     state.error = null;
+    startHeartbeat();
   } else if (state.status === 'starting') {
     state.status = 'error';
     state.error = state.error || 'Sidecar failed to start within timeout';
@@ -280,6 +350,7 @@ export async function ensureSidecar(): Promise<{
   if (state.status === 'ready') {
     const healthy = await checkHealth();
     if (healthy) {
+      startHeartbeat();
       return { status: 'ready', port: state.port, error: null };
     }
     // Stale state — reset
@@ -320,18 +391,125 @@ export function getSidecarStatus(): {
 }
 
 /**
+ * Connect to a sidecar that's already running (including reconnecting to
+ * one orphaned by a Node.js restart) WITHOUT spawning a new one. Use this
+ * for read/cancel paths — booting a whole Python server as a side effect
+ * of a status poll or a cancel click is never what the user meant.
+ */
+export async function connectSidecar(): Promise<{
+  status: 'ready' | 'unavailable';
+  port: number;
+}> {
+  if (state.status === 'ready') {
+    if (await checkHealth()) {
+      startHeartbeat();
+      return { status: 'ready', port: state.port };
+    }
+    // Stale state — reset so the next ensureSidecar spawns fresh
+    state.status = 'stopped';
+    state.process = null;
+  }
+
+  if (await tryReconnect()) {
+    return { status: 'ready', port: state.port };
+  }
+
+  return { status: 'unavailable', port: state.port };
+}
+
+/**
  * Shut down the sidecar process gracefully.
  */
 function shutdownSidecar(): void {
   if (!state.process) return;
 
-  if (process.platform === 'win32') {
-    // On Windows, taskkill is the reliable way to kill a process tree
-    spawn('taskkill', ['/F', '/T', '/PID', String(state.process.pid)]);
-  } else {
-    state.process.kill('SIGTERM');
-  }
-
+  killProcessTree(state.process);
   state.process = null;
   state.status = 'stopped';
+}
+
+/**
+ * Ask the running sidecar which job is active (best-effort). Returns the job
+ * id, or null when idle or unreachable. Used to guard a restart against
+ * nuking an in-flight training run.
+ */
+export async function getSidecarActiveJob(): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+    const res = await fetch(`http://127.0.0.1:${state.port}/health`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { active_job?: string | null };
+    return data.active_job ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Kill the running sidecar — both the process we spawned and any orphan
+ * recorded in the PID file (which is what we have after reconnecting across a
+ * Node restart) — then wait until its port is free so a fresh spawn can bind.
+ */
+async function killSidecarAndWait(): Promise<void> {
+  if (state.process) {
+    killProcessTree(state.process);
+    state.process = null;
+  }
+
+  try {
+    const pidPath = getPidPath();
+    if (fs.existsSync(pidPath)) {
+      const pid = parseInt(fs.readFileSync(pidPath, 'utf-8').trim(), 10);
+      if (!Number.isNaN(pid) && isProcessAlive(pid)) {
+        if (process.platform === 'win32') {
+          spawn('taskkill', ['/F', '/T', '/PID', String(pid)]);
+        } else {
+          try {
+            process.kill(pid, 'SIGTERM');
+          } catch {
+            // Already gone.
+          }
+        }
+      }
+      fs.unlinkSync(pidPath);
+    }
+  } catch {
+    // Best-effort — a stale/unreadable PID file shouldn't block the restart.
+  }
+
+  state.status = 'stopped';
+
+  // Poll until the old server stops answering (its port is released), so the
+  // new uvicorn can bind. Bounded so a wedged process can't hang the restart.
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    if (!(await checkHealth())) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+/**
+ * Restart the sidecar: kill the current process (freeing its port) and spawn a
+ * fresh one. Used to pick up sidecar code changes during development. The
+ * caller is responsible for guarding against restarting mid-job — see the
+ * restart route's active-job check.
+ */
+export async function restartSidecar(): Promise<{
+  status: 'ready' | 'error';
+  port: number;
+  error: string | null;
+}> {
+  await killSidecarAndWait();
+  await spawnSidecar();
+
+  const currentStatus = state.status as string;
+  return {
+    status: currentStatus === 'ready' ? ('ready' as const) : ('error' as const),
+    port: state.port,
+    error: state.error,
+  };
 }

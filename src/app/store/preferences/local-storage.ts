@@ -12,7 +12,14 @@ const VALID_VIEW_MODES: TrainingViewMode[] = [
   'advanced',
 ];
 
-const defaults: PreferencesState = {
+/**
+ * Deterministic default preferences. Used as the Redux initial state on BOTH
+ * server and client so the first client render matches the server HTML — the
+ * persisted values are applied after mount (see `hydratePreferences`). Reading
+ * localStorage into the initial state instead would make the client's first
+ * render diverge from the server's and trip hydration mismatches app-wide.
+ */
+export const preferenceDefaults: PreferencesState = {
   theme: 'auto',
   tagEditMode: TagEditMode.BUTTON,
   trainingViewMode: 'intermediate',
@@ -21,7 +28,7 @@ const defaults: PreferencesState = {
 
 /** Read preferences from localStorage, migrating the legacy theme key if present. */
 export const loadPreferences = (): PreferencesState => {
-  if (typeof window === 'undefined') return defaults;
+  if (typeof window === 'undefined') return preferenceDefaults;
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -31,17 +38,17 @@ export const loadPreferences = (): PreferencesState => {
       return {
         theme: VALID_THEMES.includes(parsed.theme)
           ? (parsed.theme as ThemeMode)
-          : defaults.theme,
+          : preferenceDefaults.theme,
         tagEditMode: VALID_EDIT_MODES.includes(parsed.tagEditMode)
           ? parsed.tagEditMode
-          : defaults.tagEditMode,
+          : preferenceDefaults.tagEditMode,
         trainingViewMode: VALID_VIEW_MODES.includes(parsed.trainingViewMode)
           ? (parsed.trainingViewMode as TrainingViewMode)
-          : defaults.trainingViewMode,
+          : preferenceDefaults.trainingViewMode,
         keepTaggerModelInMemory:
           typeof parsed.keepTaggerModelInMemory === 'boolean'
             ? parsed.keepTaggerModelInMemory
-            : defaults.keepTaggerModelInMemory,
+            : preferenceDefaults.keepTaggerModelInMemory,
       };
     }
 
@@ -49,7 +56,7 @@ export const loadPreferences = (): PreferencesState => {
     const legacyTheme = localStorage.getItem(LEGACY_THEME_KEY);
     if (legacyTheme && VALID_THEMES.includes(legacyTheme)) {
       const state: PreferencesState = {
-        ...defaults,
+        ...preferenceDefaults,
         theme: legacyTheme as ThemeMode,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -60,7 +67,7 @@ export const loadPreferences = (): PreferencesState => {
     // Corrupt data — fall through to defaults
   }
 
-  return defaults;
+  return preferenceDefaults;
 };
 
 /** Write preferences to localStorage. */

@@ -18,6 +18,7 @@ import type { DatasetSource } from './training-config-form/use-training-config-f
 
 type TrainingSummaryProps = {
   outputName: string;
+  outputFolder: string | null;
   currentModel: ModelDefinition;
   selectedProvider: TrainingProvider;
   modelPaths: Partial<Record<ModelComponentType, string>>;
@@ -99,6 +100,7 @@ const SummaryRow = ({
 
 const TrainingSummaryComponent = ({
   outputName,
+  outputFolder,
   currentModel,
   selectedProvider,
   modelPaths,
@@ -284,6 +286,18 @@ const TrainingSummaryComponent = ({
             isReady={hasOutputName}
             detail={hasOutputName ? outputName : undefined}
           />
+
+          {outputFolder && (
+            <div className="pl-5">
+              <span
+                className="block truncate text-xs text-slate-400"
+                title={outputFolder}
+              >
+                Saves to{' '}
+                <span className="text-(--foreground)/60">{outputFolder}</span>
+              </span>
+            </div>
+          )}
 
           <hr className="my-3 text-slate-300 dark:text-slate-600" />
 

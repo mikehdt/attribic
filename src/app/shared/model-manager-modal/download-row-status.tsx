@@ -27,6 +27,7 @@ export function DownloadRowStatus({
   onDelete: (job: DownloadJob) => void;
 }) {
   const isRunning = job.status === 'running' || job.status === 'preparing';
+  const isQueued = job.status === 'pending';
   const isInterrupted = job.status === 'interrupted';
   const isFailed = job.status === 'failed';
   const isCancelled = job.status === 'cancelled';
@@ -64,6 +65,7 @@ export function DownloadRowStatus({
           </span>
         )}
         <span>
+          {isQueued && 'Queued'}
           {isRunning &&
             (progress?.currentFile ? progress.currentFile : 'Preparing…')}
           {isInterrupted && 'Interrupted'}
@@ -79,7 +81,7 @@ export function DownloadRowStatus({
       )}
 
       <div className="flex items-center justify-end gap-2">
-        {isRunning && (
+        {(isRunning || isQueued) && (
           <Button
             onClick={() => onCancel(job)}
             color="rose"

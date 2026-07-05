@@ -332,6 +332,29 @@ export const selectDownloadJobByModelId = (modelId: string) =>
     );
   });
 
+/**
+ * Model IDs with a download in flight or queued (pending/preparing/running).
+ * Lets the model manager un-fade a model's dependencies the moment its
+ * download starts or is queued, not only once it finishes.
+ */
+export const selectDownloadingModelIds = createSelector(
+  selectAllJobs,
+  (jobs): Set<string> => {
+    const ids = new Set<string>();
+    for (const j of jobs) {
+      if (
+        j.type === 'download' &&
+        (j.status === 'pending' ||
+          j.status === 'preparing' ||
+          j.status === 'running')
+      ) {
+        ids.add(j.modelId);
+      }
+    }
+    return ids;
+  },
+);
+
 /** Whether any training job is currently running (blocks GPU). */
 export const selectIsTraining = createSelector(
   selectActiveTrainingJob,

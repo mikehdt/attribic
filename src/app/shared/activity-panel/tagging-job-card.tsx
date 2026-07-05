@@ -64,7 +64,11 @@ export function TaggingJobCard({
       : 'Done';
 
   const statusLabel = isRunning
-    ? progress?.currentFileId || 'Processing...'
+    ? progress?.queued
+      ? `Queued — position ${progress.queued.position}`
+      : progress?.loading
+        ? progress.loading.message
+        : progress?.currentFileId || 'Processing...'
     : isCancelled
       ? 'Cancelled'
       : isFailed
@@ -116,7 +120,9 @@ export function TaggingJobCard({
                   ? 'amber'
                   : 'indigo'
           }
-          indeterminate={isRunning && !progress}
+          indeterminate={
+            isRunning && (!progress || !!progress.queued || !!progress.loading)
+          }
           className="mb-1"
         />
         <div className="flex justify-between text-xs text-slate-500 tabular-nums">

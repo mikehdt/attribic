@@ -17,12 +17,13 @@ import type {
   DownloadableModel,
   ModelVariant,
 } from '@/app/services/model-manager/types';
-import { useAppDispatch } from '@/app/store/hooks';
+import { useAppDispatch, useAppStore } from '@/app/store/hooks';
 import { type DownloadJob, removeJob, updateJobStatus } from '@/app/store/jobs';
 import { setModelStatus } from '@/app/store/model-manager';
 
 export function useDownloadActions() {
   const dispatch = useAppDispatch();
+  const store = useAppStore();
 
   /**
    * Kick off a download. Accepts either a `DownloadableModel` (with optional
@@ -30,30 +31,32 @@ export function useDownloadActions() {
    * full registry entry handy (e.g. the auto-tagger tab's `ModelInfo`).
    */
   const start = useCallback(
-    async (
+    (
       model: DownloadableModel | { id: string; name: string },
       variant?: ModelVariant,
     ) => {
-      await startModelDownload({
+      startModelDownload({
         modelId: model.id,
         modelName: model.name,
         variantId: variant?.id,
         dispatch,
+        getState: store.getState,
       });
     },
-    [dispatch],
+    [dispatch, store],
   );
 
   const retry = useCallback(
-    async (job: DownloadJob) => {
+    (job: DownloadJob) => {
       dispatch(removeJob(job.id));
-      await startModelDownload({
+      startModelDownload({
         modelId: job.modelId,
         modelName: job.modelName,
         dispatch,
+        getState: store.getState,
       });
     },
-    [dispatch],
+    [dispatch, store],
   );
 
   const cancel = useCallback(

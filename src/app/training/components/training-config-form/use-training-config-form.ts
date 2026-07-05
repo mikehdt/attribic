@@ -1,9 +1,10 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type {
   ModelComponentType,
   ModelDefinition,
 } from '@/app/services/training/models';
+import { resolveLoraOutputDir } from '@/app/services/training/output-path';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
@@ -83,6 +84,24 @@ export function useTrainingConfigForm() {
       })
       .catch(() => {});
   }, [dispatch]);
+
+  // Configured projects folder — used to show where trained LoRAs land.
+  const [projectsFolder, setProjectsFolder] = useState<string | null>(null);
+  useEffect(() => {
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then((data: { projectsFolder?: string }) => {
+        setProjectsFolder(data.projectsFolder ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Absolute directory the LoRA will be written to (mirrors the request
+  // builder), or null until the projects folder / a dataset is known.
+  const outputFolder = useMemo(
+    () => resolveLoraOutputDir(projectsFolder, state.datasets[0]?.folderName),
+    [projectsFolder, state.datasets],
+  );
 
   // Apply app defaults when model changes or defaults are first loaded.
   useEffect(() => {
@@ -252,5 +271,6 @@ export function useTrainingConfigForm() {
     removeSamplePrompt,
     setSamplePrompt,
     setAppModelDefaults,
+    outputFolder,
   };
 }

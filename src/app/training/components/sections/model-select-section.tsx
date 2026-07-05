@@ -15,6 +15,7 @@ import {
 } from '@/app/services/training/types';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
+import { FormTitle } from '@/app/shared/form-title/form-title';
 
 import { ModelPathField } from '../model-path-field/model-path-field';
 import { useEnsureModelStatuses } from '../model-path-field/use-ensure-model-statuses';
@@ -114,9 +115,9 @@ const ModelSelectSectionComponent = ({
           <div>
             <div className="flex">
               <div className="w-1/2">
-                <label className="mb-1 block text-xs font-medium text-(--foreground)">
+                <FormTitle>
                   Base Model
-                </label>
+                </FormTitle>
 
                 <Dropdown
                   items={modelGroups}
@@ -144,9 +145,9 @@ const ModelSelectSectionComponent = ({
 
               {/* Backend — lists every provider this model supports */}
               <div className="w-1/2">
-                <label className="mb-1 block text-xs font-medium text-(--foreground)/70">
+                <FormTitle>
                   Backend
-                </label>
+                </FormTitle>
 
                 <Dropdown
                   items={currentModel.providers.map(
@@ -168,12 +169,12 @@ const ModelSelectSectionComponent = ({
         {visibleFields.has('modelPaths' satisfies keyof FormState) &&
           visibleComponents.map((component) => (
             <div key={component.type}>
-              <label className="mb-1 flex items-baseline gap-1.5 text-xs font-medium">
+              <FormTitle className="flex items-baseline gap-1.5">
                 {component.label}
                 {!component.required && (
                   <span className="font-normal text-slate-400">(optional)</span>
                 )}
-              </label>
+              </FormTitle>
               <ModelPathField
                 value={modelPaths[component.type] ?? ''}
                 onChange={handlePathChange(component.type)}
