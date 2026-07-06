@@ -268,20 +268,26 @@ const ProjectsFolderButton = ({ folder, onSave }: ProjectsFolderProps) => {
 
   return (
     <div className="relative">
-      <Button
-        onClick={browse}
-        disabled={saving}
-        title={folder || 'No folder configured'}
-        size="sm"
-        width="lg"
-        variant="ghost"
-      >
-        <FolderOpenIcon />
-        <span className="max-w-40 truncate">
-          {saving ? 'Saving\u2026' : 'Projects Folder'}
+      <div className="flex flex-wrap">
+        <Button
+          onClick={browse}
+          disabled={saving}
+          size="sm"
+          width="lg"
+          variant="ghost"
+          title="Set the projects folder"
+        >
+          <FolderOpenIcon />
+          <span className="max-w-40 truncate">
+            {saving ? 'Saving\u2026' : 'Projects Folder'}
+          </span>
+          <PencilIcon className="ml-1" />
+        </Button>
+
+        <span className="w-full text-center text-xs">
+          {folder || 'No folder configured'}
         </span>
-        <PencilIcon className="ml-1" />
-      </Button>
+      </div>
 
       {error && (
         <p className="absolute top-full left-0 mt-1 text-xs text-rose-500 dark:text-rose-400">

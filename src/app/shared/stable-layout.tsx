@@ -1,5 +1,6 @@
 'use client';
 
+import { GpuIcon } from 'lucide-react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 
@@ -12,6 +13,8 @@ import { TrainingTopShelf } from '@/app/training/components/training-top-shelf';
 import { selectFilteredAssetsCount } from '../store/assets';
 import { selectPaginationSize } from '../store/filters';
 import { useAppSelector } from '../store/hooks';
+import { Button } from './button';
+import { ToolbarDivider } from './toolbar-divider';
 
 export const StableLayout = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
@@ -62,6 +65,19 @@ export const StableLayout = ({ children }: { children: React.ReactNode }) => {
         <TopShelfFrame>
           <ShelfInfoRow>
             <GlobalMenu />
+
+            <ToolbarDivider />
+
+            <div className="mr-auto flex">
+              <Button
+                size="xs"
+                width="md"
+                variant="ghost"
+                onClick={() => router.push('/training')}
+              >
+                <GpuIcon /> Lora Training
+              </Button>
+            </div>
           </ShelfInfoRow>
         </TopShelfFrame>
       )}

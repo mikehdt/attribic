@@ -31,11 +31,11 @@ const GlobalMenuComponent = () => {
         onClick={toggle}
         title="Menu"
         aria-label="Menu"
-        className={`flex cursor-pointer items-center rounded-sm p-1 transition-colors ${
+        className={`flex cursor-pointer items-center rounded-sm px-1 py-0.5 transition-colors ${
           isOpen ? 'bg-(--surface)' : 'hover:bg-(--surface)/50'
         }`}
       >
-        <MenuIcon className="h-5 w-5 text-(--unselected-text)" />
+        <MenuIcon className="mr-2 h-5 w-5" /> App
       </button>
 
       <Popup
