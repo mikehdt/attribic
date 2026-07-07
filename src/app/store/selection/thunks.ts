@@ -1,11 +1,16 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
 
+import { groupAssetsByCategory } from '@/app/tagging/utils/category-utils';
+
 import {
   addMultipleTags,
   deleteTag,
   editTag,
   markFilterTagsToDelete,
   selectFilteredAssets,
+  selectSortDirection,
+  selectSortType,
+  SortType,
 } from '../assets';
 import { updateTagFilters } from '../filters';
 import { selectPaginationSize } from '../filters';
@@ -300,16 +305,29 @@ export const handleAssetClick =
     const filteredAssets = selectFilteredAssets(state);
     const paginationSize = selectPaginationSize(state);
 
-    // Calculate paginated assets for the current page
-    let paginatedAssetIds: string[];
-    if (paginationSize === -1) {
-      // -1 is PaginationSize.ALL
-      paginatedAssetIds = filteredAssets.map((a) => a.fileId);
-    } else {
-      const start = (currentPage - 1) * paginationSize;
-      const end = start + paginationSize;
-      paginatedAssetIds = filteredAssets.slice(start, end).map((a) => a.fileId);
-    }
+    // Slice the current page from the filtered assets
+    const pageAssets =
+      paginationSize === -1 // -1 is PaginationSize.ALL
+        ? filteredAssets
+        : filteredAssets.slice(
+            (currentPage - 1) * paginationSize,
+            (currentPage - 1) * paginationSize + paginationSize,
+          );
+
+    // Range selection must run in DISPLAY order (category-grouped), not the raw
+    // filtered order — otherwise the selected range won't match what's rendered.
+    // Mirrors AssetList's grouping so both stay in lockstep.
+    const sortType = selectSortType(state);
+    const sortDirection = selectSortDirection(state);
+    const selectedForGrouping =
+      sortType === SortType.SELECTED ? state.selection.selectedAssets : [];
+
+    const paginatedAssetIds = groupAssetsByCategory(
+      pageAssets,
+      sortType,
+      sortDirection,
+      selectedForGrouping,
+    ).flatMap(({ assets }) => assets.map((a) => a.fileId));
 
     // If shift is held and we have a previous click on this page
     if (isShiftHeld && lastClickedAssetId && lastClickAction) {

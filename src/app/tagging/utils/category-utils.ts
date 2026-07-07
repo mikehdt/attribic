@@ -224,6 +224,43 @@ export const sortCategories = (
   return sorted;
 };
 
+/**
+ * Group assets into display categories and return them in the exact order they
+ * are rendered: categories ordered by `sortCategories`, and assets kept in their
+ * incoming order within each category.
+ *
+ * This is the single source of truth for a page's visual order. Both the grid
+ * render and shift-range selection derive their order from here so the range
+ * that gets highlighted always matches what's on screen — unlike the raw
+ * `selectFilteredAssets` order, which sorts by full fileId and can diverge from
+ * the category grouping (e.g. NAME sort buckets a `2_sonic/zebra` subfolder asset
+ * under "Z" while the flat sort places it among the leading digits).
+ */
+export const groupAssetsByCategory = <T extends ImageAsset>(
+  assets: T[],
+  sortType: SortType,
+  sortDirection: SortDirection,
+  selectedAssets: string[],
+): { category: string; assets: T[] }[] => {
+  const groups: { [key: string]: T[] } = {};
+
+  for (const asset of assets) {
+    const category = getSortCategory(asset, sortType, selectedAssets);
+    (groups[category] ??= []).push(asset);
+  }
+
+  const sortedCategories = sortCategories(
+    Object.keys(groups),
+    sortType,
+    sortDirection,
+  );
+
+  return sortedCategories.map((category) => ({
+    category,
+    assets: groups[category],
+  }));
+};
+
 export interface CategoryInfo {
   category: string;
   page: number;

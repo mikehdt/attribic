@@ -21,8 +21,7 @@ import {
 import { Asset } from '@/app/tagging/components/asset/asset';
 import {
   getCategoryAnchorId,
-  getSortCategory,
-  sortCategories,
+  groupAssetsByCategory,
 } from '@/app/tagging/utils/category-utils';
 import { scrollToAnchor } from '@/app/tagging/utils/scroll-to-anchor';
 import { useAnchorScrolling } from '@/app/tagging/utils/use-anchor-scrolling';
@@ -111,17 +110,6 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
     return filteredAssets.slice(start, start + paginationSize);
   }, [filteredAssets, currentPage, paginationSize]);
 
-  // Get paginated asset IDs for shift-hover preview calculation
-  const paginatedAssetIds = useMemo(
-    () => paginatedAssets.map((a) => a.fileId),
-    [paginatedAssets],
-  );
-
-  // Get shift-hover preview state
-  const shiftHoverPreview = useAppSelector((state) =>
-    selectShiftHoverPreview(state, paginatedAssetIds),
-  );
-
   // Handler for asset hover - always track in ref, dispatch to Redux only if shift is held
   const handleAssetHover = useCallback(
     (assetId: string | null) => {
@@ -133,43 +121,27 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
     [dispatch, isShiftHeld],
   );
 
-  // Group assets by sort category
+  // Group assets by sort category. The shared helper is the single source of
+  // truth for display order, so the shift-select range below matches the render.
   const groupedAssets = useMemo(() => {
-    const groups: { [key: string]: AssetWithPaginationIndex[] } = {};
-
     // Pre-calculate the start index for filtered index calculation
     const startIndex =
       (currentPage - 1) * (paginationSize === -1 ? 0 : paginationSize);
 
-    paginatedAssets.forEach((asset, index) => {
-      const assetWithIndex: AssetWithPaginationIndex = {
+    const assetsWithIndex: AssetWithPaginationIndex[] = paginatedAssets.map(
+      (asset, index) => ({
         ...asset,
         paginatedIndex: index,
         filteredIndex: startIndex + index + 1, // 1-based position in full filtered list
-      };
-      const category = getSortCategory(
-        assetWithIndex,
-        sortType,
-        selectedAssetsForGrouping,
-      );
-      if (!groups[category]) {
-        groups[category] = [];
-      }
-      groups[category].push(assetWithIndex);
-    });
-
-    // Sort categories using shared utility
-    const sortedCategories = sortCategories(
-      Object.keys(groups),
-      sortType,
-      sortDirection,
+      }),
     );
 
-    // Return groups in sorted order
-    return sortedCategories.map((category) => ({
-      category,
-      assets: groups[category],
-    }));
+    return groupAssetsByCategory(
+      assetsWithIndex,
+      sortType,
+      sortDirection,
+      selectedAssetsForGrouping,
+    );
   }, [
     paginatedAssets,
     sortType,
@@ -178,6 +150,20 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
     currentPage,
     paginationSize,
   ]);
+
+  // Display-ordered asset IDs for the current page, flattened from the exact
+  // grouped structure that gets rendered. Shift-range selection keys off this so
+  // the highlighted range always matches the on-screen order (not the raw
+  // selectFilteredAssets order, which can differ once categories are grouped).
+  const paginatedAssetIds = useMemo(
+    () => groupedAssets.flatMap(({ assets }) => assets.map((a) => a.fileId)),
+    [groupedAssets],
+  );
+
+  // Get shift-hover preview state
+  const shiftHoverPreview = useAppSelector((state) =>
+    selectShiftHoverPreview(state, paginatedAssetIds),
+  );
 
   // Check if there's only one category to hide headers
   const showCategoryHeaders = groupedAssets.length > 1;
