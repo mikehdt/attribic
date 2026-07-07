@@ -19,7 +19,6 @@ import type {
   Job,
   JobsState,
   JobStatus,
-  JobType,
   TaggingJob,
   TaggingProgress,
   TaggingSummary,
@@ -297,11 +296,6 @@ export const selectCompletedJobs = createSelector(selectAllJobs, (jobs) =>
   ),
 );
 
-const selectJobsByType = <T extends Job['type']>(type: T) =>
-  createSelector(selectAllJobs, (jobs) =>
-    jobs.filter((j): j is Extract<Job, { type: T }> => j.type === type),
-  );
-
 /** The single active training job (there can be at most one). */
 export const selectActiveTrainingJob = createSelector(
   selectAllJobs,
@@ -313,15 +307,6 @@ export const selectActiveTrainingJob = createSelector(
     );
     return found ?? null;
   },
-);
-
-/** All currently-running download jobs. */
-const selectActiveDownloads = createSelector(
-  selectAllJobs,
-  (jobs): DownloadJob[] =>
-    jobs.filter(
-      (j): j is DownloadJob => j.type === 'download' && j.status === 'running',
-    ),
 );
 
 /**

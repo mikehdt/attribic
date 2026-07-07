@@ -204,46 +204,6 @@ function getRuntime(model: TaggerModel): VlmRuntime {
   return model.runtime ?? 'llama-cpp';
 }
 
-/**
- * Caption a single image via the sidecar.
- * Synchronous-ish: waits for the result and returns it.
- */
-async function captionImageViaSidecar(
-  model: TaggerModel,
-  imagePath: string,
-  options: VlmOptions,
-): Promise<string> {
-  const sidecar = await ensureSidecar();
-  if (sidecar.status !== 'ready') {
-    throw new Error(`Sidecar not ready: ${sidecar.error ?? 'unknown error'}`);
-  }
-
-  const modelPath = getVlmModelPath(model);
-  const runtime = getRuntime(model);
-
-  const res = await fetch(`http://127.0.0.1:${sidecar.port}/caption`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image_path: imagePath,
-      model_path: modelPath,
-      runtime,
-      prompt: options.prompt,
-      max_tokens: options.maxTokens,
-      temperature: options.temperature,
-      video: buildVideoBlock(options),
-    }),
-  });
-
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errBody.error || `Sidecar caption failed: ${res.status}`);
-  }
-
-  const body = (await res.json()) as { image_path: string; caption: string };
-  return body.caption;
-}
-
 // ---------------------------------------------------------------------------
 // WebSocket plumbing shared by the start and attach generators
 // ---------------------------------------------------------------------------

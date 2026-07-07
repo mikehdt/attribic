@@ -7,11 +7,7 @@ import { Button } from '@/app/shared/button';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
-import {
-  selectActiveTrainingJob,
-  selectPanelOpen,
-  togglePanel,
-} from '@/app/store/jobs';
+import { selectPanelOpen, togglePanel } from '@/app/store/jobs';
 import {
   setTrainingViewMode,
   type TrainingViewMode,
@@ -50,14 +46,12 @@ const TrainingToolbarComponent = () => {
   // completes — see useHydrated. Form-derived state (isDirty/canReset/
   // loadedProject) is only mutated by this page's own effects, which cannot
   // run before it hydrates, so it needs no gate.
-  const activeTrainingJobValue = useAppSelector(selectActiveTrainingJob);
   const panelOpenValue = useAppSelector(selectPanelOpen);
   const loadedProject = useAppSelector(selectLoadedProject);
   const isDirty = useAppSelector(selectIsDirty);
   const canReset = useAppSelector(selectCanReset);
   const form = useAppSelector(selectForm);
 
-  const hasActiveJob = hydrated && activeTrainingJobValue !== null;
   const panelOpen = hydrated && panelOpenValue;
 
   const [saveAsOpen, setSaveAsOpen] = useState(false);

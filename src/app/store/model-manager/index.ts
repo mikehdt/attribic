@@ -14,7 +14,7 @@ import {
 import type { ModelStatus } from '@/app/services/model-manager/types';
 
 import type { RootState } from '../index';
-import type { ModelEntry, ModelManagerState } from './types';
+import type { ModelManagerState } from './types';
 
 const initialState: ModelManagerState = {
   models: {},
@@ -50,18 +50,7 @@ const modelManagerSlice = createSlice({
       };
     },
 
-    /** Bulk-update model statuses (e.g. after scanning disk). */
-    setModelStatuses: (state, action: PayloadAction<ModelEntry[]>) => {
-      for (const entry of action.payload) {
-        state.models[entry.modelId] = entry;
-      }
-    },
-
     // --- Storage config ---
-
-    setModelsFolder: (state, action: PayloadAction<string>) => {
-      state.modelsFolder = action.payload;
-    },
 
     setIsScanning: (state, action: PayloadAction<boolean>) => {
       state.isScanning = action.payload;
@@ -105,11 +94,6 @@ export const {
 
 const selectModelManager = (state: RootState) => state.modelManager;
 
-const selectModelsFolder = createSelector(
-  selectModelManager,
-  (s) => s.modelsFolder,
-);
-
 export const selectIsModelManagerModalOpen = createSelector(
   selectModelManager,
   (s) => s.isModalOpen,
@@ -130,16 +114,5 @@ export const selectAllModelStatuses = createSelector(
   selectModelManager,
   (s) => s.models,
 );
-
-/** Get the status entry for a specific model. */
-const selectModelEntry = (modelId: string) =>
-  createSelector(selectModelManager, (s) => s.models[modelId] ?? null);
-
-/** Check if a shared component is ready (by sharedId → modelId mapping). */
-const selectModelStatusById = (modelId: string) =>
-  createSelector(
-    selectModelManager,
-    (s) => s.models[modelId]?.status ?? ('not_installed' as ModelStatus),
-  );
 
 // Re-export types

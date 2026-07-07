@@ -16,7 +16,6 @@ import { preferencesReducer } from './preferences';
 import { projectReducer } from './project';
 import { selectionReducer } from './selection';
 import { toastsReducer } from './toasts';
-import { trainingReducer } from './training';
 import { trainingConfigReducer } from './training-config';
 import { trainingHistoryReducer } from './training-history';
 
@@ -30,7 +29,6 @@ const rootReducer = combineReducers({
   project: projectReducer,
   selection: selectionReducer,
   toasts: toastsReducer,
-  training: trainingReducer,
   trainingConfig: trainingConfigReducer,
   trainingHistory: trainingHistoryReducer,
 });

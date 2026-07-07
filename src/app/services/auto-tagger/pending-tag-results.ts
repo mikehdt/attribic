@@ -69,11 +69,6 @@ export function clearPendingTagResults(projectFolderName: string): void {
   setPendingTagResults(projectFolderName, []);
 }
 
-/** Whether there are pending results waiting to be flushed. */
-function hasPendingTagResults(projectFolderName: string): boolean {
-  return getPendingTagResults(projectFolderName).length > 0;
-}
-
 /**
  * Compute a summary from the pending results (before flushing).
  * Used to populate the job's summary when tagging completes.

@@ -263,16 +263,6 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
   resumeState: { tier: 'advanced', group: 'saving', defaultKey: null },
 };
 
-const GROUP_META: Record<ConceptualGroup, { label: string; order: number }> = {
-  whatToTrain: { label: 'What to Train', order: 0 },
-  dataset: { label: 'Dataset', order: 1 },
-  learning: { label: 'Learning', order: 2 },
-  loraShape: { label: 'LoRA Shape', order: 3 },
-  performance: { label: 'Performance', order: 4 },
-  sampling: { label: 'Sampling', order: 5 },
-  saving: { label: 'Saving', order: 6 },
-};
-
 const TIER_ORDER: ExpertiseTier[] = [
   'simple',
   'intermediate',
@@ -303,11 +293,4 @@ export function getVisibleFields(
     visible.add(field);
   }
   return visible;
-}
-
-/** Get all field names belonging to a conceptual group. */
-function getFieldsForGroup(group: ConceptualGroup): string[] {
-  return Object.entries(FIELD_REGISTRY)
-    .filter(([, meta]) => meta.group === group)
-    .map(([field]) => field);
 }
