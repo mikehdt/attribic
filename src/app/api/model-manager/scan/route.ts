@@ -11,20 +11,8 @@ import fs from 'fs';
 import { NextRequest } from 'next/server';
 import path from 'path';
 
+import { getModelsFolder } from '@/app/services/config/server-config';
 import type { ModelSidecar } from '@/app/services/model-manager/types';
-
-function getModelsFolder(): string {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config.modelsFolder) return config.modelsFolder;
-    }
-  } catch {
-    // Fall through to default
-  }
-  return path.join(process.cwd(), 'public', 'models');
-}
 
 type ScannedModel = ModelSidecar & {
   filePath: string;

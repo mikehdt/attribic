@@ -10,29 +10,13 @@ import {
   isSupportedImageExtension,
 } from '@/app/constants';
 import type { AutoTaggerSettings } from '@/app/services/auto-tagger';
+import { getProjectsFolder } from '@/app/services/config/server-config';
 
 import { isValidRepeatFolder, parseSubfolder } from './subfolder-utils';
 
-// Server-side config reading function
-const getServerConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      return {
-        projectsFolder: config.projectsFolder || 'public/assets',
-      };
-    }
-  } catch (error) {
-    console.warn('Failed to read server config:', error);
-  }
-
-  // Return defaults if config reading fails
-  return {
-    projectsFolder: 'public/assets',
-  };
-};
+const getServerConfig = () => ({
+  projectsFolder: getProjectsFolder() || 'public/assets',
+});
 
 export type ProjectConfig = {
   title?: string;

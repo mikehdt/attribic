@@ -10,10 +10,10 @@
  * always points to the highest existing version number.
  */
 
-import { readFileSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 
+import { getProjectsFolder } from '@/app/services/config/server-config';
 import type { FormState } from '@/app/store/training-config/types';
 
 import type {
@@ -24,21 +24,8 @@ import type {
 
 // --- Path helpers ---
 
-function readProjectsFolderSync(): string {
-  // Read config.json synchronously so route handlers don't need to await
-  // the path before doing real work. Same pattern as build-sidecar-request.
-  const configPath = path.join(process.cwd(), 'config.json');
-  try {
-    const raw = readFileSync(configPath, 'utf8');
-    const data = JSON.parse(raw);
-    return typeof data.projectsFolder === 'string' ? data.projectsFolder : '';
-  } catch {
-    return '';
-  }
-}
-
 export function getTrainingProjectsRoot(): string {
-  const pf = readProjectsFolderSync();
+  const pf = getProjectsFolder();
   const base = pf || path.join(process.cwd(), '.training-fallback');
   return path.join(base, '.training', 'projects');
 }

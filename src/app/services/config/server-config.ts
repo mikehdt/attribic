@@ -27,3 +27,19 @@ export function getHfToken(): string | null {
   const token = config.hfToken;
   return typeof token === 'string' && token.trim() !== '' ? token : null;
 }
+
+/**
+ * Read the configured projects folder, or '' when unset. Callers that need a
+ * concrete fallback (e.g. the image server's `public/assets`) apply their own.
+ */
+export function getProjectsFolder(): string {
+  const pf = readConfig().projectsFolder;
+  return typeof pf === 'string' ? pf : '';
+}
+
+/** Read the configured models folder, defaulting to `<cwd>/public/models`. */
+export function getModelsFolder(): string {
+  const mf = readConfig().modelsFolder;
+  if (typeof mf === 'string' && mf) return mf;
+  return path.join(process.cwd(), 'public', 'models');
+}

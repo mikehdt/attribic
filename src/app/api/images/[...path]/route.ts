@@ -4,29 +4,7 @@ import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getImageMimeType } from '@/app/constants';
-
-// Server-side config reading function
-const getServerConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      return {
-        projectsFolder: config.projectsFolder || 'public/assets',
-        infoFolder: config.infoFolder || '_info',
-      };
-    }
-  } catch (error) {
-    console.warn('Failed to read server config:', error);
-  }
-
-  // Return defaults if config reading fails
-  return {
-    projectsFolder: 'public/assets',
-    infoFolder: '_info',
-  };
-};
+import { getProjectsFolder } from '@/app/services/config/server-config';
 
 /** True if `target` resolves to a path at or below `root`. */
 const isWithin = (root: string, target: string): boolean => {
@@ -52,8 +30,7 @@ export async function GET(
     // final path and verify it stays within the projects root *before* touching
     // disk. Without this, a `..`-laden segment or an absolute `projectName`
     // would let any file on the machine be read.
-    const { projectsFolder } = getServerConfig();
-    const projectsRoot = path.resolve(projectsFolder);
+    const projectsRoot = path.resolve(getProjectsFolder() || 'public/assets');
     const resolvedPath = path.resolve(
       projectsRoot,
       projectName,

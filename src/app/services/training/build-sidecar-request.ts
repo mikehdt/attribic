@@ -4,8 +4,9 @@
  * against the projectsFolder in config.json.
  */
 
-import fs from 'fs';
 import path from 'path';
+
+import { getProjectsFolder } from '@/app/services/config/server-config';
 
 import { resolveLoraOutputDir } from './output-path';
 
@@ -31,17 +32,6 @@ type ClientExtraFolder = {
   loraWeight: number;
   isRegularization: boolean;
 };
-
-function readProjectsFolder(): string {
-  const configPath = path.join(process.cwd(), 'config.json');
-  if (!fs.existsSync(configPath)) return '';
-  try {
-    const data = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    return typeof data.projectsFolder === 'string' ? data.projectsFolder : '';
-  } catch {
-    return '';
-  }
-}
 
 function buildDatasets(
   datasets: ClientDatasetSource[],
@@ -110,7 +100,7 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   hyperparameters: Record<string, unknown>;
   sample_prompts: string[];
 } {
-  const projectsFolder = readProjectsFolder();
+  const projectsFolder = getProjectsFolder();
 
   const datasets = buildDatasets(
     (config.datasets as ClientDatasetSource[]) ?? [],

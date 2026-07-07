@@ -23,26 +23,12 @@ import { checkModelStatus } from '@/app/services/auto-tagger/model-manager';
 import type { CaptionBatchItem } from '@/app/services/auto-tagger/providers/vlm/client';
 import { captionBatchViaSidecar } from '@/app/services/auto-tagger/providers/vlm/client';
 import { tagImageInWorker } from '@/app/services/auto-tagger/providers/wd14/worker-manager';
+import { getProjectsFolder } from '@/app/services/config/server-config';
 import { ensureVideoPoster } from '@/app/utils/asset-actions';
 
-// Server-side config reading function
-const getServerConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const config = JSON.parse(configContent);
-      return {
-        projectsFolder: config.projectsFolder || 'public/assets',
-      };
-    }
-  } catch (error) {
-    console.warn('Failed to read server config:', error);
-  }
-  return {
-    projectsFolder: 'public/assets',
-  };
-};
+const getServerConfig = () => ({
+  projectsFolder: getProjectsFolder() || 'public/assets',
+});
 
 type BatchTagRequest = {
   modelId: string;

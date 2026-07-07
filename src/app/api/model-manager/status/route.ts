@@ -5,27 +5,14 @@
  * Checks disk for file existence.
  */
 
-import fs from 'fs';
 import path from 'path';
 
 import { getAllModels } from '@/app/services/auto-tagger';
 import { checkModelStatus } from '@/app/services/auto-tagger/model-manager';
+import { getModelsFolder } from '@/app/services/config/server-config';
 import { isDownloadActive } from '@/app/services/model-manager/active-downloads';
 import { ALL_TRAINING_MODELS } from '@/app/services/model-manager/registries/training-models';
 import { checkModelFiles } from '@/app/services/model-manager/status-checker';
-
-function getModelsFolder(): string {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config.modelsFolder) return config.modelsFolder;
-    }
-  } catch {
-    // Fall through to default
-  }
-  return path.join(process.cwd(), 'public', 'models');
-}
 
 export async function GET() {
   try {

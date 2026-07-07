@@ -10,7 +10,7 @@ import { NextRequest } from 'next/server';
 import path from 'path';
 
 import { getModel } from '@/app/services/auto-tagger';
-import { getHfToken } from '@/app/services/config/server-config';
+import { getHfToken, getModelsFolder } from '@/app/services/config/server-config';
 import {
   isDownloadActive,
   markDownloadActive,
@@ -20,19 +20,6 @@ import { downloadModelFiles } from '@/app/services/model-manager/download-engine
 import { taggerModelToDownloadable } from '@/app/services/model-manager/registries/auto-tagger-models';
 import { getTrainingDownloadable } from '@/app/services/model-manager/registries/training-models';
 import type { ModelSidecar } from '@/app/services/model-manager/types';
-
-function getModelsFolder(): string {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config.modelsFolder) return config.modelsFolder;
-    }
-  } catch {
-    // Fall through to default
-  }
-  return path.join(process.cwd(), 'public', 'models');
-}
 
 export async function POST(request: NextRequest) {
   try {
