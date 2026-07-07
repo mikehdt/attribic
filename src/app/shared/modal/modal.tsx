@@ -21,6 +21,15 @@ type ModalProps = {
   preventClose?: boolean;
 };
 
+// Elements that can receive keyboard focus, for the focus trap.
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+const getFocusableElements = (container: HTMLElement): HTMLElement[] =>
+  Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((el) => el.offsetParent !== null);
+
 /**
  * A customisable modal component that dims the background and focuses on content
  * - Dims the UI behind it (clickable to dismiss)
@@ -49,14 +58,43 @@ export const Modal = ({
   // Ref to track the modal container element
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Handle ESC key press to close the modal
-  const handleEscapeKey = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen && !preventClose) {
-        onClose();
+  // Remember the element focused before the modal opened, to restore on close.
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  // Close on Escape and trap Tab within the dialog. Bound to the modal
+  // container (not document) so only the focused — i.e. topmost — modal reacts;
+  // a shared document listener made one Escape close every stacked modal.
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Escape') {
+        if (!preventClose) {
+          e.stopPropagation();
+          onClose();
+        }
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const node = modalRef.current;
+      if (!node) return;
+      const focusable = getFocusableElements(node);
+      if (focusable.length === 0) {
+        e.preventDefault();
+        node.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === node)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
       }
     },
-    [isOpen, onClose, preventClose],
+    [onClose, preventClose],
   );
 
   const handleStopPropagation = useCallback(
@@ -121,22 +159,40 @@ export const Modal = ({
     registerModal(isOpen);
   }, [isOpen, registerModal]);
 
+  // Lock body scroll while the modal is open.
   useEffect(() => {
-    // Add event listener for ESC key
-    document.addEventListener('keydown', handleEscapeKey);
-
-    // Lock body scroll when modal is open
     if (isOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
-
     return () => {
-      document.removeEventListener('keydown', handleEscapeKey);
       document.body.style.overflow = '';
     };
-  }, [isOpen, handleEscapeKey]);
+  }, [isOpen]);
+
+  // Move focus into the dialog on open and restore it to the trigger on close.
+  useEffect(() => {
+    if (!isOpen) return;
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    return () => {
+      const trigger = previouslyFocusedRef.current;
+      if (trigger && document.contains(trigger)) {
+        trigger.focus();
+      }
+    };
+  }, [isOpen]);
+
+  // Once the dialog is mounted, focus it so keyboard users start inside the
+  // modal and the Tab trap has an anchor to cycle from.
+  useEffect(() => {
+    if (shouldUnmount || !isOpen) return;
+    modalRef.current?.focus();
+  }, [shouldUnmount, isOpen]);
 
   // Get the portal container
   const portalContainer = useModalPortal();
@@ -170,12 +226,14 @@ export const Modal = ({
           {/* Modal container */}
           <div
             ref={modalRef}
-            className={`relative max-h-[90vh] w-full overflow-auto rounded-lg bg-white p-6 shadow-lg shadow-slate-600/50 transition-all duration-300 ease-in-out dark:bg-slate-800 dark:shadow-slate-950/50 ${
+            tabIndex={-1}
+            className={`relative max-h-[90vh] w-full overflow-auto rounded-lg bg-white p-6 shadow-lg shadow-slate-600/50 transition-all duration-300 ease-in-out outline-none dark:bg-slate-800 dark:shadow-slate-950/50 ${
               isVisible
                 ? 'translate-y-0 scale-100 opacity-100'
                 : 'translate-y-4 scale-95 opacity-0'
             } ${className}`}
             onClick={handleStopPropagation}
+            onKeyDown={handleKeyDown}
           >
             {/* Close button (hidden when preventClose is true) */}
             {!preventClose && (
