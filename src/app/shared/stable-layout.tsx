@@ -75,7 +75,7 @@ export const StableLayout = ({ children }: { children: React.ReactNode }) => {
                 variant="ghost"
                 onClick={() => router.push('/training')}
               >
-                <GpuIcon /> Lora Training
+                <GpuIcon /> Training
               </Button>
             </div>
           </ShelfInfoRow>

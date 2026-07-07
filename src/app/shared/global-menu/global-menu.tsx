@@ -35,7 +35,7 @@ const GlobalMenuComponent = () => {
           isOpen ? 'bg-(--surface)' : 'hover:bg-(--surface)/50'
         }`}
       >
-        <MenuIcon className="mr-2 h-5 w-5" /> App
+        <MenuIcon className="mr-2 h-6 w-6" /> App
       </button>
 
       <Popup

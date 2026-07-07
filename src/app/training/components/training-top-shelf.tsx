@@ -3,7 +3,8 @@
 import {
   ChevronDownIcon,
   FolderCogIcon,
-  GraduationCapIcon,
+  GpuIcon,
+  HistoryIcon,
 } from 'lucide-react';
 import { memo, useCallback, useId, useRef } from 'react';
 
@@ -15,8 +16,10 @@ import {
   ShelfToolbarRow,
   TopShelfFrame,
 } from '@/app/shared/shelf';
+import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 
 import { useModelDefaultsModal } from './model-defaults-modal/use-model-defaults-modal';
+import { useTrainingHistoryModal } from './training-history-modal/use-training-history-modal';
 import { TrainingToolbar } from './training-toolbar';
 
 const TrainingMenuComponent = () => {
@@ -25,6 +28,7 @@ const TrainingMenuComponent = () => {
   const popupId = useId();
 
   const { openModal: openModelDefaults } = useModelDefaultsModal();
+  const { openModal: openHistory } = useTrainingHistoryModal();
   const isOpen = getPopupState(popupId).isOpen;
 
   const handleToggle = useCallback(() => {
@@ -43,6 +47,11 @@ const TrainingMenuComponent = () => {
     openModelDefaults();
   }, [closePopup, popupId, openModelDefaults]);
 
+  const handleOpenHistory = useCallback(() => {
+    closePopup(popupId);
+    openHistory();
+  }, [closePopup, popupId, openHistory]);
+
   return (
     <div className="relative">
       <button
@@ -53,7 +62,7 @@ const TrainingMenuComponent = () => {
           isOpen ? 'bg-(--surface)' : 'hover:bg-(--surface)/50'
         }`}
       >
-        <GraduationCapIcon className="h-5 w-5 text-(--unselected-text)" />
+        <GpuIcon className="h-5 w-5 text-(--unselected-text)" />
         <span className="font-medium text-(--foreground)">Training</span>
         <ChevronDownIcon
           className={`h-3 w-3 text-(--unselected-text) transition-transform ${
@@ -74,6 +83,11 @@ const TrainingMenuComponent = () => {
             label="Model Defaults…"
             onClick={handleOpenModelDefaults}
           />
+          <MenuItem
+            icon={<HistoryIcon className="h-5 w-5" />}
+            label="Run History…"
+            onClick={handleOpenHistory}
+          />
         </div>
       </Popup>
     </div>
@@ -87,6 +101,9 @@ export const TrainingTopShelf = () => {
     <TopShelfFrame>
       <ShelfInfoRow>
         <GlobalMenu />
+
+        <ToolbarDivider />
+
         <TrainingMenu />
       </ShelfInfoRow>
       <ShelfToolbarRow>

@@ -58,7 +58,6 @@ const TrainingToolbarComponent = () => {
   const form = useAppSelector(selectForm);
 
   const hasActiveJob = hydrated && activeTrainingJobValue !== null;
-  const isRunning = hasActiveJob;
   const panelOpen = hydrated && panelOpenValue;
 
   const [saveAsOpen, setSaveAsOpen] = useState(false);
@@ -139,18 +138,12 @@ const TrainingToolbarComponent = () => {
       <Button
         size="sm"
         variant="ghost"
-        disabled={hasActiveJob === false}
         isPressed={panelOpen}
         onClick={() => dispatch(togglePanel())}
         className="relative"
       >
         <ListIcon className="mr-1 h-3.5 w-3.5" />
         Queue
-        {isRunning && (
-          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white">
-            1
-          </span>
-        )}
       </Button>
 
       <ToolbarDivider />

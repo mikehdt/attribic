@@ -26,6 +26,8 @@ import {
   loadPersistedTrainingJobs,
   reconcileDownloadsWithServer,
 } from '@/app/store/jobs/persistence';
+import { restoreHistory } from '@/app/store/training-history';
+import { loadPersistedTrainingHistory } from '@/app/store/training-history/persistence';
 
 import { Button } from '../button';
 import { DownloadJobCard } from './download-job-card';
@@ -59,6 +61,13 @@ const ActivityPanelComponent = () => {
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
+
+    // Seed the durable history archive first, before any newly-terminal run
+    // this session gets recorded (which persists the whole slice) — otherwise
+    // an unrestored slice would overwrite the stored archive with just the
+    // current session's runs.
+    const history = loadPersistedTrainingHistory();
+    if (history.length > 0) dispatch(restoreHistory(history));
 
     const downloads = loadPersistedDownloads();
     const training = loadPersistedTrainingJobs();

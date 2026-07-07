@@ -18,6 +18,7 @@ import { selectionReducer } from './selection';
 import { toastsReducer } from './toasts';
 import { trainingReducer } from './training';
 import { trainingConfigReducer } from './training-config';
+import { trainingHistoryReducer } from './training-history';
 
 const rootReducer = combineReducers({
   assets: assetsReducer,
@@ -31,6 +32,7 @@ const rootReducer = combineReducers({
   toasts: toastsReducer,
   training: trainingReducer,
   trainingConfig: trainingConfigReducer,
+  trainingHistory: trainingHistoryReducer,
 });
 
 // Root state inferred from the combined reducer so `makeStore` can accept a

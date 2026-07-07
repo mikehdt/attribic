@@ -40,6 +40,8 @@ export const TaggingTopShelf = ({ currentPage = 1 }: TaggingTopShelfProps) => {
       <ShelfInfoRow>
         <GlobalMenu />
 
+        <ToolbarDivider />
+
         <ProjectMenu />
 
         <ToolbarDivider />

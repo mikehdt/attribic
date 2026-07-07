@@ -362,10 +362,13 @@ export const updateProject = async (
       ...updates,
     };
 
-    // Remove undefined values and empty strings
+    // Remove undefined values, empty strings, and falsy boolean flags.
+    // Every boolean flag (hidden, featured, thumbnail) defaults to false when
+    // absent, so writing `false` is redundant — and stripping it lets an
+    // unchecked flag actually clear the stored value rather than lingering.
     Object.keys(updatedConfig).forEach((key) => {
       const value = updatedConfig[key as keyof ProjectConfig];
-      if (value === undefined || value === '') {
+      if (value === undefined || value === '' || value === false) {
         delete updatedConfig[key as keyof ProjectConfig];
       }
     });

@@ -14,10 +14,16 @@ import type { RootState } from '../index';
 import { addJob, openPanel } from '../jobs';
 import { persistDownloadJobs, persistTrainingJobs } from '../jobs/persistence';
 import { setModelStatus } from '../model-manager';
+import { recordTrainingRun } from '../training-history';
+import { persistTrainingHistory } from '../training-history/persistence';
+
+/** Statuses at which a training run is finished and worth archiving. */
+const TERMINAL_TRAINING_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
 export const jobPersistenceMiddleware = createListenerMiddleware();
 
-// Persist download + terminal training jobs to localStorage on any jobs/ action
+// Persist download + terminal training jobs to localStorage on any jobs/ action,
+// and snapshot any newly-terminal training run into the durable history archive.
 jobPersistenceMiddleware.startListening({
   predicate: (action) =>
     typeof action.type === 'string' && action.type.startsWith('jobs/'),
@@ -25,6 +31,35 @@ jobPersistenceMiddleware.startListening({
     const state = listenerApi.getState() as RootState;
     persistDownloadJobs(state.jobs.jobs);
     persistTrainingJobs(state.jobs.jobs);
+
+    // Archive terminal training runs into the history slice. Idempotent: skip
+    // any run already recorded with the same terminal status + completion time,
+    // so live progress ticks on running jobs (the common case) do no work.
+    const history = state.trainingHistory.entries;
+    for (const job of Object.values(state.jobs.jobs)) {
+      if (job.type !== 'training') continue;
+      if (!TERMINAL_TRAINING_STATUSES.has(job.status)) continue;
+      const existing = history[job.id];
+      if (
+        existing &&
+        existing.status === job.status &&
+        existing.completedAt === job.completedAt
+      ) {
+        continue;
+      }
+      listenerApi.dispatch(recordTrainingRun(job));
+    }
+  },
+});
+
+// Persist the history archive whenever it changes.
+jobPersistenceMiddleware.startListening({
+  predicate: (action) =>
+    typeof action.type === 'string' &&
+    action.type.startsWith('trainingHistory/'),
+  effect: (_action, listenerApi) => {
+    const state = listenerApi.getState() as RootState;
+    persistTrainingHistory(state.trainingHistory.entries);
   },
 });
 

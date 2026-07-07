@@ -119,13 +119,12 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   );
 
   const outputName = (config.outputName as string) || 'unnamed-lora';
-  // Put outputs under the first dataset's project folder when possible,
-  // otherwise fall back to .training/outputs. Gives users predictable
-  // locations for trained LoRAs. Uses the shared resolver so the UI's
-  // "Output folder" display matches what actually gets written.
+  // Put outputs in a single shared `loras` folder off the configured training
+  // folder, otherwise fall back to .training/outputs. Uses the shared resolver
+  // so the UI's "Output folder" display matches what actually gets written.
   const firstDataset = (config.datasets as ClientDatasetSource[])?.[0];
   const outputPath =
-    resolveLoraOutputDir(projectsFolder, firstDataset?.folderName) ??
+    resolveLoraOutputDir(projectsFolder) ??
     path.join(process.cwd(), '.training', 'outputs');
 
   // Project path: best-effort — the first dataset's folder, else cwd.

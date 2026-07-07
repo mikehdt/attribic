@@ -50,10 +50,11 @@ export const useEditProject = (
           updates.color = editColor;
         }
 
-        // Include hidden state
-        if (editHidden) {
-          updates.hidden = editHidden;
-        }
+        // Always send an explicit boolean so unchecking clears it. Passing
+        // `undefined` across the Server Action boundary drops the key, which
+        // would leave the stored `hidden: true` untouched. updateProject
+        // strips falsy flags before writing.
+        updates.hidden = editHidden;
 
         // Update project using Server Action
         await updateProject(projectName, updates);

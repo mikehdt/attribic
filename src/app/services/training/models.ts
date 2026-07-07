@@ -7,20 +7,10 @@
 import type { TrainingProvider } from './types';
 
 export type ModelArchitecture =
-  | 'flux'
-  | 'sdxl'
-  | 'zimage'
-  | 'anima'
-  | 'wan'
-  | 'ltx';
+  'flux' | 'sdxl' | 'zimage' | 'anima' | 'wan' | 'ltx';
 
 export type ModelComponentType =
-  | 'checkpoint'
-  | 'vae'
-  | 't5'
-  | 'clip_l'
-  | 'ae'
-  | 'qwen';
+  'checkpoint' | 'vae' | 't5' | 'clip_l' | 'ae' | 'qwen';
 
 export type ModelComponent = {
   type: ModelComponentType;
@@ -697,10 +687,10 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     ],
     tips: [
       'Rank 32 is the community standard for Anima — unlike SDXL, dim 16 tends to underfit',
-      'Around 16 epochs is plenty; much more and it starts memorising the dataset',
+      'Lower epochs are generally better; too many and it starts over-fitting the style',
       'Batch 2+ trains more reliably than batch 1 (bump the LR if you raise it to 4)',
       'The Qwen3 text encoder (LLM adapter) stays frozen; leave text-encoder training off',
-      'fp8 quantization is not supported for Anima and is disabled',
+      'fp8 quantisation is not supported for Anima and is disabled',
     ],
     availableResolutions: [512, 768, 1024, 1536],
     hiddenFields: [

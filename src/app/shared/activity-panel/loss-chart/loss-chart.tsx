@@ -11,9 +11,11 @@ type LossChartProps = {
   lossHistory: LossPoint[];
   totalSteps: number;
   currentStep: number;
-  /** Predicted checkpoint positions (reached and upcoming). Detail only. */
+  /** Total epochs — drives the light epoch gridlines. */
+  totalEpochs?: number;
+  /** Predicted checkpoint positions (reached and upcoming). */
   checkpointSteps?: number[];
-  /** Steps confirmed written by the trainer. Detail only. */
+  /** Steps confirmed written by the trainer. */
   savedCheckpoints?: number[];
   /**
    * Normalised (0–1) LR schedule curve drawn as a background area across
@@ -34,12 +36,13 @@ const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
 // Series colours are fixed (not currentColor) — validated for CVD separation
 // and contrast against the chart surfaces in both light and dark mode:
 // loss emerald-600, smoothed trend amber-600, LR schedule sky-600,
-// saved checkpoints violet.
+// saved checkpoints violet, epoch boundaries light slate.
 
 const LossChartComponent = ({
   lossHistory,
   totalSteps,
   currentStep,
+  totalEpochs = 0,
   checkpointSteps = [],
   savedCheckpoints = [],
   lrCurve = null,
@@ -110,11 +113,31 @@ const LossChartComponent = ({
   // saved already — a provider may confirm a save ahead of its predicted
   // position). Reached-but-unconfirmed predictions aren't drawn at all, to
   // avoid implying a save that may not have happened.
-  const upcomingCheckpoints = isDetail
-    ? checkpointSteps.filter(
-        (step) => step > currentStep && !savedCheckpoints.includes(step),
-      )
-    : [];
+  const upcomingCheckpoints = checkpointSteps.filter(
+    (step) => step > currentStep && !savedCheckpoints.includes(step),
+  );
+
+  // Epoch boundaries as light gridlines, at the trainer's actual per-epoch
+  // step (same ceil-based math as deriveCheckpointSteps), excluding the run's
+  // end which is the plot's right edge. A boundary that lands on a drawn
+  // checkpoint line is dropped — the checkpoint takes precedence, since in
+  // epoch-save mode every save sits on an epoch boundary.
+  const epochLineXs: number[] = [];
+  if (totalEpochs >= 2 && xMax > 0) {
+    const stepsPerEpoch = Math.max(1, Math.ceil(xMax / totalEpochs));
+    const drawnCheckpointXs = [...upcomingCheckpoints, ...savedCheckpoints].map(
+      (step) => xScale(step),
+    );
+    for (let e = 1; e < totalEpochs; e++) {
+      const step = Math.min(e * stepsPerEpoch, xMax);
+      const x = xScale(step);
+      if (drawnCheckpointXs.some((cx) => Math.abs(cx - x) < 4)) continue;
+      epochLineXs.push(x);
+    }
+  }
+
+  const lineTop = padding.top;
+  const lineBottom = height - padding.bottom;
 
   const lastPoint = lossHistory[lossHistory.length - 1];
 
@@ -194,34 +217,51 @@ const LossChartComponent = ({
             );
           })}
 
-          {/* Upcoming checkpoints: faint, dashed */}
-          {upcomingCheckpoints.map((step) => (
-            <line
-              key={`upcoming-${step}`}
-              x1={xScale(step)}
-              x2={xScale(step)}
-              y1={padding.top}
-              y2={height - padding.bottom}
-              strokeWidth={1}
-              strokeDasharray="2,3"
-              className="stroke-slate-400/50 dark:stroke-slate-500/50"
-            />
-          ))}
-
-          {/* Confirmed checkpoint saves: solid */}
-          {savedCheckpoints.map((step) => (
-            <line
-              key={`saved-${step}`}
-              x1={xScale(step)}
-              x2={xScale(step)}
-              y1={padding.top}
-              y2={height - padding.bottom}
-              strokeWidth={1}
-              className="stroke-violet-500/70 dark:stroke-violet-400/70"
-            />
-          ))}
         </>
       )}
+
+      {/* Epoch boundaries: light grey, dashed — sit behind the checkpoint
+          lines, which take precedence where the two coincide. Rendered in
+          both variants. */}
+      {epochLineXs.map((x, i) => (
+        <line
+          key={`epoch-${i}`}
+          x1={x}
+          x2={x}
+          y1={lineTop}
+          y2={lineBottom}
+          strokeWidth={1}
+          strokeDasharray="2,3"
+          className="stroke-slate-300/70 dark:stroke-slate-600/60"
+        />
+      ))}
+
+      {/* Upcoming checkpoints: faint, dashed */}
+      {upcomingCheckpoints.map((step) => (
+        <line
+          key={`upcoming-${step}`}
+          x1={xScale(step)}
+          x2={xScale(step)}
+          y1={lineTop}
+          y2={lineBottom}
+          strokeWidth={1}
+          strokeDasharray="2,3"
+          className="stroke-slate-400/50 dark:stroke-slate-500/50"
+        />
+      ))}
+
+      {/* Confirmed checkpoint saves: solid */}
+      {savedCheckpoints.map((step) => (
+        <line
+          key={`saved-${step}`}
+          x1={xScale(step)}
+          x2={xScale(step)}
+          y1={lineTop}
+          y2={lineBottom}
+          strokeWidth={1}
+          className="stroke-violet-500/70 dark:stroke-violet-400/70"
+        />
+      ))}
 
       {/* Raw loss: recedes when the smoothed trend line carries the shape. */}
       {linePath ? (

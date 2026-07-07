@@ -99,8 +99,8 @@ export function useTrainingConfigForm() {
   // Absolute directory the LoRA will be written to (mirrors the request
   // builder), or null until the projects folder / a dataset is known.
   const outputFolder = useMemo(
-    () => resolveLoraOutputDir(projectsFolder, state.datasets[0]?.folderName),
-    [projectsFolder, state.datasets],
+    () => resolveLoraOutputDir(projectsFolder),
+    [projectsFolder],
   );
 
   // Apply app defaults when model changes or defaults are first loaded.

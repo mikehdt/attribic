@@ -15,6 +15,7 @@ import { ModelSelectSection } from '../sections/model-select-section';
 import { PerformanceSection } from '../sections/performance-section';
 import { SamplingSection } from '../sections/sampling-section';
 import { SavingSection } from '../sections/saving-section';
+import { TrainingHistoryModal } from '../training-history-modal/training-history-modal';
 import { TrainingSummary } from '../training-summary';
 import { useTrainingViewMode } from '../use-training-view-mode';
 import {
@@ -307,6 +308,8 @@ const TrainingConfigFormComponent = ({
             onClose={closeDefaultsModal}
             onSaved={setAppModelDefaults}
           />
+
+          <TrainingHistoryModal />
         </div>
 
         {/* Summary column */}

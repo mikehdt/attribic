@@ -168,17 +168,15 @@ export function TrainingJobCard({
         <div className="border-t border-dashed border-(--border-subtle) px-3 py-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-400 uppercase">Loss</span>
-            {progress?.loss != null && (
-              <span className="text-xs text-slate-400 tabular-nums">
-                {formatLoss(progress.loss)}
-              </span>
-            )}
           </div>
           <div className="mt-1 rounded border border-slate-300 bg-slate-200 p-1 dark:border-slate-600 dark:bg-slate-800">
             <LossChart
               lossHistory={progress?.lossHistory ?? []}
               totalSteps={progress?.totalSteps ?? 0}
               currentStep={progress?.currentStep ?? 0}
+              totalEpochs={progress?.totalEpochs ?? 0}
+              checkpointSteps={checkpointPositions}
+              savedCheckpoints={progress?.savedCheckpoints ?? []}
               variant="compact"
               width={264}
               height={40}
