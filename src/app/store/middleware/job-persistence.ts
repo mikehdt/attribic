@@ -11,7 +11,15 @@ import { createListenerMiddleware, isAnyOf } from '@reduxjs/toolkit';
 
 import { updateModelStatus as updateAutoTaggerModelStatus } from '../auto-tagger';
 import type { RootState } from '../index';
-import { addJob, openPanel } from '../jobs';
+import {
+  addJob,
+  closePanel,
+  openPanel,
+  togglePanel,
+  updateDownloadProgress,
+  updateTaggingProgress,
+  updateTrainingProgress,
+} from '../jobs';
 import { persistDownloadJobs, persistTrainingJobs } from '../jobs/persistence';
 import { setModelStatus } from '../model-manager';
 import { recordTrainingRun } from '../training-history';
@@ -22,11 +30,29 @@ const TERMINAL_TRAINING_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
 export const jobPersistenceMiddleware = createListenerMiddleware();
 
-// Persist download + terminal training jobs to localStorage on any jobs/ action,
-// and snapshot any newly-terminal training run into the durable history archive.
+// High-frequency / UI-only jobs actions that never change what actually gets
+// persisted (all downloads + *terminal* training runs). Progress ticks fire
+// many times a second during active work, tagging jobs aren't persisted at all,
+// and panel toggles are pure UI state — so serialising + writing localStorage on
+// them is wasted work. Everything else still persists (fail-safe denylist: a
+// future job-mutating action persists by default).
+const NON_PERSISTING_JOB_ACTIONS = new Set<string>([
+  updateTrainingProgress.type,
+  updateDownloadProgress.type,
+  updateTaggingProgress.type,
+  openPanel.type,
+  closePanel.type,
+  togglePanel.type,
+]);
+
+// Persist download + terminal training jobs to localStorage on meaningful jobs/
+// actions, and snapshot any newly-terminal training run into the durable
+// history archive.
 jobPersistenceMiddleware.startListening({
   predicate: (action) =>
-    typeof action.type === 'string' && action.type.startsWith('jobs/'),
+    typeof action.type === 'string' &&
+    action.type.startsWith('jobs/') &&
+    !NON_PERSISTING_JOB_ACTIONS.has(action.type),
   effect: (_action, listenerApi) => {
     const state = listenerApi.getState() as RootState;
     persistDownloadJobs(state.jobs.jobs);
