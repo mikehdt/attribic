@@ -53,9 +53,12 @@ Tags have uneven widths, so transform-based dnd-kit strategies
   `onDragOver`, because `onDragOver` doesn't re-fire when the pointer moves
   into a zone while the target id stays the same
 - A dragged chip much taller than the hovered one (a wrapped multi-line tag
-  in a narrow window) can't sit beside it, so instead of taking the target's
-  spot it slots in directly after (below) the hovered chip, regardless of
-  drag direction
+  in a narrow window) can't sit beside it, so it always takes the hovered
+  chip's spot and the hovered chip pops below, regardless of drag direction
+- Grace space: a chip we just swapped with is blocked as a drop target until
+  the pointer moves off it — after a swap, a wider chip's new rect can still
+  overlap the pointer purely from the width differential, and re-swapping
+  would ping-pong
 - Redux is only updated once, on drop (`onReorder(oldIndex, newIndex)`);
   Escape cancels and restores the original order
 

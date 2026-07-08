@@ -212,14 +212,14 @@ const TagsDisplayComponent = ({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragOrder, setDragOrder] = useState<string[] | null>(null);
 
-  // Hysteresis: after swapping with a target, don't swap with that same
-  // target again until the pointer genuinely moves. MeasuringStrategy.Always
-  // re-fires onDragOver after each reflow with no pointer movement, and at
-  // chip boundaries repeated swaps with the same neighbour would ping-pong
-  // the order in an infinite update loop.
-  const lastSwapRef = useRef<{ overId: string; x: number; y: number } | null>(
-    null,
-  );
+  // Grace space: after a swap, the swapped-with chip can still sit under the
+  // pointer purely because of the width difference between it and the dragged
+  // chip (swap a small tag with a wide one and the wide one's new rect still
+  // overlaps the pointer). Re-swapping would ping-pong — possibly infinitely,
+  // since MeasuringStrategy.Always re-fires collisions after each reflow with
+  // no pointer movement — so a chip we just swapped with is blocked as a
+  // target until the pointer moves off it.
+  const lastSwapRef = useRef<string | null>(null);
 
   const handleMouseEnter = useCallback(() => setIsHovered(true), []);
   const handleMouseLeave = useCallback(() => {
@@ -249,64 +249,53 @@ const TagsDisplayComponent = ({
   // idempotent, so double-processing is harmless.
   const handleDragUpdate = useCallback(
     (event: DragMoveEvent | DragOverEvent) => {
-      const { active, over, delta, activatorEvent } = event;
+      const { active, over } = event;
       const zone = pointerEdgeZone;
-      if (!over || (!zone && active.id === over.id)) return;
 
-      if (!zone) {
-        // Approximate pointer, only used to require real movement between
-        // same-target swaps (a consistent offset doesn't matter for deltas)
-        const pointer =
-          activatorEvent instanceof PointerEvent ||
-          activatorEvent instanceof MouseEvent
-            ? {
-                x: activatorEvent.clientX + delta.x,
-                y: activatorEvent.clientY + delta.y,
-              }
-            : { x: delta.x, y: delta.y };
-
-        const last = lastSwapRef.current;
-        if (
-          last &&
-          last.overId === over.id &&
-          Math.abs(pointer.x - last.x) < 4 &&
-          Math.abs(pointer.y - last.y) < 4
-        ) {
-          return;
-        }
-
-        const overRect = over.rect;
-        const activeRect = active.rect.current.initial;
-        // A chip much taller than the target (a wrapped multi-line tag) can't
-        // sit beside it, so taking the target's spot reads ambiguously and
-        // reflows the target away from the pointer. Slot it in directly after
-        // (below) the hovered chip instead — deterministic regardless of drag
-        // direction.
-        const tallActive =
-          activeRect !== null &&
-          overRect.height > 0 &&
-          activeRect.height > overRect.height * 1.5;
-
+      // Edge zones: place at the very start/end (idempotent, safe to re-run).
+      // The pointer is in empty space, off any just-swapped chip.
+      if (zone) {
+        lastSwapRef.current = null;
         setDragOrder((prev) => {
           if (!prev) return prev;
           const from = prev.indexOf(active.id as string);
-          const iOver = prev.indexOf(over.id as string);
-          if (from === -1 || iOver === -1) return prev;
-          const to = tallActive && from > iOver ? iOver + 1 : iOver;
-          if (to === from) return prev;
-          lastSwapRef.current = { overId: over.id as string, ...pointer };
-          return arrayMove(prev, from, to);
+          if (from === -1) return prev;
+          const to = zone === 'start' ? 0 : prev.length - 1;
+          return to === from ? prev : arrayMove(prev, from, to);
         });
         return;
       }
 
-      // Edge zones: place at the very start/end (idempotent, no hysteresis)
+      if (!over) return;
+      if (active.id === over.id) {
+        // Hovering the placeholder — pointer has left any just-swapped chip
+        lastSwapRef.current = null;
+        return;
+      }
+      if (lastSwapRef.current === over.id) return; // grace space
+      lastSwapRef.current = null;
+
+      const overRect = over.rect;
+      const activeRect = active.rect.current.initial;
+      // A chip much taller than the target (a wrapped multi-line tag) can't
+      // sit beside it, so taking the target's spot reads ambiguously and
+      // reflows the target away from the pointer. Slot it in directly before
+      // (above) the hovered chip — it takes the hovered spot and the hovered
+      // chip pops below — deterministic regardless of drag direction.
+      const tallActive =
+        activeRect !== null &&
+        overRect.height > 0 &&
+        activeRect.height > overRect.height * 1.5;
+
       setDragOrder((prev) => {
         if (!prev) return prev;
         const from = prev.indexOf(active.id as string);
-        if (from === -1) return prev;
-        const to = zone === 'start' ? 0 : prev.length - 1;
-        return to === from ? prev : arrayMove(prev, from, to);
+        const iOver = prev.indexOf(over.id as string);
+        if (from === -1 || iOver === -1) return prev;
+        const to = tallActive && from < iOver ? iOver - 1 : iOver;
+        if (to === from) return prev;
+        lastSwapRef.current = over.id as string;
+        return arrayMove(prev, from, to);
       });
     },
     [],
