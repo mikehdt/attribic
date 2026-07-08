@@ -43,8 +43,10 @@ Tags have uneven widths, so transform-based dnd-kit strategies
   droppables are measured with `ignoreTransform` so mid-animation chips
   don't report stale rects, and a hysteresis ref skips re-swapping the same
   target until the pointer actually moves
-- `pointerWithin` collision detection — its no-op states (pointer over the
-  placeholder or in a gap) let the layout settle between swaps
+- `pointerWithin`-based collision detection — its no-op states (pointer over
+  the placeholder or in a gap) let the layout settle between swaps — extended
+  with an end zone: a pointer past the flow-last chip targets the end of the
+  list, since the empty space after the last chip hits no chip directly
 - Redux is only updated once, on drop (`onReorder(oldIndex, newIndex)`);
   Escape cancels and restores the original order
 
