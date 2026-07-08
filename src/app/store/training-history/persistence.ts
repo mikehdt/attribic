@@ -1,20 +1,21 @@
 /**
  * Durable persistence for the training run history.
  *
- * Unlike the activity panel's terminal-training-job persistence
- * (`jobs/persistence.ts` → `img-tagger:training-jobs`), this store is a
- * long-lived archive: it is *not* wiped when the user clicks "Clear all" on
- * the activity panel. Every completed/failed/cancelled run is snapshotted
- * here so the Training menu's "Run History" view can show it indefinitely.
+ * This is the single persisted home for terminal training runs — the jobs
+ * slice no longer keeps its own `img-tagger:training-jobs` copy. It is a
+ * long-lived archive: "Clear all" on the activity panel only flips each run's
+ * `dismissedFromPanel` flag (so it leaves the panel) rather than wiping the
+ * store, so the Training menu's "Run History" view keeps showing every
+ * completed/failed/cancelled run indefinitely.
  */
 
-import type { TrainingJob } from '../jobs/types';
+import type { TrainingHistoryEntry } from './index';
 
 const HISTORY_KEY = 'img-tagger:training-history';
 
 /** Save the whole history archive to localStorage. */
 export function persistTrainingHistory(
-  entries: Record<string, TrainingJob>,
+  entries: Record<string, TrainingHistoryEntry>,
 ): void {
   try {
     const list = Object.values(entries);
@@ -29,11 +30,11 @@ export function persistTrainingHistory(
 }
 
 /** Load the persisted history archive from localStorage. */
-export function loadPersistedTrainingHistory(): TrainingJob[] {
+export function loadPersistedTrainingHistory(): TrainingHistoryEntry[] {
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
     if (!raw) return [];
-    const list: TrainingJob[] = JSON.parse(raw);
+    const list: TrainingHistoryEntry[] = JSON.parse(raw);
     return list.filter((j) => j.type === 'training');
   } catch {
     return [];

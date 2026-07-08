@@ -23,10 +23,12 @@ import {
 } from '@/app/store/jobs';
 import {
   loadPersistedDownloads,
-  loadPersistedTrainingJobs,
   reconcileDownloadsWithServer,
 } from '@/app/store/jobs/persistence';
-import { restoreHistory } from '@/app/store/training-history';
+import {
+  dismissAllFromPanel,
+  restoreHistory,
+} from '@/app/store/training-history';
 import { loadPersistedTrainingHistory } from '@/app/store/training-history/persistence';
 
 import { Button } from '../button';
@@ -69,8 +71,13 @@ const ActivityPanelComponent = () => {
     const history = loadPersistedTrainingHistory();
     if (history.length > 0) dispatch(restoreHistory(history));
 
+    // The history archive is the single persisted home for terminal training
+    // runs, so seed the activity panel's terminal-training rows from it,
+    // skipping any the user previously cleared. The panel-only
+    // `dismissedFromPanel` flag rides along inertly — the jobs slice never
+    // reads or persists it.
     const downloads = loadPersistedDownloads();
-    const training = loadPersistedTrainingJobs();
+    const training = history.filter((entry) => !entry.dismissedFromPanel);
     const persisted = [...downloads, ...training];
     if (persisted.length === 0) return;
 
@@ -118,6 +125,10 @@ const ActivityPanelComponent = () => {
 
   const handleClearAll = useCallback(() => {
     dispatch(clearCompletedJobs());
+    // Terminal training runs live in the durable history archive, not the jobs
+    // slice's persistence. Mark them dismissed so they stay out of the panel
+    // across refreshes (they remain in the Run History view).
+    dispatch(dismissAllFromPanel());
     // Tell the sidecar to drop any terminal active_job too, so a refresh
     // doesn't re-hydrate one we just cleared. The endpoint is a no-op when
     // the sidecar isn't running or has nothing to clear.

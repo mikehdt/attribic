@@ -5,19 +5,17 @@
  *
  * - **Downloads**: all download jobs (including completed) are persisted so
  *   the activity panel shows history until the user explicitly clears it.
- * - **Training**: only *terminal* training jobs (completed/failed/cancelled)
- *   are persisted. In-flight jobs are owned by the Python sidecar and
- *   restored via `hydrateActiveTraining`. The sidecar currently only
- *   remembers the latest run in its `active_job` slot, so we persist the
- *   older terminal ones client-side to keep the history visible across
- *   refreshes. (Future option: move this history into the sidecar and
- *   expose a `/jobs/recent` endpoint — would make it multi-client-friendly.)
+ * - **Training**: terminal training runs are NOT persisted here. They live in
+ *   the durable `trainingHistory` slice (`training-history/persistence.ts` →
+ *   `img-tagger:training-history`), which is the single source of truth; the
+ *   activity panel seeds its terminal-training rows from that archive on load.
+ *   In-flight training is owned by the Python sidecar and restored via
+ *   `hydrateActiveTraining`.
  */
 
-import type { DownloadJob, Job, TrainingJob } from './types';
+import type { DownloadJob, Job } from './types';
 
 const DOWNLOAD_KEY = 'img-tagger:download-jobs';
-const TRAINING_KEY = 'img-tagger:training-jobs';
 
 // ---------------------------------------------------------------------------
 // Downloads
@@ -87,50 +85,6 @@ export async function reconcileDownloadsWithServer(
     return candidates
       .filter((j) => data.statuses[j.modelId]?.status !== 'downloading')
       .map((j) => j.id);
-  } catch {
-    return [];
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Training
-// ---------------------------------------------------------------------------
-
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
-
-/**
- * Save terminal training jobs (completed/failed/cancelled) to localStorage.
- * In-flight jobs are skipped — the sidecar owns those and they'd fight
- * with the hydrate-on-mount logic.
- */
-export function persistTrainingJobs(jobs: Record<string, Job>): void {
-  try {
-    const terminal = Object.values(jobs).filter(
-      (j): j is TrainingJob =>
-        j.type === 'training' && TERMINAL_STATUSES.has(j.status),
-    );
-
-    if (terminal.length === 0) {
-      localStorage.removeItem(TRAINING_KEY);
-    } else {
-      localStorage.setItem(TRAINING_KEY, JSON.stringify(terminal));
-    }
-  } catch {
-    // localStorage may be unavailable (SSR, private browsing)
-  }
-}
-
-/**
- * Load persisted terminal training jobs from localStorage.
- * Only terminal ones are saved, so no status remapping is needed.
- */
-export function loadPersistedTrainingJobs(): TrainingJob[] {
-  try {
-    const raw = localStorage.getItem(TRAINING_KEY);
-    if (!raw) return [];
-    const jobs: TrainingJob[] = JSON.parse(raw);
-    // Defensive filter in case an older build stashed non-terminal entries.
-    return jobs.filter((j) => TERMINAL_STATUSES.has(j.status));
   } catch {
     return [];
   }
