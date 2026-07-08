@@ -5,9 +5,31 @@
  * - DndContext and SortableContext are now inside TagsDisplay
  * - Memo blocks re-renders of entire DnD subtree when tags unchanged
  * - Edit state managed here to keep it close to where it's used
+ *
+ * Drag reordering (variable-width aware):
+ * - No sorting strategy — tags have uneven widths, so transform-based
+ *   strategies (rectSortingStrategy) misplace them. Instead the list order
+ *   itself is updated during onDragOver and flex-wrap reflows naturally,
+ *   including tags wrapping between rows.
+ * - The dragged tag stays in the list as a translucent placeholder (the
+ *   reserved drop space at its natural width); the floating visual is a
+ *   DragOverlay that settles into the gap on drop.
+ * - Position changes animate via FLIP in SortableTag (animateLayoutChanges).
  */
-import { closestCenter, DndContext, DragEndEvent } from '@dnd-kit/core';
-import { rectSortingStrategy, SortableContext } from '@dnd-kit/sortable';
+import {
+  DndContext,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  getClientRect,
+  MeasuringStrategy,
+  pointerWithin,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  SortingStrategy,
+} from '@dnd-kit/sortable';
 import { ClipboardIcon, ClipboardListIcon } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -18,6 +40,25 @@ import { TagEditMode } from '@/app/store/preferences';
 import { EditableTag } from './editable-tag';
 import { InputTag } from './input-tag';
 import { SortableTag } from './sortable-tag';
+import { Tag } from './tag';
+
+// Layout comes from real DOM reflow (flex-wrap), not transforms
+const noSortingStrategy: SortingStrategy = () => null;
+
+// Re-measure drop targets during drag — reflow moves them as the order changes.
+// Measure settled layout positions (ignoreTransform): during the FLIP shuffle
+// animation, chips are transformed back toward their OLD spots, and measuring
+// those in-flight rects makes collision detection see the pre-swap layout and
+// swap back — an infinite reorder loop.
+const measuringConfig = {
+  droppable: {
+    strategy: MeasuringStrategy.Always,
+    measure: (element: HTMLElement) =>
+      getClientRect(element, { ignoreTransform: true }),
+  },
+};
+
+const noop = () => {};
 
 type TagData = {
   name: string;
@@ -34,7 +75,7 @@ type TagListProps = {
   assetId: string;
   // DnD props - passed through to TagsDisplay
   sensors: ReturnType<typeof import('@dnd-kit/core').useSensors>;
-  onDragEnd: (event: DragEndEvent) => void;
+  onReorder: (oldIndex: number, newIndex: number) => void;
   // Handlers
   onAddTag: (tagName: string, prepend?: boolean) => void;
   onToggleTag: (tagName: string) => void;
@@ -53,7 +94,7 @@ type TagsDisplayProps = {
   assetId: string;
   // DnD props
   sensors: ReturnType<typeof import('@dnd-kit/core').useSensors>;
-  onDragEnd: (event: DragEndEvent) => void;
+  onReorder: (oldIndex: number, newIndex: number) => void;
   // Edit state
   editingTagName: string | null;
   editValue: string;
@@ -75,7 +116,7 @@ const TagsDisplayComponent = ({
   tagEditMode,
   assetId,
   sensors,
-  onDragEnd,
+  onReorder,
   editingTagName,
   editValue,
   isDuplicateEdit,
@@ -91,6 +132,21 @@ const TagsDisplayComponent = ({
   const [isHovered, setIsHovered] = useState(false);
   const isDraggingRef = useRef(false);
 
+  // Live drag state: dragOrder is the optimistically reordered tag names
+  // while a drag is in flight (null otherwise). Reordering the actual list
+  // lets flex-wrap lay tags out at their natural widths, rows and all.
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+
+  // Hysteresis: after swapping with a target, don't swap with that same
+  // target again until the pointer genuinely moves. MeasuringStrategy.Always
+  // re-fires onDragOver after each reflow with no pointer movement, and at
+  // chip boundaries repeated swaps with the same neighbour would ping-pong
+  // the order in an infinite update loop.
+  const lastSwapRef = useRef<{ overId: string; x: number; y: number } | null>(
+    null,
+  );
+
   const handleMouseEnter = useCallback(() => setIsHovered(true), []);
   const handleMouseLeave = useCallback(() => {
     // Don't disable DnD if we're mid-drag
@@ -99,19 +155,86 @@ const TagsDisplayComponent = ({
     }
   }, []);
 
-  const handleDragStart = useCallback(() => {
-    isDraggingRef.current = true;
-  }, []);
+  const tagNames = useMemo(() => tags.map((t) => t.name), [tags]);
 
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      isDraggingRef.current = false;
-      onDragEnd(event);
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      isDraggingRef.current = true;
+      lastSwapRef.current = null;
+      setActiveId(event.active.id as string);
+      setDragOrder(tagNames);
     },
-    [onDragEnd],
+    [tagNames],
   );
 
-  const tagNames = useMemo(() => tags.map((t) => t.name), [tags]);
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { active, over, delta, activatorEvent } = event;
+    if (!over || active.id === over.id) return;
+
+    const pointer =
+      activatorEvent instanceof PointerEvent ||
+      activatorEvent instanceof MouseEvent
+        ? {
+            x: activatorEvent.clientX + delta.x,
+            y: activatorEvent.clientY + delta.y,
+          }
+        : { x: delta.x, y: delta.y };
+
+    const last = lastSwapRef.current;
+    if (
+      last &&
+      last.overId === over.id &&
+      Math.abs(pointer.x - last.x) < 4 &&
+      Math.abs(pointer.y - last.y) < 4
+    ) {
+      return;
+    }
+
+    setDragOrder((prev) => {
+      if (!prev) return prev;
+      const from = prev.indexOf(active.id as string);
+      const to = prev.indexOf(over.id as string);
+      if (from === -1 || to === -1 || from === to) return prev;
+      lastSwapRef.current = { overId: over.id as string, ...pointer };
+      return arrayMove(prev, from, to);
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    isDraggingRef.current = false;
+    if (activeId && dragOrder) {
+      const oldIndex = tagNames.indexOf(activeId);
+      const newIndex = dragOrder.indexOf(activeId);
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+        onReorder(oldIndex, newIndex);
+      }
+    }
+    setActiveId(null);
+    setDragOrder(null);
+  }, [activeId, dragOrder, tagNames, onReorder]);
+
+  const handleDragCancel = useCallback(() => {
+    isDraggingRef.current = false;
+    setActiveId(null);
+    setDragOrder(null);
+  }, []);
+
+  // Render order: the in-flight drag order when dragging, Redux order otherwise
+  const displayedTags = useMemo(() => {
+    if (!dragOrder) return tags;
+    const byName = new Map(tags.map((t) => [t.name, t]));
+    return dragOrder.flatMap((name) => byName.get(name) ?? []);
+  }, [tags, dragOrder]);
+
+  const displayedNames = useMemo(
+    () => displayedTags.map((t) => t.name),
+    [displayedTags],
+  );
+
+  const activeTag = useMemo(
+    () => (activeId ? (tags.find((t) => t.name === activeId) ?? null) : null),
+    [activeId, tags],
+  );
   // Keep DnD enabled (which renders SortableTag with InputTag) when editing
   const dndEnabled = sortable && (isHovered || editingTagName !== null);
 
@@ -119,7 +242,7 @@ const TagsDisplayComponent = ({
   // fade all tags except the one being edited and the one that matches
   const isInputActive = editingTagName !== null || matchingTagName !== null;
 
-  const tagElements = tags.map((tag) => {
+  const tagElements = displayedTags.map((tag) => {
     const isBeingEdited = editingTagName === tag.name;
     const isMatchingTag = matchingTagName === tag.name;
     const fade = isInputActive && !isBeingEdited && !isMatchingTag;
@@ -186,17 +309,38 @@ const TagsDisplayComponent = ({
       {dndEnabled ? (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
+          collisionDetection={pointerWithin}
+          measuring={measuringConfig}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
         >
           <SortableContext
-            items={tagNames}
-            strategy={rectSortingStrategy}
+            items={displayedNames}
+            strategy={noSortingStrategy}
             id={`taglist-${assetId}`}
           >
             {tagElements}
           </SortableContext>
+          <DragOverlay>
+            {activeTag ? (
+              <div className="cursor-grabbing">
+                <Tag
+                  tagName={activeTag.name}
+                  tagState={activeTag.state}
+                  count={activeTag.count}
+                  isHighlighted={activeTag.isHighlighted}
+                  isTriggerMatch={activeTag.isTriggerMatch}
+                  fade={false}
+                  tagEditMode={tagEditMode}
+                  onToggle={noop}
+                  onEdit={noop}
+                  onDelete={noop}
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       ) : (
         tagElements
@@ -234,7 +378,8 @@ const tagsDisplayPropsAreEqual = (
   if (
     prevProps.onToggleTag !== nextProps.onToggleTag ||
     prevProps.onEditTag !== nextProps.onEditTag ||
-    prevProps.onDeleteTag !== nextProps.onDeleteTag
+    prevProps.onDeleteTag !== nextProps.onDeleteTag ||
+    prevProps.onReorder !== nextProps.onReorder
   ) {
     return false;
   }
@@ -270,7 +415,7 @@ const TagListComponent = ({
   tagEditMode,
   assetId,
   sensors,
-  onDragEnd,
+  onReorder,
   onAddTag,
   onToggleTag,
   onEditTag,
@@ -499,7 +644,7 @@ const TagListComponent = ({
           tagEditMode={tagEditMode}
           assetId={assetId}
           sensors={sensors}
-          onDragEnd={onDragEnd}
+          onReorder={onReorder}
           editingTagName={editingTagName}
           editValue={editValue}
           isDuplicateEdit={isDuplicateEdit}
@@ -568,7 +713,7 @@ const tagListPropsAreEqual = (
   // Check DnD callback references (sensors is stable from useSensors)
   if (
     prevProps.sensors !== nextProps.sensors ||
-    prevProps.onDragEnd !== nextProps.onDragEnd
+    prevProps.onReorder !== nextProps.onReorder
   ) {
     return false;
   }

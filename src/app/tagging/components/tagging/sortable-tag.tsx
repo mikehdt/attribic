@@ -66,17 +66,22 @@ const SortableTagComponent = ({
   } = useSortable({
     id,
     disabled: isDragDisabled,
+    // The list order itself changes during a drag (no sorting strategy), so
+    // FLIP-animate items to their new flow positions when their index changes
+    animateLayoutChanges: () => true,
     transition: {
       duration: 200,
       easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
     },
   });
 
+  // While dragging, the pointer-following visual is the DragOverlay; this
+  // in-list element stays in flow as a translucent placeholder that reserves
+  // the drop space at the tag's natural width
   const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 10 : 0,
+    transform: isDragging ? undefined : CSS.Translate.toString(transform),
+    transition: isDragging ? undefined : transition,
+    opacity: isDragging ? 0.35 : 1,
     touchAction: 'none' as const,
   };
 

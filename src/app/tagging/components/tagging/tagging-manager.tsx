@@ -7,14 +7,13 @@
  * - Supports add, toggle, edit, delete, and reorder
  */
 import {
-  DragEndEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 
 import {
   addTag,
@@ -92,13 +91,6 @@ const TaggingManagerComponent = ({ assetId }: TaggingManagerProps) => {
     captionMode,
   ]);
 
-  // Ref for current tags — lets handleDragEnd read the latest tag order
-  // without depending on the tags array reference (which would destabilise the callback)
-  const tagsRef = useRef(tags);
-  useEffect(() => {
-    tagsRef.current = tags;
-  });
-
   // DnD sensors - stable across renders
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -111,20 +103,10 @@ const TaggingManagerComponent = ({ assetId }: TaggingManagerProps) => {
     }),
   );
 
-  // Handle drag end - reorder tags
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-
-      if (over && active.id !== over.id) {
-        const tagNames = tagsRef.current.map((t) => t.name);
-        const oldIndex = tagNames.indexOf(active.id as string);
-        const newIndex = tagNames.indexOf(over.id as string);
-
-        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-          dispatch(reorderTags({ assetId, oldIndex, newIndex }));
-        }
-      }
+  // Handle reorder - TagList resolves the final indices from the drag interaction
+  const handleReorder = useCallback(
+    (oldIndex: number, newIndex: number) => {
+      dispatch(reorderTags({ assetId, oldIndex, newIndex }));
     },
     [dispatch, assetId],
   );
@@ -170,7 +152,7 @@ const TaggingManagerComponent = ({ assetId }: TaggingManagerProps) => {
       tagEditMode={tagEditMode}
       assetId={assetId}
       sensors={sensors}
-      onDragEnd={handleDragEnd}
+      onReorder={handleReorder}
       onAddTag={handleAddTag}
       onToggleTag={handleToggleTag}
       onEditTag={handleEditTag}
