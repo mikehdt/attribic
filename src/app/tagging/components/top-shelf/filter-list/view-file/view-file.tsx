@@ -8,6 +8,10 @@ import {
 
 import { SectionDivider } from '@/app/shared/section-divider/section-divider';
 
+import {
+  RANGE_PREVIEW_DESELECT_CLASS,
+  RANGE_PREVIEW_SELECT_FILE,
+} from '../use-range-toggle';
 import { useFileView } from './use-file-view';
 
 export const FileView = () => {
@@ -21,15 +25,15 @@ export const FileView = () => {
     subfolderList,
     subfolderListLength,
     selectedIndex,
-    handleToggle,
-    handleToggleSubfolder,
+    handleSubfolderAction,
+    handleExtensionAction,
+    subfolderPreviewState,
+    extensionPreviewState,
     handleCombinedKeyDown,
     handleRemovePattern,
     handleAddPattern,
     handleItemMouseMove,
-    handleItemClick,
     handleExtensionMouseMove,
-    handleExtensionClick,
     handleListMouseLeave,
   } = useFileView();
 
@@ -117,50 +121,57 @@ export const FileView = () => {
             </SectionDivider>
 
             <ul className="divide-y divide-slate-100 dark:divide-slate-700">
-              {subfolderList.map((item, index) => (
-                <li
-                  id={`subfolder-${item.subfolder}`}
-                  key={item.subfolder}
-                  onClick={() => {
-                    handleItemClick(index);
-                    handleToggleSubfolder(item.subfolder);
-                  }}
-                  onMouseMove={() => handleItemMouseMove(index)}
-                  className={`flex cursor-pointer items-center justify-between px-3 py-2 transition-colors ${
-                    index === selectedIndex
-                      ? item.isActive
-                        ? 'bg-indigo-300 dark:bg-indigo-700'
-                        : 'bg-blue-100 dark:bg-blue-900/50'
-                      : item.isActive
-                        ? 'bg-indigo-100 dark:bg-indigo-900'
-                        : ''
-                  }`}
-                  title={
-                    item.isActive
-                      ? 'Click to remove from filters'
-                      : 'Click to add to filters'
-                  }
-                >
-                  <span
-                    className={`text-sm ${
-                      item.isActive
-                        ? 'font-medium text-indigo-700 dark:text-indigo-300'
-                        : 'text-slate-800 dark:text-slate-200'
+              {subfolderList.map((item, index) => {
+                const preview = subfolderPreviewState(item.subfolder);
+                return (
+                  <li
+                    id={`subfolder-${item.subfolder}`}
+                    key={item.subfolder}
+                    onClick={(e) => {
+                      if (e.shiftKey) e.preventDefault(); // avoid text selection
+                      handleSubfolderAction(index, e.shiftKey);
+                    }}
+                    onMouseMove={() => handleItemMouseMove(index)}
+                    className={`flex cursor-pointer items-center justify-between px-3 py-2 transition-colors select-none ${
+                      preview === 'select'
+                        ? RANGE_PREVIEW_SELECT_FILE
+                        : preview === 'deselect'
+                          ? RANGE_PREVIEW_DESELECT_CLASS
+                          : index === selectedIndex
+                            ? item.isActive
+                              ? 'bg-indigo-300 dark:bg-indigo-700'
+                              : 'bg-blue-100 dark:bg-blue-900/50'
+                            : item.isActive
+                              ? 'bg-indigo-100 dark:bg-indigo-900'
+                              : ''
                     }`}
-                  >
-                    {item.subfolder}
-                  </span>
-                  <span
-                    className={`text-xs tabular-nums ${
+                    title={
                       item.isActive
-                        ? 'text-indigo-600 dark:text-indigo-400'
-                        : 'text-slate-500 dark:text-slate-400'
-                    }`}
+                        ? 'Click to remove from filters'
+                        : 'Click to add to filters'
+                    }
                   >
-                    {item.count}
-                  </span>
-                </li>
-              ))}
+                    <span
+                      className={`text-sm ${
+                        item.isActive
+                          ? 'font-medium text-indigo-700 dark:text-indigo-300'
+                          : 'text-slate-800 dark:text-slate-200'
+                      }`}
+                    >
+                      {item.subfolder}
+                    </span>
+                    <span
+                      className={`text-xs tabular-nums ${
+                        item.isActive
+                          ? 'text-indigo-600 dark:text-indigo-400'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {item.count}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}
@@ -177,50 +188,57 @@ export const FileView = () => {
           </div>
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-700">
-            {extensionList.map((item, index) => (
-              <li
-                id={`ext-${item.ext}`}
-                key={item.ext}
-                onClick={() => {
-                  handleExtensionClick(index);
-                  handleToggle(item.ext);
-                }}
-                onMouseMove={() => handleExtensionMouseMove(index)}
-                className={`flex cursor-pointer items-center justify-between px-3 py-2 transition-colors ${
-                  index + subfolderListLength === selectedIndex
-                    ? item.isActive
-                      ? 'bg-stone-300 dark:bg-stone-600'
-                      : 'bg-blue-100 dark:bg-blue-900/50'
-                    : item.isActive
-                      ? 'bg-stone-100 dark:bg-stone-800'
-                      : ''
-                }`}
-                title={
-                  item.isActive
-                    ? 'Click to remove from filters'
-                    : 'Click to add to filters'
-                }
-              >
-                <span
-                  className={`text-sm ${
-                    item.isActive
-                      ? 'font-medium text-stone-700 dark:text-stone-300'
-                      : 'text-slate-800 dark:text-slate-200'
+            {extensionList.map((item, index) => {
+              const preview = extensionPreviewState(item.ext);
+              return (
+                <li
+                  id={`ext-${item.ext}`}
+                  key={item.ext}
+                  onClick={(e) => {
+                    if (e.shiftKey) e.preventDefault(); // avoid text selection
+                    handleExtensionAction(index, e.shiftKey);
+                  }}
+                  onMouseMove={() => handleExtensionMouseMove(index)}
+                  className={`flex cursor-pointer items-center justify-between px-3 py-2 transition-colors select-none ${
+                    preview === 'select'
+                      ? RANGE_PREVIEW_SELECT_FILE
+                      : preview === 'deselect'
+                        ? RANGE_PREVIEW_DESELECT_CLASS
+                        : index + subfolderListLength === selectedIndex
+                          ? item.isActive
+                            ? 'bg-stone-300 dark:bg-stone-600'
+                            : 'bg-blue-100 dark:bg-blue-900/50'
+                          : item.isActive
+                            ? 'bg-stone-100 dark:bg-stone-800'
+                            : ''
                   }`}
-                >
-                  {item.ext}
-                </span>
-                <span
-                  className={`text-xs tabular-nums ${
+                  title={
                     item.isActive
-                      ? 'text-stone-600 dark:text-stone-400'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}
+                      ? 'Click to remove from filters'
+                      : 'Click to add to filters'
+                  }
                 >
-                  {item.count}
-                </span>
-              </li>
-            ))}
+                  <span
+                    className={`text-sm ${
+                      item.isActive
+                        ? 'font-medium text-stone-700 dark:text-stone-300'
+                        : 'text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    {item.ext}
+                  </span>
+                  <span
+                    className={`text-xs tabular-nums ${
+                      item.isActive
+                        ? 'text-stone-600 dark:text-stone-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {item.count}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

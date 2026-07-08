@@ -264,7 +264,7 @@ const PopupContent = ({
                   >
                     {isEditing ? (
                       <>
-                        <span className="text-sm tabular-nums text-slate-500">
+                        <span className="text-sm text-slate-500 tabular-nums">
                           v{v.version}
                         </span>
                         <Input

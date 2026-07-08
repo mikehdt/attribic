@@ -377,7 +377,9 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <div className="mb-2 flex items-center justify-between px-3">
-              <FormTitle htmlFor="width-input" variant="section">Width</FormTitle>
+              <FormTitle htmlFor="width-input" variant="section">
+                Width
+              </FormTitle>
               <Checkbox
                 isSelected={widthPriority}
                 onChange={handleWidthPriorityChange}
@@ -428,7 +430,9 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
           </div>
           <div>
             <div className="mb-2 flex items-center justify-between px-3">
-              <FormTitle htmlFor="height-input" variant="section">Height</FormTitle>
+              <FormTitle htmlFor="height-input" variant="section">
+                Height
+              </FormTitle>
               <Checkbox
                 isSelected={heightPriority}
                 onChange={handleHeightPriorityChange}
@@ -481,7 +485,9 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
 
         {/* Calculated bucket info */}
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-950 dark:bg-slate-900">
-          <FormTitle as="span" variant="section">Calculated Bucket</FormTitle>
+          <FormTitle as="span" variant="section">
+            Calculated Bucket
+          </FormTitle>
 
           <div className="mt-2 text-sm text-slate-600 tabular-nums dark:text-slate-300">
             <p>

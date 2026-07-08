@@ -13,9 +13,14 @@ export async function GET(request: Request, { params }: Params) {
     const { id } = await params;
     const url = new URL(request.url);
     const versionParam = url.searchParams.get('version');
-    const version = versionParam ? Number.parseInt(versionParam, 10) : undefined;
+    const version = versionParam
+      ? Number.parseInt(versionParam, 10)
+      : undefined;
 
-    const result = await loadProject(id, Number.isFinite(version!) ? version : undefined);
+    const result = await loadProject(
+      id,
+      Number.isFinite(version!) ? version : undefined,
+    );
     if (!result) {
       return NextResponse.json({ error: 'not found' }, { status: 404 });
     }
@@ -31,10 +36,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const { id } = await params;
     const body = (await request.json()) as { name?: string };
     if (!body.name?.trim()) {
-      return NextResponse.json(
-        { error: 'name is required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
     const meta = await renameProject(id, body.name);
     if (!meta) {

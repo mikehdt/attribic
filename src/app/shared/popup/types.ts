@@ -1,12 +1,7 @@
 import { ReactNode, RefObject } from 'react';
 
 export type PopupPosition =
-  | 'top-left'
-  | 'top'
-  | 'top-right'
-  | 'bottom-left'
-  | 'bottom'
-  | 'bottom-right';
+  'top-left' | 'top' | 'top-right' | 'bottom-left' | 'bottom' | 'bottom-right';
 
 export interface PopupState {
   isOpen: boolean;

@@ -2,6 +2,10 @@ import { XIcon } from 'lucide-react';
 
 import { highlightText } from '@/app/tagging/utils/text-highlight';
 
+import {
+  RANGE_PREVIEW_DESELECT_CLASS,
+  RANGE_PREVIEW_SELECT_TAGS,
+} from '../use-range-toggle';
 import { useTagsView } from './use-tags-view';
 
 export const TagsView = () => {
@@ -12,9 +16,9 @@ export const TagsView = () => {
     inputRef,
     filteredTags,
     selectedIndex,
-    handleToggle,
+    handleItemAction,
+    previewState,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   } = useTagsView();
 
@@ -57,50 +61,59 @@ export const TagsView = () => {
             className="divide-y divide-slate-100 dark:divide-slate-700"
             onMouseLeave={handleListMouseLeave}
           >
-            {filteredTags.map((item, index) => (
-              <li
-                id={`tag-${item.tag}`}
-                key={item.tag}
-                onClick={() => {
-                  handleItemClick(index);
-                  handleToggle(item.tag);
-                }}
-                onMouseMove={() => handleItemMouseMove(index)}
-                className={`flex cursor-pointer items-center justify-between px-3 py-2 transition-colors ${
-                  index === selectedIndex
-                    ? item.isActive
-                      ? 'bg-teal-300 dark:bg-teal-700'
-                      : 'bg-blue-100 dark:bg-blue-900/50'
-                    : item.isActive
-                      ? 'bg-teal-100 dark:bg-teal-900/50'
-                      : ''
-                }`}
-                title={
-                  item.isActive
-                    ? 'Click to remove from filters'
-                    : 'Click to add to filters'
-                }
-              >
-                <span
-                  className={`text-sm ${
-                    item.isActive
-                      ? 'font-medium text-teal-700 dark:text-teal-300'
-                      : 'text-slate-800 dark:text-slate-200'
+            {filteredTags.map((item, index) => {
+              const preview = previewState(item.tag);
+              return (
+                <li
+                  id={`tag-${item.tag}`}
+                  key={item.tag}
+                  onClick={(e) => {
+                    if (e.shiftKey) e.preventDefault(); // avoid text selection
+                    handleItemAction(index, e.shiftKey);
+                  }}
+                  onMouseMove={() => handleItemMouseMove(index)}
+                  className={`flex cursor-pointer items-center justify-between px-3 py-2 transition-colors select-none ${
+                    preview === 'select'
+                      ? RANGE_PREVIEW_SELECT_TAGS
+                      : preview === 'deselect'
+                        ? RANGE_PREVIEW_DESELECT_CLASS
+                        : index === selectedIndex
+                          ? item.isActive
+                            ? 'bg-teal-300 dark:bg-teal-700'
+                            : 'bg-blue-100 dark:bg-blue-900/50'
+                          : item.isActive
+                            ? 'bg-teal-100 dark:bg-teal-900/50'
+                            : ''
                   }`}
-                >
-                  {searchTerm ? highlightText(item.tag, searchTerm) : item.tag}
-                </span>
-                <span
-                  className={`text-xs tabular-nums ${
+                  title={
                     item.isActive
-                      ? 'text-teal-600 dark:text-teal-400'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}
+                      ? 'Click to remove from filters'
+                      : 'Click to add to filters'
+                  }
                 >
-                  {item.count}
-                </span>
-              </li>
-            ))}
+                  <span
+                    className={`text-sm ${
+                      item.isActive
+                        ? 'font-medium text-teal-700 dark:text-teal-300'
+                        : 'text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    {searchTerm
+                      ? highlightText(item.tag, searchTerm)
+                      : item.tag}
+                  </span>
+                  <span
+                    className={`text-xs tabular-nums ${
+                      item.isActive
+                        ? 'text-teal-600 dark:text-teal-400'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {item.count}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

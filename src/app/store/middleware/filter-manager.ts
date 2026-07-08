@@ -35,6 +35,7 @@ import {
   removeFilenamePattern,
   removeSubfolderFilters,
   selectHasActiveFilters,
+  setFiltersRange,
   setTagFilterMode,
   toggleBucketFilter,
   toggleExtensionFilter,
@@ -170,12 +171,7 @@ const cleanupInvalidFilters = (
 };
 
 type VisibilityClassKey =
-  | 'tags'
-  | 'nameSearch'
-  | 'sizes'
-  | 'buckets'
-  | 'extensions'
-  | 'subfolders';
+  'tags' | 'nameSearch' | 'sizes' | 'buckets' | 'extensions' | 'subfolders';
 
 /**
  * Clean up visibility scope flags that no longer apply.
@@ -357,6 +353,7 @@ filterManagerMiddleware.startListening({
     toggleExtensionFilter,
     toggleBucketFilter,
     toggleSubfolderFilter,
+    setFiltersRange,
     addFilenamePattern,
     removeFilenamePattern,
     clearTagFilters,

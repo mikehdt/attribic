@@ -216,7 +216,6 @@ const LossChartComponent = ({
               </text>
             );
           })}
-
         </>
       )}
 

@@ -11,12 +11,11 @@ import {
   selectFilenamePatterns,
   selectFilterExtensions,
   selectFilterSubfolders,
-  toggleExtensionFilter,
-  toggleSubfolderFilter,
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 
 import { useFilterContext } from '../filter-context';
+import { useRangeToggle } from '../use-range-toggle';
 
 export const useFileView = () => {
   const dispatch = useAppDispatch();
@@ -38,7 +37,6 @@ export const useFileView = () => {
     inputRef,
     handleKeyDown,
     handleItemMouseMove,
-    handleItemClick,
     resetKeyboardIndex,
     handleListMouseLeave,
   } = useFilterContext();
@@ -150,31 +148,30 @@ export const useFileView = () => {
     updateListLength(combinedListLength);
   }, [combinedListLength, updateListLength]);
 
-  // Create a memoized toggle handler for extensions
-  const handleToggle = useCallback(
-    (ext: string) => {
-      dispatch(toggleExtensionFilter(ext));
-
-      // Focus back on input after selection
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    },
-    [dispatch, inputRef],
-  );
-
-  // Create a memoized toggle handler for subfolders
-  const handleToggleSubfolder = useCallback(
-    (subfolder: string) => {
-      dispatch(toggleSubfolderFilter(subfolder));
-
-      // Focus back on input after selection
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    },
-    [dispatch, inputRef],
-  );
+  // Shift-click / Shift+Return range selection. Subfolders and extensions are
+  // one keyboard list but two filter classes, so each gets its own range group;
+  // extensions are offset by the subfolder count to map the global keyboard
+  // index. A range never spans the two sections (the anchor value won't resolve
+  // in the other list, so it falls back to a plain toggle).
+  const {
+    handleItemAction: handleSubfolderAction,
+    previewState: subfolderPreviewState,
+  } = useRangeToggle({
+    items: subfolderList,
+    getValue: (item) => item.subfolder,
+    getIsActive: (item) => item.isActive,
+    classKey: 'filterSubfolders',
+  });
+  const {
+    handleItemAction: handleExtensionAction,
+    previewState: extensionPreviewState,
+  } = useRangeToggle({
+    items: extensionList,
+    getValue: (item) => item.ext,
+    getIsActive: (item) => item.isActive,
+    classKey: 'filterExtensions',
+    indexOffset: subfolderList.length,
+  });
 
   const handleRemovePattern = useCallback(
     (pattern: string, e: React.MouseEvent) => {
@@ -244,42 +241,11 @@ export const useFileView = () => {
     }
   }, [selectedIndex, getSelectedItem]);
 
-  // Listen for keyboard selection events (Enter on a selected item)
-  useEffect(() => {
-    const handleKeyboardSelect = (e: CustomEvent) => {
-      if (e.detail?.index !== selectedIndex || selectedIndex < 0) return;
-
-      const selected = getSelectedItem(selectedIndex);
-      if (!selected) return;
-
-      if (selected.type === 'subfolder') {
-        handleToggleSubfolder(selected.item.subfolder);
-      } else {
-        handleToggle(selected.item.ext);
-      }
-    };
-
-    document.addEventListener(
-      'filterlist:keyboardselect',
-      handleKeyboardSelect as EventListener,
-    );
-    return () => {
-      document.removeEventListener(
-        'filterlist:keyboardselect',
-        handleKeyboardSelect as EventListener,
-      );
-    };
-  }, [selectedIndex, getSelectedItem, handleToggle, handleToggleSubfolder]);
-
-  // Mouse move/click for extensions needs to offset by subfolder count
+  // Mouse move for extensions needs to offset by subfolder count so the shared
+  // (global) highlight index lands on the right row.
   const handleExtensionMouseMove = useCallback(
     (index: number) => handleItemMouseMove(index + subfolderList.length),
     [handleItemMouseMove, subfolderList.length],
-  );
-
-  const handleExtensionClick = useCallback(
-    (index: number) => handleItemClick(index + subfolderList.length),
-    [handleItemClick, subfolderList.length],
   );
 
   return {
@@ -292,15 +258,15 @@ export const useFileView = () => {
     subfolderList,
     subfolderListLength: subfolderList.length,
     selectedIndex,
-    handleToggle,
-    handleToggleSubfolder,
+    handleSubfolderAction,
+    handleExtensionAction,
+    subfolderPreviewState,
+    extensionPreviewState,
     handleCombinedKeyDown,
     handleRemovePattern,
     handleAddPattern,
     handleItemMouseMove,
-    handleItemClick,
     handleExtensionMouseMove,
-    handleExtensionClick,
     handleListMouseLeave,
   };
 };

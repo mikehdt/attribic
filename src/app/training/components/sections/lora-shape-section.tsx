@@ -109,9 +109,7 @@ const LoraShapeSectionComponent = ({
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has('networkType' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Type
-                </FormTitle>
+                <FormTitle>Type</FormTitle>
                 <Dropdown
                   items={NETWORK_TYPE_ITEMS}
                   selectedValue={networkType}
@@ -128,9 +126,7 @@ const LoraShapeSectionComponent = ({
 
             {visibleFields.has('networkDropout' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Dropout
-                </FormTitle>
+                <FormTitle>Dropout</FormTitle>
                 <Input
                   type="text"
                   value={networkDropout}
@@ -155,9 +151,7 @@ const LoraShapeSectionComponent = ({
         <div className="flex items-end gap-2">
           {visibleFields.has('networkDim' satisfies keyof FormState) && (
             <div className="flex-1">
-              <FormTitle>
-                Rank (dim)
-              </FormTitle>
+              <FormTitle>Rank (dim)</FormTitle>
               <Slider
                 min={1}
                 max={128}
@@ -198,9 +192,7 @@ const LoraShapeSectionComponent = ({
 
           {visibleFields.has('networkAlpha' satisfies keyof FormState) && (
             <div className="flex-1">
-              <FormTitle>
-                Alpha
-              </FormTitle>
+              <FormTitle>Alpha</FormTitle>
               <Slider
                 min={1}
                 max={128}

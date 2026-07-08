@@ -14,12 +14,7 @@ export const TRAINING_PROVIDER_LABELS: Record<TrainingProvider, string> = {
 // --- Job Lifecycle ---
 
 export type TrainingJobStatus =
-  | 'pending'
-  | 'preparing'
-  | 'training'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+  'pending' | 'preparing' | 'training' | 'completed' | 'failed' | 'cancelled';
 
 // --- Sidecar ---
 

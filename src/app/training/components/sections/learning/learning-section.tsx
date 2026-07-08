@@ -207,9 +207,7 @@ const LearningSectionComponent = ({
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           {showDuration && (
             <div>
-              <FormTitle>
-                Duration
-              </FormTitle>
+              <FormTitle>Duration</FormTitle>
 
               <InputTray size="md" gap="sm">
                 <Input
@@ -260,9 +258,7 @@ const LearningSectionComponent = ({
 
           {visibleFields.has('batchSize' satisfies keyof FormState) && (
             <div>
-              <FormTitle>
-                Batch Size
-              </FormTitle>
+              <FormTitle>Batch Size</FormTitle>
               <Input
                 type="number"
                 min={1}
@@ -286,9 +282,7 @@ const LearningSectionComponent = ({
         {/* Learning Rate — full width (slider in simple, input in intermediate+) */}
         {visibleFields.has('learningRate' satisfies keyof FormState) && (
           <div>
-            <FormTitle>
-              Learning Rate
-            </FormTitle>
+            <FormTitle>Learning Rate</FormTitle>
             {isSimple ? (
               <Slider
                 min={0}
@@ -325,9 +319,7 @@ const LearningSectionComponent = ({
         {/* Optimizer — full width (read-only in Simple, dropdown in Intermediate+) */}
         {visibleFields.has('optimizer' satisfies keyof FormState) && (
           <div>
-            <FormTitle>
-              Optimiser
-            </FormTitle>
+            <FormTitle>Optimiser</FormTitle>
             {isSimple ? (
               <p className="text-sm text-(--foreground)/80">
                 {selectedOptimizer?.label ?? optimizer}
@@ -363,9 +355,7 @@ const LearningSectionComponent = ({
         {/* Scheduler — full width (read-only in Simple, dropdown in Intermediate+) */}
         {visibleFields.has('scheduler' satisfies keyof FormState) && (
           <div>
-            <FormTitle>
-              LR Scheduler
-            </FormTitle>
+            <FormTitle>LR Scheduler</FormTitle>
             {isSimple ? (
               <div className="flex items-center gap-2 text-sm text-(--foreground)/80">
                 {selectedScheduler && (
@@ -418,9 +408,7 @@ const LearningSectionComponent = ({
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has('warmupSteps' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Warmup Steps
-                </FormTitle>
+                <FormTitle>Warmup Steps</FormTitle>
                 <Input
                   type="number"
                   min={0}
@@ -437,9 +425,7 @@ const LearningSectionComponent = ({
 
             {visibleFields.has('numRestarts' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Restarts
-                </FormTitle>
+                <FormTitle>Restarts</FormTitle>
                 <Input
                   type="number"
                   min={1}
@@ -451,9 +437,7 @@ const LearningSectionComponent = ({
                   placeholder={String(defaults.numRestarts)}
                   className="w-full"
                 />
-                <p className="mt-1 text-xs text-slate-400">
-                  Cosine cycles
-                </p>
+                <p className="mt-1 text-xs text-slate-400">Cosine cycles</p>
               </div>
             )}
           </div>
@@ -465,9 +449,7 @@ const LearningSectionComponent = ({
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has('weightDecay' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Weight Decay
-                </FormTitle>
+                <FormTitle>Weight Decay</FormTitle>
                 <Input
                   type="text"
                   value={weightDecay}
@@ -487,9 +469,7 @@ const LearningSectionComponent = ({
 
             {visibleFields.has('maxGradNorm' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Max Gradient Norm
-                </FormTitle>
+                <FormTitle>Max Gradient Norm</FormTitle>
                 <Input
                   type="text"
                   value={maxGradNorm}
@@ -532,9 +512,7 @@ const LearningSectionComponent = ({
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has('backboneLR' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Backbone LR
-                </FormTitle>
+                <FormTitle>Backbone LR</FormTitle>
                 <Input
                   type="text"
                   value={backboneLR}
@@ -546,17 +524,13 @@ const LearningSectionComponent = ({
                   placeholder={String(defaults.backboneLR)}
                   className="w-full tabular-nums"
                 />
-                <p className="mt-1 text-xs text-slate-400">
-                  0 = use main LR
-                </p>
+                <p className="mt-1 text-xs text-slate-400">0 = use main LR</p>
               </div>
             )}
 
             {visibleFields.has('textEncoderLR' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Text Encoder LR
-                </FormTitle>
+                <FormTitle>Text Encoder LR</FormTitle>
                 <Input
                   type="text"
                   value={textEncoderLR}
@@ -568,9 +542,7 @@ const LearningSectionComponent = ({
                   placeholder={String(defaults.textEncoderLR)}
                   className="w-full tabular-nums"
                 />
-                <p className="mt-1 text-xs text-slate-400">
-                  0 = use main LR
-                </p>
+                <p className="mt-1 text-xs text-slate-400">0 = use main LR</p>
               </div>
             )}
           </div>
@@ -597,9 +569,7 @@ const LearningSectionComponent = ({
           <div className="grid grid-cols-3 gap-x-4 gap-y-3">
             {visibleFields.has('lossType' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Loss Type
-                </FormTitle>
+                <FormTitle>Loss Type</FormTitle>
                 <Dropdown
                   items={LOSS_TYPE_ITEMS}
                   selectedValue={lossType}
@@ -613,9 +583,7 @@ const LearningSectionComponent = ({
 
             {visibleFields.has('timestepType' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Timestep Type
-                </FormTitle>
+                <FormTitle>Timestep Type</FormTitle>
                 <Dropdown
                   items={TIMESTEP_TYPE_ITEMS}
                   selectedValue={timestepType}
@@ -627,9 +595,7 @@ const LearningSectionComponent = ({
 
             {visibleFields.has('timestepBias' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Timestep Bias
-                </FormTitle>
+                <FormTitle>Timestep Bias</FormTitle>
                 <Dropdown
                   items={TIMESTEP_BIAS_ITEMS}
                   selectedValue={timestepBias}

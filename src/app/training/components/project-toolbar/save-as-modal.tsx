@@ -72,7 +72,7 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
 
   const isNew = selected === NEW_PROJECT;
   const selectedProject = useMemo(
-    () => (isNew ? null : projects.find((p) => p.id === selected) ?? null),
+    () => (isNew ? null : (projects.find((p) => p.id === selected) ?? null)),
     [isNew, projects, selected],
   );
 
@@ -80,9 +80,7 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
     () =>
       isNew &&
       name.trim().length > 0 &&
-      projects.some(
-        (p) => p.name.toLowerCase() === name.trim().toLowerCase(),
-      ),
+      projects.some((p) => p.name.toLowerCase() === name.trim().toLowerCase()),
     [isNew, name, projects],
   );
 
@@ -182,9 +180,7 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
         {isNew && (
           <div className="flex w-full flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-800">
             <div className="flex flex-col gap-1">
-              <FormTitle htmlFor="new-project-name">
-                Project name
-              </FormTitle>
+              <FormTitle htmlFor="new-project-name">Project name</FormTitle>
               <Input
                 id="new-project-name"
                 autoFocus

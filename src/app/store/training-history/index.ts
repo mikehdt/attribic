@@ -48,10 +48,7 @@ const trainingHistorySlice = createSlice({
      * existing `dismissedFromPanel` flag so re-recording the same terminal run
      * doesn't resurrect it in the activity panel after a "Clear all".
      */
-    recordTrainingRun: (
-      state,
-      action: PayloadAction<TrainingHistoryEntry>,
-    ) => {
+    recordTrainingRun: (state, action: PayloadAction<TrainingHistoryEntry>) => {
       const existing = state.entries[action.payload.id];
       state.entries[action.payload.id] = {
         ...action.payload,
@@ -87,10 +84,7 @@ const trainingHistorySlice = createSlice({
      * Merge persisted entries in on load. Only fills gaps — never overwrites a
      * snapshot already recorded this session, so a fresher in-memory run wins.
      */
-    restoreHistory: (
-      state,
-      action: PayloadAction<TrainingHistoryEntry[]>,
-    ) => {
+    restoreHistory: (state, action: PayloadAction<TrainingHistoryEntry[]>) => {
       for (const entry of action.payload) {
         if (!state.entries[entry.id]) {
           state.entries[entry.id] = entry;
@@ -121,7 +115,6 @@ export const selectTrainingHistory = createSelector(
   selectHistoryState,
   (s): TrainingHistoryEntry[] =>
     Object.values(s.entries).sort(
-      (a, b) =>
-        (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt),
+      (a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt),
     ),
 );

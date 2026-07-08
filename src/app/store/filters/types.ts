@@ -63,6 +63,14 @@ export type Filters = {
   visibility: VisibilitySettings;
 };
 
+/** Filter classes that hold a plain list of active string values. */
+export type FilterArrayKey =
+  | 'filterTags'
+  | 'filterSizes'
+  | 'filterBuckets'
+  | 'filterExtensions'
+  | 'filterSubfolders';
+
 export type FilterCount = {
   tags: number;
   sizes: number;

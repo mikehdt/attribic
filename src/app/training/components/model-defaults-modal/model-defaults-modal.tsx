@@ -92,7 +92,7 @@ export function ModelDefaultsModal({
         <div className="flex flex-col gap-5 pr-1">
           {MODEL_GROUPS.map(({ architecture, label, models }) => (
             <div key={architecture}>
-              <h3 className="text-base mb-3 border-b border-slate-200 pb-2 font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300">
+              <h3 className="mb-3 border-b border-slate-200 pb-2 text-base font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300">
                 {label}
               </h3>
               <div className="space-y-4">

@@ -1,11 +1,5 @@
 export type ProjectColor =
-  | 'slate'
-  | 'rose'
-  | 'amber'
-  | 'teal'
-  | 'sky'
-  | 'indigo'
-  | 'stone';
+  'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
 
 export type Project = {
   name: string;

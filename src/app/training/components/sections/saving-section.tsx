@@ -106,9 +106,7 @@ const SavingSectionComponent = ({
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           {visibleFields.has('outputName' satisfies keyof FormState) && (
             <div>
-              <FormTitle>
-                Output Name
-              </FormTitle>
+              <FormTitle>Output Name</FormTitle>
               <Input
                 type="text"
                 value={outputName}
@@ -121,9 +119,7 @@ const SavingSectionComponent = ({
 
           {visibleFields.has('saveFormat' satisfies keyof FormState) && (
             <div>
-              <FormTitle>
-                Output Precision
-              </FormTitle>
+              <FormTitle>Output Precision</FormTitle>
               <Dropdown
                 items={SAVE_FORMAT_ITEMS}
                 selectedValue={saveFormat}
@@ -150,9 +146,7 @@ const SavingSectionComponent = ({
             {saveEnabled && (
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <div>
-                  <FormTitle>
-                    Save Every
-                  </FormTitle>
+                  <FormTitle>Save Every</FormTitle>
                   <InputTray size="md">
                     <Input
                       type="number"
@@ -180,9 +174,7 @@ const SavingSectionComponent = ({
                   'maxSavesToKeep' satisfies keyof FormState,
                 ) && (
                   <div>
-                    <FormTitle>
-                      Max Saves to Keep
-                    </FormTitle>
+                    <FormTitle>Max Saves to Keep</FormTitle>
                     <Input
                       type="number"
                       min={0}
@@ -222,9 +214,7 @@ const SavingSectionComponent = ({
         {/* Resume From State */}
         {visibleFields.has('resumeState' satisfies keyof FormState) && (
           <div>
-            <FormTitle>
-              Resume From State
-            </FormTitle>
+            <FormTitle>Resume From State</FormTitle>
             <InputTray size="md" width="full">
               <Input
                 type="text"

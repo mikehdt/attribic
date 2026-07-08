@@ -4,6 +4,7 @@ import {
   RefObject,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -55,6 +56,17 @@ let persistedSortSettings = {
   filetype: { type: 'count' as SortType, direction: 'desc' as SortDirection },
 };
 
+/**
+ * Anchor for shift-click range selection. `value` is the last item acted on
+ * (a tag name, "WxH" size, extension, …); `action` is whether that act
+ * selected or deselected it, so a following shift-click extends in the same
+ * direction. Value-based (not index-based) so it survives list re-sorting.
+ */
+export interface FilterRangeAnchor {
+  value: string;
+  action: 'select' | 'deselect';
+}
+
 interface FilterContextType {
   // Close handler (provided by popup system)
   onClose: () => void;
@@ -83,9 +95,14 @@ interface FilterContextType {
   inputRef: RefObject<HTMLInputElement | null>;
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   handleItemMouseMove: (index: number) => void;
-  handleItemClick: (index: number) => void;
   resetKeyboardIndex: () => void;
   handleListMouseLeave: () => void;
+
+  // Shift-click range selection anchor
+  rangeAnchor: FilterRangeAnchor | null;
+  setRangeAnchor: (anchor: FilterRangeAnchor | null) => void;
+  /** Whether Shift is currently held — drives the range hover preview. */
+  isShiftHeld: boolean;
 
   // Sort options getter
   getSortOptions: () => {
@@ -126,6 +143,30 @@ export const FilterProvider = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [listLength, setListLength] = useState(0);
+  const [rangeAnchor, setRangeAnchor] = useState<FilterRangeAnchor | null>(
+    null,
+  );
+  const [isShiftHeld, setIsShiftHeld] = useState(false);
+
+  // Track Shift globally so the range preview appears/clears even when the
+  // pointer is stationary (mirrors the asset grid's shift-hover preview).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setIsShiftHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setIsShiftHeld(false);
+    };
+    const onBlur = () => setIsShiftHeld(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
 
   // Get current sort settings based on active view and sub-view
   const currentSort = useMemo(() => {
@@ -139,6 +180,8 @@ export const FilterProvider = ({
   const setSizeSubView = useCallback((subView: SizeSubViewType) => {
     persistedSizeSubView = subView;
     setSizeSubViewState(subView);
+    // The list changes entirely between dimensions/buckets — drop the anchor.
+    setRangeAnchor(null);
   }, []);
 
   // Helper to update sort settings and persist to module-level variable
@@ -238,11 +281,6 @@ export const FilterProvider = ({
     [selectedIndex, setSelectedIndex],
   );
 
-  // Mouse clicks don't anchor the KB position — only arrow keys do.
-  // This keeps mouse-leave from persisting a highlight set purely by mouse.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleItemClick = useCallback((_index: number) => {}, []);
-
   // Allow consumers to reset the keyboard index (e.g. when input text changes)
   const resetKeyboardIndex = useCallback(() => {
     keyboardIndexRef.current = -1;
@@ -258,6 +296,9 @@ export const FilterProvider = ({
     setSearchTerm(term);
     setSelectedIndex(-1);
     keyboardIndexRef.current = -1;
+    // The visible list changes — a range across two different searches is
+    // meaningless, so reset the anchor.
+    setRangeAnchor(null);
   }, []);
 
   // Reset search when view changes, and persist the view
@@ -267,6 +308,7 @@ export const FilterProvider = ({
     setSearchTerm('');
     setSelectedIndex(-1);
     keyboardIndexRef.current = -1;
+    setRangeAnchor(null);
   }, []);
 
   // Memoize context value to prevent unnecessary re-renders
@@ -290,9 +332,11 @@ export const FilterProvider = ({
       inputRef,
       handleKeyDown,
       handleItemMouseMove,
-      handleItemClick,
       resetKeyboardIndex,
       handleListMouseLeave,
+      rangeAnchor,
+      setRangeAnchor,
+      isShiftHeld,
       getSortOptions: getSortOptionsForView,
     }),
     [
@@ -312,9 +356,10 @@ export const FilterProvider = ({
       inputRef,
       handleKeyDown,
       handleItemMouseMove,
-      handleItemClick,
       resetKeyboardIndex,
       handleListMouseLeave,
+      rangeAnchor,
+      isShiftHeld,
       getSortOptionsForView,
       setSizeSubView,
     ],

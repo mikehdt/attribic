@@ -88,12 +88,7 @@ export type ModelVariant = {
 };
 
 export type ModelStatus =
-  | 'not_installed'
-  | 'downloading'
-  | 'ready'
-  | 'partial'
-  | 'error'
-  | 'checking';
+  'not_installed' | 'downloading' | 'ready' | 'partial' | 'error' | 'checking';
 
 export type DownloadProgress = {
   downloadId: string;

@@ -14,11 +14,7 @@ import type {
 
 import type { AppThunk } from '../index';
 import { addToast } from '../toasts';
-import {
-  clearLoadedProject,
-  hydrateFromProject,
-  stampSaved,
-} from './index';
+import { clearLoadedProject, hydrateFromProject, stampSaved } from './index';
 import type { FormState, LoadedProject } from './types';
 
 type ProjectResponse = {
@@ -138,9 +134,7 @@ export const saveAsNewProject =
           loadedProject: toLoadedProject(meta, version),
         }),
       );
-      dispatch(
-        addToast({ children: `Saved as new project “${meta.name}”` }),
-      );
+      dispatch(addToast({ children: `Saved as new project “${meta.name}”` }));
     } catch (error) {
       dispatch(
         addToast({
@@ -154,11 +148,7 @@ export const saveAsNewProject =
 // --- Save As: new version of an existing project ---
 
 export const saveAsNewVersion =
-  (
-    projectId: string,
-    form: FormState,
-    label: string | null = null,
-  ): AppThunk =>
+  (projectId: string, form: FormState, label: string | null = null): AppThunk =>
   async (dispatch) => {
     try {
       const res = await fetch(
@@ -216,9 +206,7 @@ export const replaceExistingProject =
           loadedProject: toLoadedProject(meta, version),
         }),
       );
-      dispatch(
-        addToast({ children: `Replaced project “${meta.name}”` }),
-      );
+      dispatch(addToast({ children: `Replaced project “${meta.name}”` }));
     } catch (error) {
       dispatch(
         addToast({
@@ -248,9 +236,7 @@ export const renameProject =
       // Mirror the rename into loadedProject if it's the one we have loaded.
       const loaded = getState().trainingConfig.loadedProject;
       if (loaded && loaded.id === meta.id) {
-        dispatch(
-          stampSaved({ ...loaded, name: meta.name }),
-        );
+        dispatch(stampSaved({ ...loaded, name: meta.name }));
       }
     } catch (error) {
       dispatch(
@@ -282,9 +268,7 @@ export const setVersionLabel =
 
       const loaded = getState().trainingConfig.loadedProject;
       if (loaded && loaded.id === id && loaded.version === version) {
-        dispatch(
-          stampSaved({ ...loaded, versionLabel: updated.label }),
-        );
+        dispatch(stampSaved({ ...loaded, versionLabel: updated.label }));
       }
     } catch (error) {
       dispatch(

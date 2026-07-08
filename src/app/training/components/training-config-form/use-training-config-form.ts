@@ -187,9 +187,7 @@ export function useTrainingConfigForm() {
       folderName: string,
       repeats: number | null,
     ) => {
-      dispatch(
-        setFolderRepeatsAction({ datasetIndex, folderName, repeats }),
-      );
+      dispatch(setFolderRepeatsAction({ datasetIndex, folderName, repeats }));
     },
     [dispatch],
   );

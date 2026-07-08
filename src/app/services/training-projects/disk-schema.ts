@@ -19,5 +19,7 @@ export type TrainingProjectVersion = {
 
 /** Summary returned by list endpoints — meta plus available versions. */
 export type TrainingProjectSummary = TrainingProjectMeta & {
-  versions: Array<Pick<TrainingProjectVersion, 'version' | 'label' | 'savedAt'>>;
+  versions: Array<
+    Pick<TrainingProjectVersion, 'version' | 'label' | 'savedAt'>
+  >;
 };

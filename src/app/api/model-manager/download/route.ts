@@ -10,7 +10,10 @@ import { NextRequest } from 'next/server';
 import path from 'path';
 
 import { getModel } from '@/app/services/auto-tagger';
-import { getHfToken, getModelsFolder } from '@/app/services/config/server-config';
+import {
+  getHfToken,
+  getModelsFolder,
+} from '@/app/services/config/server-config';
 import {
   isDownloadActive,
   markDownloadActive,

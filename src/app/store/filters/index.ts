@@ -63,6 +63,7 @@ export const {
   toggleBucketFilter,
   toggleExtensionFilter,
   toggleSubfolderFilter,
+  setFiltersRange,
 
   clearTagFilters,
   updateTagFilters,

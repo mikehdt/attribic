@@ -58,7 +58,7 @@ export const LoadProjectModal = ({
         if (cancelled) return;
         setProjects(list);
         const initial = loadedProject
-          ? list.find((p) => p.id === loadedProject.id) ?? list[0]
+          ? (list.find((p) => p.id === loadedProject.id) ?? list[0])
           : list[0];
         setSelectedId(initial?.id ?? null);
         setSelectedVersion(initial?.latestVersion ?? null);
@@ -96,7 +96,11 @@ export const LoadProjectModal = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-3xl min-w-[40rem]">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-3xl min-w-[40rem]"
+    >
       <div className="flex flex-wrap gap-4">
         <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
           Load project

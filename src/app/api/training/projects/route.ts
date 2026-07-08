@@ -25,19 +25,17 @@ export async function POST(request: Request) {
     };
 
     if (!body.name?.trim()) {
-      return NextResponse.json(
-        { error: 'name is required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
     if (!body.form) {
-      return NextResponse.json(
-        { error: 'form is required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'form is required' }, { status: 400 });
     }
 
-    const result = await createProject(body.name, body.form, body.label ?? null);
+    const result = await createProject(
+      body.name,
+      body.form,
+      body.label ?? null,
+    );
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

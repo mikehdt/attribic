@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { selectTagCounts } from '@/app/store/assets';
-import { selectFilterTags, toggleTagFilter } from '@/app/store/filters';
-import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { selectFilterTags } from '@/app/store/filters';
+import { useAppSelector } from '@/app/store/hooks';
 
 import { useFilterContext } from '../filter-context';
+import { useRangeToggle } from '../use-range-toggle';
 
 export const useTagsView = () => {
-  const dispatch = useAppDispatch();
   const allTags = useAppSelector(selectTagCounts);
   const activeTags = useAppSelector(selectFilterTags);
 
@@ -21,7 +21,6 @@ export const useTagsView = () => {
     inputRef,
     handleKeyDown,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   } = useFilterContext();
 
@@ -79,60 +78,24 @@ export const useTagsView = () => {
     updateListLength(filteredTags.length);
   }, [filteredTags.length, updateListLength]);
 
-  // Handle tag toggle
-  const handleToggle = useCallback(
-    (tag: string) => {
-      dispatch(toggleTagFilter(tag));
+  // Shift-click / Shift+Return range selection (and plain toggle)
+  const { handleItemAction, previewState } = useRangeToggle({
+    items: filteredTags,
+    getValue: (item) => item.tag,
+    getIsActive: (item) => item.isActive,
+    classKey: 'filterTags',
+  });
 
-      // Focus back on input after selection
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    },
-    [dispatch, inputRef],
-  );
-
-  // Handle tag selection via keyboard
+  // Keep the keyboard-highlighted tag scrolled into view
   useEffect(() => {
     if (selectedIndex >= 0 && selectedIndex < filteredTags.length) {
       const selectedTag = filteredTags[selectedIndex].tag;
-      // Update UI to show focus on the selected tag
       const tagEl = document.getElementById(`tag-${selectedTag}`);
       if (tagEl) {
-        // Ensure the element is in view
         tagEl.scrollIntoView({ block: 'nearest' });
       }
     }
   }, [selectedIndex, filteredTags]);
-
-  // Listen for keyboard selection events
-  useEffect(() => {
-    const handleKeyboardSelect = (e: CustomEvent) => {
-      // Check if the event is for our component by comparing selectedIndex
-      if (
-        e.detail?.index === selectedIndex &&
-        selectedIndex >= 0 &&
-        selectedIndex < filteredTags.length
-      ) {
-        // Get the selected tag and toggle it
-        const selectedTag = filteredTags[selectedIndex].tag;
-        handleToggle(selectedTag);
-      }
-    };
-
-    // Add event listener for custom keyboard selection event
-    document.addEventListener(
-      'filterlist:keyboardselect',
-      handleKeyboardSelect as EventListener,
-    );
-
-    return () => {
-      document.removeEventListener(
-        'filterlist:keyboardselect',
-        handleKeyboardSelect as EventListener,
-      );
-    };
-  }, [selectedIndex, filteredTags, handleToggle]);
 
   return {
     searchTerm,
@@ -141,9 +104,9 @@ export const useTagsView = () => {
     inputRef,
     filteredTags,
     selectedIndex,
-    handleToggle,
+    handleItemAction,
+    previewState,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   };
 };

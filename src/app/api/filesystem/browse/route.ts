@@ -2,8 +2,7 @@ import { execFile } from 'child_process';
 import { NextResponse } from 'next/server';
 
 type BrowseResult =
-  | { path: string; cancelled?: never }
-  | { path?: never; cancelled: true };
+  { path: string; cancelled?: never } | { path?: never; cancelled: true };
 
 /**
  * Opens a native OS file dialog and returns the selected path.

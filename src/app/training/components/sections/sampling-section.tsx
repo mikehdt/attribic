@@ -103,9 +103,7 @@ const SamplingSectionComponent = ({
             {/* Sample Prompts — full width */}
             {visibleFields.has('samplePrompts' satisfies keyof FormState) && (
               <div>
-                <FormTitle>
-                  Sample Prompts
-                </FormTitle>
+                <FormTitle>Sample Prompts</FormTitle>
                 <div className="space-y-1.5">
                   {samplePrompts.map((prompt, i) => (
                     <div key={i} className="flex items-center gap-1.5">
@@ -149,9 +147,7 @@ const SamplingSectionComponent = ({
                   'sampleEverySteps' satisfies keyof FormState,
                 )) && (
                 <div>
-                  <FormTitle>
-                    Generate Every
-                  </FormTitle>
+                  <FormTitle>Generate Every</FormTitle>
                   <Input
                     type="number"
                     min={1}
@@ -176,9 +172,7 @@ const SamplingSectionComponent = ({
 
               {visibleFields.has('sampleSteps' satisfies keyof FormState) && (
                 <div>
-                  <FormTitle>
-                    Sample Steps
-                  </FormTitle>
+                  <FormTitle>Sample Steps</FormTitle>
                   <Input
                     type="number"
                     min={1}
@@ -193,13 +187,9 @@ const SamplingSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has(
-                'guidanceScale' satisfies keyof FormState,
-              ) && (
+              {visibleFields.has('guidanceScale' satisfies keyof FormState) && (
                 <div>
-                  <FormTitle>
-                    Guidance Scale
-                  </FormTitle>
+                  <FormTitle>Guidance Scale</FormTitle>
                   <Input
                     type="text"
                     value={guidanceScale}
@@ -217,9 +207,7 @@ const SamplingSectionComponent = ({
                 'noiseScheduler' satisfies keyof FormState,
               ) && (
                 <div>
-                  <FormTitle>
-                    Noise Scheduler
-                  </FormTitle>
+                  <FormTitle>Noise Scheduler</FormTitle>
                   <Input
                     type="text"
                     value={noiseScheduler}
@@ -238,9 +226,7 @@ const SamplingSectionComponent = ({
         {visibleFields.has('seed' satisfies keyof FormState) && (
           <div className="grid grid-cols-4 gap-x-4">
             <div>
-              <FormTitle>
-                Seed
-              </FormTitle>
+              <FormTitle>Seed</FormTitle>
               <Input
                 type="number"
                 min={-1}

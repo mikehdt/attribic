@@ -168,9 +168,7 @@ export function FolderRow({
           </div>
 
           <div>
-            <FormTitle>
-              Keep Tokens
-            </FormTitle>
+            <FormTitle>Keep Tokens</FormTitle>
             <Input
               type="number"
               min={0}
@@ -193,9 +191,7 @@ export function FolderRow({
           </div>
 
           <div>
-            <FormTitle>
-              Caption Dropout
-            </FormTitle>
+            <FormTitle>Caption Dropout</FormTitle>
             <Input
               type="text"
               value={augmentation.captionDropoutRate}
@@ -242,9 +238,7 @@ export function FolderRow({
           </div>
 
           <div>
-            <FormTitle>
-              LoRA Weight
-            </FormTitle>
+            <FormTitle>LoRA Weight</FormTitle>
             <Input
               type="text"
               value={augmentation.loraWeight}

@@ -1,7 +1,13 @@
 // Core reducers for the filters slice
 import { PayloadAction } from '@reduxjs/toolkit';
 
-import { ClassFilterMode, FilterMode, Filters, PaginationSize } from './types';
+import {
+  ClassFilterMode,
+  FilterArrayKey,
+  FilterMode,
+  Filters,
+  PaginationSize,
+} from './types';
 import { toggleFilter } from './utils';
 
 /** Key type for the class-based filter modes in visibility settings */
@@ -58,6 +64,37 @@ export const coreReducers = {
     { payload }: PayloadAction<string>,
   ) => {
     state.filterSubfolders = toggleFilter(state.filterSubfolders, payload);
+  },
+
+  /**
+   * Apply a batch of values to a filter class in a single transition — either
+   * adding them all (union) or removing them all. Powers shift-click range
+   * selection in the filter menus, which would otherwise dispatch N toggles
+   * (and run the filter-manager cleanup N times).
+   */
+  setFiltersRange: (
+    state: Filters,
+    {
+      payload,
+    }: PayloadAction<{
+      classKey: FilterArrayKey;
+      values: string[];
+      selected: boolean;
+    }>,
+  ) => {
+    const { classKey, values, selected } = payload;
+    if (values.length === 0) return;
+
+    if (selected) {
+      state[classKey] = [...new Set([...state[classKey], ...values])];
+      // Mirror toggleTagFilter's guard: tag filters clear the Tagless scope.
+      if (classKey === 'filterTags') {
+        state.visibility.scopeTagless = false;
+      }
+    } else {
+      const toRemove = new Set(values);
+      state[classKey] = state[classKey].filter((v) => !toRemove.has(v));
+    }
   },
 
   clearTagFilters: (state: Filters) => {

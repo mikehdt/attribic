@@ -175,7 +175,7 @@ export const MultiTagInput = ({
         onFocus={() => setHasFocus(true)}
         onBlur={handleInputBlur}
         placeholder={tags.length === 0 ? placeholder : ''}
-        className="text-base min-w-24 grow basis-0 bg-transparent px-2 py-1 focus:ring-0"
+        className="min-w-24 grow basis-0 bg-transparent px-2 py-1 text-base focus:ring-0"
         autoFocus={autoFocus}
         data-container="true"
       />

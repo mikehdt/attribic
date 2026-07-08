@@ -5,6 +5,10 @@ import { highlightText } from '@/app/tagging/utils/text-highlight';
 import { decomposeDimensions } from '@/app/utils/helpers';
 
 import { SortType } from '../types';
+import {
+  RANGE_PREVIEW_DESELECT_CLASS,
+  RANGE_PREVIEW_SELECT_SIZE,
+} from '../use-range-toggle';
 import { useSizesView } from './use-sizes-view';
 
 /**
@@ -186,9 +190,9 @@ export const SizesView = () => {
     inputRef,
     filteredSizes,
     selectedIndex,
-    handleToggle,
+    handleItemAction,
+    previewState,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   } = useSizesView();
 
@@ -233,41 +237,48 @@ export const SizesView = () => {
             className="divide-y divide-slate-100 dark:divide-slate-700"
             onMouseLeave={handleListMouseLeave}
           >
-            {filteredSizes.map((item, index) => (
-              <li
-                id={`size-${item.dimensions}`}
-                key={item.dimensions}
-                onClick={() => {
-                  handleItemClick(index);
-                  handleToggle(item.dimensions);
-                }}
-                onMouseMove={() => handleItemMouseMove(index)}
-                className={`flex min-h-14 cursor-pointer items-center justify-between px-3 py-2 transition-colors ${
-                  index === selectedIndex
-                    ? item.isActive
-                      ? 'bg-sky-300 dark:bg-sky-700'
-                      : 'bg-blue-100 dark:bg-blue-900/50'
-                    : item.isActive
-                      ? 'bg-sky-100 dark:bg-sky-900/50'
-                      : ''
-                }`}
-              >
-                <div className="mr-2 flex w-10 justify-center">
-                  <DimensionVisualizer
-                    dimensions={item.dimensions}
-                    isActive={item.isActive}
-                  />
-                </div>
+            {filteredSizes.map((item, index) => {
+              const preview = previewState(item.dimensions);
+              return (
+                <li
+                  id={`size-${item.dimensions}`}
+                  key={item.dimensions}
+                  onClick={(e) => {
+                    if (e.shiftKey) e.preventDefault(); // avoid text selection
+                    handleItemAction(index, e.shiftKey);
+                  }}
+                  onMouseMove={() => handleItemMouseMove(index)}
+                  className={`flex min-h-14 cursor-pointer items-center justify-between px-3 py-2 transition-colors select-none ${
+                    preview === 'select'
+                      ? RANGE_PREVIEW_SELECT_SIZE
+                      : preview === 'deselect'
+                        ? RANGE_PREVIEW_DESELECT_CLASS
+                        : index === selectedIndex
+                          ? item.isActive
+                            ? 'bg-sky-300 dark:bg-sky-700'
+                            : 'bg-blue-100 dark:bg-blue-900/50'
+                          : item.isActive
+                            ? 'bg-sky-100 dark:bg-sky-900/50'
+                            : ''
+                  }`}
+                >
+                  <div className="mr-2 flex w-10 justify-center">
+                    <DimensionVisualizer
+                      dimensions={item.dimensions}
+                      isActive={item.isActive}
+                    />
+                  </div>
 
-                <div className="flex flex-1 flex-col">
-                  <SizeInfo
-                    item={item}
-                    sortType={sortType}
-                    searchTerm={searchTerm}
-                  />
-                </div>
-              </li>
-            ))}
+                  <div className="flex flex-1 flex-col">
+                    <SizeInfo
+                      item={item}
+                      sortType={sortType}
+                      searchTerm={searchTerm}
+                    />
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

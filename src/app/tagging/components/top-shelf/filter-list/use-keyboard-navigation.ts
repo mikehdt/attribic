@@ -28,7 +28,7 @@ export const useKeyboardNavigation = (
         keyboardIndexRef.current = selectedIndex;
         document.dispatchEvent(
           new CustomEvent('filterlist:keyboardselect', {
-            detail: { index: selectedIndex },
+            detail: { index: selectedIndex, shiftKey: e.shiftKey },
           }),
         );
         // We'll maintain the selected index and just focus back on the input

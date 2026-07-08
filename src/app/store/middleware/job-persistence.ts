@@ -26,7 +26,11 @@ import { recordTrainingRun } from '../training-history';
 import { persistTrainingHistory } from '../training-history/persistence';
 
 /** Statuses at which a training run is finished and worth archiving. */
-const TERMINAL_TRAINING_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_TRAINING_STATUSES = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+]);
 
 export const jobPersistenceMiddleware = createListenerMiddleware();
 

@@ -20,12 +20,7 @@ import type { AppThunk, RootState } from '../index';
 // assignment-compatible. Accept a loose dispatch here — we only use it to
 // forward known action creators.
 type ThunkDispatch = (action: unknown) => unknown;
-import {
-  addJob,
-  openPanel,
-  removeJob,
-  updateTrainingProgress,
-} from '../jobs';
+import { addJob, openPanel, removeJob, updateTrainingProgress } from '../jobs';
 import type { TrainingJob } from '../jobs/types';
 import { addToast } from '../toasts/reducers';
 
@@ -34,12 +29,7 @@ import { addToast } from '../toasts/reducers';
 // ---------------------------------------------------------------------------
 
 type SidecarJobStatus =
-  | 'pending'
-  | 'preparing'
-  | 'training'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+  'pending' | 'preparing' | 'training' | 'completed' | 'failed' | 'cancelled';
 
 type SidecarJobProgress = {
   job_id: string;
@@ -147,11 +137,7 @@ function buildProgress(
 function ensureProgressSocket(dispatch: ThunkDispatch, port: number) {
   // If we already have a live socket on the same port, reuse it. Only
   // reopen when the port changed or the socket dropped.
-  if (
-    ws.socket &&
-    ws.port === port &&
-    ws.socket.readyState <= WebSocket.OPEN
-  ) {
+  if (ws.socket && ws.port === port && ws.socket.readyState <= WebSocket.OPEN) {
     return;
   }
 

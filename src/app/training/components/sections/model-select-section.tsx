@@ -115,9 +115,7 @@ const ModelSelectSectionComponent = ({
           <div>
             <div className="flex">
               <div className="w-1/2">
-                <FormTitle>
-                  Base Model
-                </FormTitle>
+                <FormTitle>Base Model</FormTitle>
 
                 <Dropdown
                   items={modelGroups}
@@ -145,9 +143,7 @@ const ModelSelectSectionComponent = ({
 
               {/* Backend — lists every provider this model supports */}
               <div className="w-1/2">
-                <FormTitle>
-                  Backend
-                </FormTitle>
+                <FormTitle>Backend</FormTitle>
 
                 <Dropdown
                   items={currentModel.providers.map(

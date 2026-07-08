@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { selectAllImages } from '@/app/store/assets';
-import { selectFilterBuckets, toggleBucketFilter } from '@/app/store/filters';
-import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { selectFilterBuckets } from '@/app/store/filters';
+import { useAppSelector } from '@/app/store/hooks';
 import { decomposeDimensions } from '@/app/utils/helpers';
 
 import { useFilterContext } from '../filter-context';
+import { useRangeToggle } from '../use-range-toggle';
 
 export const useBucketsView = () => {
-  const dispatch = useAppDispatch();
   const images = useAppSelector(selectAllImages);
   const activeBuckets = useAppSelector(selectFilterBuckets);
 
@@ -22,7 +22,6 @@ export const useBucketsView = () => {
     inputRef,
     handleKeyDown,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   } = useFilterContext();
 
@@ -99,60 +98,24 @@ export const useBucketsView = () => {
     updateListLength(bucketList.length);
   }, [bucketList.length, updateListLength]);
 
-  // Create a memoized toggle handler
-  const handleToggle = useCallback(
-    (bucket: string) => {
-      dispatch(toggleBucketFilter(bucket));
+  // Shift-click / Shift+Return range selection (and plain toggle)
+  const { handleItemAction, previewState } = useRangeToggle({
+    items: bucketList,
+    getValue: (item) => item.name,
+    getIsActive: (item) => item.isActive,
+    classKey: 'filterBuckets',
+  });
 
-      // Focus back on input after selection
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    },
-    [dispatch, inputRef],
-  );
-
-  // Handle bucket selection via keyboard
+  // Keep the keyboard-highlighted bucket scrolled into view
   useEffect(() => {
     if (selectedIndex >= 0 && selectedIndex < bucketList.length) {
       const selectedBucket = bucketList[selectedIndex].name;
-      // Update UI to show focus on the selected bucket
       const bucketEl = document.getElementById(`bucket-${selectedBucket}`);
       if (bucketEl) {
-        // Ensure the element is in view
         bucketEl.scrollIntoView({ block: 'nearest' });
       }
     }
   }, [selectedIndex, bucketList]);
-
-  // Listen for keyboard selection events
-  useEffect(() => {
-    const handleKeyboardSelect = (e: CustomEvent) => {
-      // Check if the event is for our component by comparing selectedIndex
-      if (
-        e.detail?.index === selectedIndex &&
-        selectedIndex >= 0 &&
-        selectedIndex < bucketList.length
-      ) {
-        // Get the selected bucket and toggle it
-        const selectedBucket = bucketList[selectedIndex].name;
-        handleToggle(selectedBucket);
-      }
-    };
-
-    // Add event listener for custom keyboard selection event
-    document.addEventListener(
-      'filterlist:keyboardselect',
-      handleKeyboardSelect as EventListener,
-    );
-
-    return () => {
-      document.removeEventListener(
-        'filterlist:keyboardselect',
-        handleKeyboardSelect as EventListener,
-      );
-    };
-  }, [selectedIndex, bucketList, handleToggle]);
 
   return {
     searchTerm,
@@ -161,9 +124,9 @@ export const useBucketsView = () => {
     inputRef,
     bucketList,
     selectedIndex,
-    handleToggle,
+    handleItemAction,
+    previewState,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   };
 };

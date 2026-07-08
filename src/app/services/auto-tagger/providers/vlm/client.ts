@@ -100,12 +100,7 @@ type BatchEvent =
   | QueuedStatus;
 
 type BatchStatus =
-  | 'queued'
-  | 'loading'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+  'queued' | 'loading' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 /** Shape as sent by the Python sidecar (snake_case fields from Pydantic). */
 type RawBatchProgressEvent = {

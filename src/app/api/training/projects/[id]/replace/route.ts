@@ -19,10 +19,7 @@ export async function POST(request: Request, { params }: Params) {
       label?: string | null;
     };
     if (!body.form) {
-      return NextResponse.json(
-        { error: 'form is required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'form is required' }, { status: 400 });
     }
     const result = await replaceProject(id, body.form, {
       name: body.name,

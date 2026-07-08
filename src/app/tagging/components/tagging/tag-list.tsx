@@ -29,11 +29,7 @@ import {
   pointerWithin,
   UniqueIdentifier,
 } from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  SortingStrategy,
-} from '@dnd-kit/sortable';
+import { arrayMove, SortableContext, SortingStrategy } from '@dnd-kit/sortable';
 import { ClipboardIcon, ClipboardListIcon } from 'lucide-react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 

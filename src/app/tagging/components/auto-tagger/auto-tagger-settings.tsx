@@ -55,7 +55,9 @@ export function AutoTaggerSettings({
 
       {/* Model selection */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span" size="sm">Model</FormTitle>
+        <FormTitle as="span" size="sm">
+          Model
+        </FormTitle>
         <Dropdown
           items={modelItems}
           selectedValue={selectedModelId || ''}
@@ -130,7 +132,9 @@ export function AutoTaggerSettings({
 
       {/* Tag insert mode */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span" size="sm">New tags</FormTitle>
+        <FormTitle as="span" size="sm">
+          New tags
+        </FormTitle>
         <RadioGroup
           name="tagInsertMode"
           options={insertModeOptions}
@@ -141,7 +145,9 @@ export function AutoTaggerSettings({
 
       {/* Include tags */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span" size="sm">Always Include Tags</FormTitle>
+        <FormTitle as="span" size="sm">
+          Always Include Tags
+        </FormTitle>
         <MultiTagInput
           tags={options.includeTags}
           onTagsChange={(tags) => onOptionChange('includeTags', tags)}
@@ -152,7 +158,9 @@ export function AutoTaggerSettings({
 
       {/* Exclude tags */}
       <div className="flex flex-col gap-2">
-        <FormTitle as="span" size="sm">Exclude Tags</FormTitle>
+        <FormTitle as="span" size="sm">
+          Exclude Tags
+        </FormTitle>
         <MultiTagInput
           tags={options.excludeTags}
           onTagsChange={(tags) => onOptionChange('excludeTags', tags)}

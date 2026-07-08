@@ -130,9 +130,7 @@ const PerformanceSectionComponent = ({
         <div className="grid grid-cols-3 gap-x-4 gap-y-3">
           {visibleFields.has('mixedPrecision' satisfies keyof FormState) && (
             <div>
-              <FormTitle>
-                Training Precision
-              </FormTitle>
+              <FormTitle>Training Precision</FormTitle>
               <Dropdown
                 items={PRECISION_ITEMS}
                 selectedValue={mixedPrecision}
@@ -154,9 +152,7 @@ const PerformanceSectionComponent = ({
             'transformerQuantization' satisfies keyof FormState,
           ) && (
             <div>
-              <FormTitle>
-                Transformer Quantization
-              </FormTitle>
+              <FormTitle>Transformer Quantization</FormTitle>
               <Dropdown
                 items={QUANTIZATION_ITEMS}
                 selectedValue={transformerQuantization}
@@ -178,9 +174,7 @@ const PerformanceSectionComponent = ({
             'textEncoderQuantization' satisfies keyof FormState,
           ) && (
             <div>
-              <FormTitle>
-                Text Encoder Quantization
-              </FormTitle>
+              <FormTitle>Text Encoder Quantization</FormTitle>
               <Dropdown
                 items={QUANTIZATION_ITEMS}
                 selectedValue={textEncoderQuantization}
@@ -233,9 +227,7 @@ const PerformanceSectionComponent = ({
         ) && (
           <div className="grid grid-cols-4 gap-x-4">
             <div>
-              <FormTitle>
-                Gradient Accumulation Steps
-              </FormTitle>
+              <FormTitle>Gradient Accumulation Steps</FormTitle>
               <Input
                 type="number"
                 min={1}
@@ -280,9 +272,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has(
-            'unloadTextEncoder' satisfies keyof FormState,
-          ) && (
+          {visibleFields.has('unloadTextEncoder' satisfies keyof FormState) && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={unloadTextEncoder}
@@ -305,10 +295,7 @@ const PerformanceSectionComponent = ({
               <Checkbox
                 isSelected={gradientCheckpointing}
                 onChange={() =>
-                  onFieldChange(
-                    'gradientCheckpointing',
-                    !gradientCheckpointing,
-                  )
+                  onFieldChange('gradientCheckpointing', !gradientCheckpointing)
                 }
                 label="Gradient Checkpointing"
                 size="sm"

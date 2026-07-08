@@ -2,12 +2,7 @@ import { type LucideIcon } from 'lucide-react';
 import { type ReactNode } from 'react';
 
 export type ColorScheme =
-  | 'slate'
-  | 'emerald'
-  | 'sky'
-  | 'indigo'
-  | 'stone'
-  | 'green';
+  'slate' | 'emerald' | 'sky' | 'indigo' | 'stone' | 'green';
 
 interface SectionDividerProps {
   children: ReactNode;

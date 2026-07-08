@@ -22,19 +22,21 @@ interface FormTitleSpanProps extends FormTitleBaseProps {
 
 type FormTitleProps = FormTitleLabelProps | FormTitleSpanProps;
 
-const VARIANT_CLASSES: Record<FormTitleVariant, Record<FormTitleSize, string>> =
-  {
-    field: {
-      xs: 'text-xs font-medium text-(--foreground)/70',
-      sm: 'text-sm font-medium text-(--foreground)/70',
-      md: 'text-base font-medium text-(--foreground)/70',
-    },
-    section: {
-      xs: 'font-medium uppercase tracking-wide text-xs tracking-wider text-slate-500 dark:text-slate-300',
-      sm: 'font-medium uppercase tracking-wide text-sm text-slate-500 dark:text-slate-300',
-      md: 'font-medium uppercase tracking-wide text-base text-slate-500 dark:text-slate-300',
-    },
-  };
+const VARIANT_CLASSES: Record<
+  FormTitleVariant,
+  Record<FormTitleSize, string>
+> = {
+  field: {
+    xs: 'text-xs font-medium text-(--foreground)/70',
+    sm: 'text-sm font-medium text-(--foreground)/70',
+    md: 'text-base font-medium text-(--foreground)/70',
+  },
+  section: {
+    xs: 'font-medium uppercase tracking-wide text-xs tracking-wider text-slate-500 dark:text-slate-300',
+    sm: 'font-medium uppercase tracking-wide text-sm text-slate-500 dark:text-slate-300',
+    md: 'font-medium uppercase tracking-wide text-base text-slate-500 dark:text-slate-300',
+  },
+};
 
 export function FormTitle({
   children,

@@ -111,7 +111,10 @@ const trainingConfigSlice = createSlice({
       //   - Ephemeral: fall back to suggested defaults for the model.
       const ref =
         state.baselineSnapshot ??
-        defaultsToFormState(getDefaults(state.form.modelId), state.form.modelId);
+        defaultsToFormState(
+          getDefaults(state.form.modelId),
+          state.form.modelId,
+        );
       const { form } = state;
 
       switch (action.payload) {
@@ -463,112 +466,107 @@ export const selectCalculatedEpochs = createSelector(
   },
 );
 
-export const selectSectionHasChanges = createSelector(
-  selectSlice,
-  (slice) => {
-    const { form, baselineSnapshot } = slice;
-    const isLoaded = baselineSnapshot !== null;
-    // Compare against the loaded baseline when present; otherwise against
-    // the pristine defaults for the current model.
-    const ref =
-      baselineSnapshot ??
-      defaultsToFormState(getDefaults(form.modelId), form.modelId);
+export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
+  const { form, baselineSnapshot } = slice;
+  const isLoaded = baselineSnapshot !== null;
+  // Compare against the loaded baseline when present; otherwise against
+  // the pristine defaults for the current model.
+  const ref =
+    baselineSnapshot ??
+    defaultsToFormState(getDefaults(form.modelId), form.modelId);
 
-    const refFolderMap = new Map<string, FolderAugmentation>();
-    for (const ds of ref.datasets) {
-      for (const f of ds.folders) {
-        refFolderMap.set(`${ds.folderName}/${f.name}`, extractAugment(f));
-      }
+  const refFolderMap = new Map<string, FolderAugmentation>();
+  for (const ds of ref.datasets) {
+    for (const f of ds.folders) {
+      refFolderMap.set(`${ds.folderName}/${f.name}`, extractAugment(f));
     }
-    const refExtraMap = new Map<string, FolderAugmentation>();
-    for (const ef of ref.extraFolders) {
-      refExtraMap.set(ef.path, extractAugment(ef));
-    }
-    const fallbackAugment = defaultFolderAugmentation(
-      getDefaults(form.modelId),
-    );
+  }
+  const refExtraMap = new Map<string, FolderAugmentation>();
+  for (const ef of ref.extraFolders) {
+    refExtraMap.set(ef.path, extractAugment(ef));
+  }
+  const fallbackAugment = defaultFolderAugmentation(getDefaults(form.modelId));
 
-    const folderChanged = (
-      f: FolderAugmentation,
-      refAugment: FolderAugmentation,
-    ): boolean => !augmentEqual(f, refAugment);
+  const folderChanged = (
+    f: FolderAugmentation,
+    refAugment: FolderAugmentation,
+  ): boolean => !augmentEqual(f, refAugment);
 
-    const anyFolderChanged =
-      form.datasets.some((ds) =>
-        ds.folders.some((f) => {
-          const refAugment =
-            refFolderMap.get(`${ds.folderName}/${f.name}`) ?? fallbackAugment;
-          return folderChanged(f, refAugment);
-        }),
-      ) ||
-      form.extraFolders.some((ef) => {
-        const refAugment = refExtraMap.get(ef.path) ?? fallbackAugment;
-        return folderChanged(ef, refAugment);
-      });
+  const anyFolderChanged =
+    form.datasets.some((ds) =>
+      ds.folders.some((f) => {
+        const refAugment =
+          refFolderMap.get(`${ds.folderName}/${f.name}`) ?? fallbackAugment;
+        return folderChanged(f, refAugment);
+      }),
+    ) ||
+    form.extraFolders.some((ef) => {
+      const refAugment = refExtraMap.get(ef.path) ?? fallbackAugment;
+      return folderChanged(ef, refAugment);
+    });
 
-    const samplingDiffers =
-      form.samplingEnabled !== ref.samplingEnabled ||
-      form.sampleMode !== ref.sampleMode ||
-      form.sampleEveryEpochs !== ref.sampleEveryEpochs ||
-      form.sampleEverySteps !== ref.sampleEverySteps ||
-      form.sampleSteps !== ref.sampleSteps ||
-      form.seed !== ref.seed ||
-      form.guidanceScale !== ref.guidanceScale ||
-      form.noiseScheduler !== ref.noiseScheduler ||
-      JSON.stringify(form.samplePrompts) !== JSON.stringify(ref.samplePrompts);
+  const samplingDiffers =
+    form.samplingEnabled !== ref.samplingEnabled ||
+    form.sampleMode !== ref.sampleMode ||
+    form.sampleEveryEpochs !== ref.sampleEveryEpochs ||
+    form.sampleEverySteps !== ref.sampleEverySteps ||
+    form.sampleSteps !== ref.sampleSteps ||
+    form.seed !== ref.seed ||
+    form.guidanceScale !== ref.guidanceScale ||
+    form.noiseScheduler !== ref.noiseScheduler ||
+    JSON.stringify(form.samplePrompts) !== JSON.stringify(ref.samplePrompts);
 
-    const savingDiffers =
-      form.saveEnabled !== ref.saveEnabled ||
-      form.saveMode !== ref.saveMode ||
-      form.saveEveryEpochs !== ref.saveEveryEpochs ||
-      form.saveEverySteps !== ref.saveEverySteps ||
-      form.saveFormat !== ref.saveFormat ||
-      form.maxSavesToKeep !== ref.maxSavesToKeep ||
-      form.saveState !== ref.saveState ||
-      form.resumeState !== ref.resumeState;
+  const savingDiffers =
+    form.saveEnabled !== ref.saveEnabled ||
+    form.saveMode !== ref.saveMode ||
+    form.saveEveryEpochs !== ref.saveEveryEpochs ||
+    form.saveEverySteps !== ref.saveEverySteps ||
+    form.saveFormat !== ref.saveFormat ||
+    form.maxSavesToKeep !== ref.maxSavesToKeep ||
+    form.saveState !== ref.saveState ||
+    form.resumeState !== ref.resumeState;
 
-    return {
-      whatToTrain: false,
-      dataset: anyFolderChanged,
-      learning:
-        form.learningRate !== ref.learningRate ||
-        form.optimizer !== ref.optimizer ||
-        form.scheduler !== ref.scheduler ||
-        form.epochs !== ref.epochs ||
-        form.batchSize !== ref.batchSize ||
-        form.warmupSteps !== ref.warmupSteps ||
-        form.numRestarts !== ref.numRestarts ||
-        form.weightDecay !== ref.weightDecay ||
-        form.maxGradNorm !== ref.maxGradNorm ||
-        form.trainTextEncoder !== ref.trainTextEncoder ||
-        form.backboneLR !== ref.backboneLR ||
-        form.textEncoderLR !== ref.textEncoderLR ||
-        form.ema !== ref.ema ||
-        form.lossType !== ref.lossType ||
-        form.timestepType !== ref.timestepType ||
-        form.timestepBias !== ref.timestepBias,
-      loraShape:
-        form.networkDim !== ref.networkDim ||
-        form.networkAlpha !== ref.networkAlpha ||
-        form.networkType !== ref.networkType ||
-        form.networkDropout !== ref.networkDropout,
-      performance:
-        form.mixedPrecision !== ref.mixedPrecision ||
-        form.transformerQuantization !== ref.transformerQuantization ||
-        form.textEncoderQuantization !== ref.textEncoderQuantization ||
-        form.cacheTextEmbeddings !== ref.cacheTextEmbeddings ||
-        form.unloadTextEncoder !== ref.unloadTextEncoder ||
-        form.gradientAccumulationSteps !== ref.gradientAccumulationSteps ||
-        form.gradientCheckpointing !== ref.gradientCheckpointing ||
-        form.cacheLatents !== ref.cacheLatents,
-      // Sampling and saving are opt-in for ephemeral configs (no "has changes"
-      // indicator when the user just hasn't touched them). Once a project is
-      // loaded, any deviation from the baseline does count.
-      sampling: isLoaded && samplingDiffers,
-      saving: isLoaded && savingDiffers,
-    };
-  },
-);
+  return {
+    whatToTrain: false,
+    dataset: anyFolderChanged,
+    learning:
+      form.learningRate !== ref.learningRate ||
+      form.optimizer !== ref.optimizer ||
+      form.scheduler !== ref.scheduler ||
+      form.epochs !== ref.epochs ||
+      form.batchSize !== ref.batchSize ||
+      form.warmupSteps !== ref.warmupSteps ||
+      form.numRestarts !== ref.numRestarts ||
+      form.weightDecay !== ref.weightDecay ||
+      form.maxGradNorm !== ref.maxGradNorm ||
+      form.trainTextEncoder !== ref.trainTextEncoder ||
+      form.backboneLR !== ref.backboneLR ||
+      form.textEncoderLR !== ref.textEncoderLR ||
+      form.ema !== ref.ema ||
+      form.lossType !== ref.lossType ||
+      form.timestepType !== ref.timestepType ||
+      form.timestepBias !== ref.timestepBias,
+    loraShape:
+      form.networkDim !== ref.networkDim ||
+      form.networkAlpha !== ref.networkAlpha ||
+      form.networkType !== ref.networkType ||
+      form.networkDropout !== ref.networkDropout,
+    performance:
+      form.mixedPrecision !== ref.mixedPrecision ||
+      form.transformerQuantization !== ref.transformerQuantization ||
+      form.textEncoderQuantization !== ref.textEncoderQuantization ||
+      form.cacheTextEmbeddings !== ref.cacheTextEmbeddings ||
+      form.unloadTextEncoder !== ref.unloadTextEncoder ||
+      form.gradientAccumulationSteps !== ref.gradientAccumulationSteps ||
+      form.gradientCheckpointing !== ref.gradientCheckpointing ||
+      form.cacheLatents !== ref.cacheLatents,
+    // Sampling and saving are opt-in for ephemeral configs (no "has changes"
+    // indicator when the user just hasn't touched them). Once a project is
+    // loaded, any deviation from the baseline does count.
+    sampling: isLoaded && samplingDiffers,
+    saving: isLoaded && savingDiffers,
+  };
+});
 
 /**
  * Dirty when a saved project is loaded and the form differs from the

@@ -14,13 +14,7 @@ import {
  */
 
 type ButtonColor =
-  | 'slate'
-  | 'rose'
-  | 'amber'
-  | 'teal'
-  | 'sky'
-  | 'indigo'
-  | 'stone';
+  'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
 type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'toolbar';
 type ButtonWidth = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'toolbar';
 type ButtonVariant = 'default' | 'toggle' | 'deep-toggle' | 'ghost';

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { selectImageSizes } from '@/app/store/assets';
-import { selectFilterSizes, toggleSizeFilter } from '@/app/store/filters';
-import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { selectFilterSizes } from '@/app/store/filters';
+import { useAppSelector } from '@/app/store/hooks';
 import { decomposeDimensions, getAspectRatio } from '@/app/utils/helpers';
 
 import { useFilterContext } from '../filter-context';
+import { useRangeToggle } from '../use-range-toggle';
 
 // Format aspect ratio as a simplified string
 const formatAspectRatio = (
@@ -56,7 +57,6 @@ const formatAspectRatio = (
 };
 
 export const useSizesView = () => {
-  const dispatch = useAppDispatch();
   const allSizes = useAppSelector(selectImageSizes);
   const activeSizes = useAppSelector(selectFilterSizes);
 
@@ -70,7 +70,6 @@ export const useSizesView = () => {
     inputRef,
     handleKeyDown,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   } = useFilterContext();
 
@@ -174,60 +173,24 @@ export const useSizesView = () => {
     updateListLength(filteredSizes.length);
   }, [filteredSizes.length, updateListLength]);
 
-  // Create a memoized toggle handler
-  const handleToggle = useCallback(
-    (size: string) => {
-      dispatch(toggleSizeFilter(size));
+  // Shift-click / Shift+Return range selection (and plain toggle)
+  const { handleItemAction, previewState } = useRangeToggle({
+    items: filteredSizes,
+    getValue: (item) => item.dimensions,
+    getIsActive: (item) => item.isActive,
+    classKey: 'filterSizes',
+  });
 
-      // Focus back on input after selection
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    },
-    [dispatch, inputRef],
-  );
-
-  // Handle size selection via keyboard
+  // Keep the keyboard-highlighted size scrolled into view
   useEffect(() => {
     if (selectedIndex >= 0 && selectedIndex < filteredSizes.length) {
       const selectedSize = filteredSizes[selectedIndex].dimensions;
-      // Update UI to show focus on the selected size
       const sizeEl = document.getElementById(`size-${selectedSize}`);
       if (sizeEl) {
-        // Ensure the element is in view
         sizeEl.scrollIntoView({ block: 'nearest' });
       }
     }
   }, [selectedIndex, filteredSizes]);
-
-  // Listen for keyboard selection events
-  useEffect(() => {
-    const handleKeyboardSelect = (e: CustomEvent) => {
-      // Check if the event is for our component by comparing selectedIndex
-      if (
-        e.detail?.index === selectedIndex &&
-        selectedIndex >= 0 &&
-        selectedIndex < filteredSizes.length
-      ) {
-        // Get the selected size and toggle it
-        const selectedSize = filteredSizes[selectedIndex].dimensions;
-        handleToggle(selectedSize);
-      }
-    };
-
-    // Add event listener for custom keyboard selection event
-    document.addEventListener(
-      'filterlist:keyboardselect',
-      handleKeyboardSelect as EventListener,
-    );
-
-    return () => {
-      document.removeEventListener(
-        'filterlist:keyboardselect',
-        handleKeyboardSelect as EventListener,
-      );
-    };
-  }, [selectedIndex, filteredSizes, handleToggle]);
 
   return {
     sortType,
@@ -237,9 +200,9 @@ export const useSizesView = () => {
     inputRef,
     filteredSizes,
     selectedIndex,
-    handleToggle,
+    handleItemAction,
+    previewState,
     handleItemMouseMove,
-    handleItemClick,
     handleListMouseLeave,
   };
 };

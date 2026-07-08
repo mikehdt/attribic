@@ -141,9 +141,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         <Stat
           label="Learning rate"
           value={
-            progress.learningRate !== null
-              ? String(progress.learningRate)
-              : '—'
+            progress.learningRate !== null ? String(progress.learningRate) : '—'
           }
         />
         <Stat
