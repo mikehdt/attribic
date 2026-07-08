@@ -52,13 +52,18 @@ Tags have uneven widths, so transform-based dnd-kit strategies
   handlers via a module-level flag; placement runs on `onDragMove` as well as
   `onDragOver`, because `onDragOver` doesn't re-fire when the pointer moves
   into a zone while the target id stays the same
-- A dragged chip much taller than the hovered one (a wrapped multi-line tag
-  in a narrow window) can't sit beside it, so it always takes the hovered
-  chip's spot and the hovered chip pops below, regardless of drag direction
-- Grace space: a chip we just swapped with is blocked as a drop target until
-  the pointer moves off it — after a swap, a wider chip's new rect can still
-  overlap the pointer purely from the width differential, and re-swapping
-  would ping-pong
+- Midpoint placement: which side of the hovered chip's midpoint the pointer
+  is on decides before/after that chip. The axis follows the flow —
+  horizontal for same-height chips, vertical when the dragged chip is much
+  taller than the target (a wrapped multi-line tag can't sit beside a small
+  chip: top half takes its spot, bottom half slots in below). Pointing IS the
+  position, so placement is precise, never toggles on re-entry, and stays
+  stable when a swapped chip's wider rect still overlaps the pointer. A small
+  dead-band around the midpoint absorbs hand tremor
+- Loop insurance: while the pointer is stationary each placement intent
+  applies at most once (reset on movement). Reflows re-fire collisions with
+  the pointer unchanged; a legitimate settling cascade applies distinct
+  intents and converges, a feedback cycle revisits one and gets blocked
 - Redux is only updated once, on drop (`onReorder(oldIndex, newIndex)`);
   Escape cancels and restores the original order
 

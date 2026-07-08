@@ -64,12 +64,14 @@ const measuringConfig = {
 
 const noop = () => {};
 
-// Which edge zone the pointer is in, written by collisionWithEdgeZones and
-// read by the drag handlers. dnd-kit events don't expose current pointer
-// coordinates (activatorEvent + delta drifts), but the collision detector
-// receives them exactly — so the zone decision is made there. Module-level is
-// safe: only one drag (one pointer) can be active at a time across all lists.
+// Pointer context written by collisionWithEdgeZones and read by the drag
+// handlers. dnd-kit events don't expose current pointer coordinates
+// (activatorEvent + delta drifts), but the collision detector receives them
+// exactly — so both the edge-zone decision and the raw coordinates are
+// captured there. Module-level is safe: only one drag (one pointer) can be
+// active at a time across all lists.
 let pointerEdgeZone: 'start' | 'end' | null = null;
+let dragPointer: { x: number; y: number } | null = null;
 
 // pointerWithin only hits actual chips, so the empty regions before the first
 // chip and after the last chip are dead zones — dragging there should mean
@@ -79,6 +81,7 @@ let pointerEdgeZone: 'start' | 'end' | null = null;
 // start/end placement.
 const collisionWithEdgeZones: CollisionDetection = (args) => {
   pointerEdgeZone = null;
+  dragPointer = args.pointerCoordinates;
   const within = pointerWithin(args);
   if (within.length > 0) return within;
 
@@ -212,14 +215,18 @@ const TagsDisplayComponent = ({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragOrder, setDragOrder] = useState<string[] | null>(null);
 
-  // Grace space: after a swap, the swapped-with chip can still sit under the
-  // pointer purely because of the width difference between it and the dragged
-  // chip (swap a small tag with a wide one and the wide one's new rect still
-  // overlaps the pointer). Re-swapping would ping-pong — possibly infinitely,
-  // since MeasuringStrategy.Always re-fires collisions after each reflow with
-  // no pointer movement — so a chip we just swapped with is blocked as a
-  // target until the pointer moves off it.
-  const lastSwapRef = useRef<string | null>(null);
+  // Placement intents ("<chipId>:<before|after>", "#zone:end") applied since
+  // the pointer last moved. Each reflow re-fires collisions with the pointer
+  // unchanged (MeasuringStrategy.Always), which is sometimes legitimate — a
+  // reflow can reveal a new chip under a stationary pointer that still needs
+  // placing (a settling cascade) — and sometimes a feedback cycle that would
+  // reorder forever. The difference: a cascade applies distinct intents and
+  // converges; a cycle revisits one. So while the pointer is stationary each
+  // intent may apply at most once; any movement resets the slate.
+  const stationaryIntentsRef = useRef<{
+    pointer: { x: number; y: number } | null;
+    applied: Set<string>;
+  }>({ pointer: null, applied: new Set() });
 
   const handleMouseEnter = useCallback(() => setIsHovered(true), []);
   const handleMouseLeave = useCallback(() => {
@@ -234,7 +241,8 @@ const TagsDisplayComponent = ({
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       isDraggingRef.current = true;
-      lastSwapRef.current = null;
+      stationaryIntentsRef.current.pointer = null;
+      stationaryIntentsRef.current.applied.clear();
       pointerEdgeZone = null;
       setActiveId(event.active.id as string);
       setDragOrder(tagNames);
@@ -251,50 +259,73 @@ const TagsDisplayComponent = ({
     (event: DragMoveEvent | DragOverEvent) => {
       const { active, over } = event;
       const zone = pointerEdgeZone;
+      const pointer = dragPointer;
+      if (!pointer) return;
 
-      // Edge zones: place at the very start/end (idempotent, safe to re-run).
-      // The pointer is in empty space, off any just-swapped chip.
+      // One application per intent while the pointer is stationary; any
+      // movement resets the slate
+      const station = stationaryIntentsRef.current;
+      if (
+        !station.pointer ||
+        Math.abs(pointer.x - station.pointer.x) >= 1 ||
+        Math.abs(pointer.y - station.pointer.y) >= 1
+      ) {
+        station.pointer = pointer;
+        station.applied.clear();
+      }
+
+      // Edge zones: place at the very start/end
       if (zone) {
-        lastSwapRef.current = null;
+        const zoneIntent = `#zone:${zone}`;
+        if (station.applied.has(zoneIntent)) return;
         setDragOrder((prev) => {
           if (!prev) return prev;
           const from = prev.indexOf(active.id as string);
           if (from === -1) return prev;
           const to = zone === 'start' ? 0 : prev.length - 1;
-          return to === from ? prev : arrayMove(prev, from, to);
+          if (to === from) return prev;
+          station.applied.add(zoneIntent);
+          return arrayMove(prev, from, to);
         });
         return;
       }
 
-      if (!over) return;
-      if (active.id === over.id) {
-        // Hovering the placeholder — pointer has left any just-swapped chip
-        lastSwapRef.current = null;
-        return;
-      }
-      if (lastSwapRef.current === over.id) return; // grace space
-      lastSwapRef.current = null;
+      if (!over || active.id === over.id) return;
 
       const overRect = over.rect;
       const activeRect = active.rect.current.initial;
-      // A chip much taller than the target (a wrapped multi-line tag) can't
-      // sit beside it, so taking the target's spot reads ambiguously and
-      // reflows the target away from the pointer. Slot it in directly before
-      // (above) the hovered chip — it takes the hovered spot and the hovered
-      // chip pops below — deterministic regardless of drag direction.
+      // Which side of the hovered chip's midpoint the pointer is on decides
+      // placement: before or after that chip. The axis follows the flow — a
+      // chip much taller than the target (a wrapped multi-line tag) can't sit
+      // beside it, so it compares vertically (top half = take its spot,
+      // bottom half = slot in below); same-height chips compare horizontally.
+      // Pointing IS the position, so re-hovering a chip never toggles, and
+      // the placement stays stable when a swapped chip's wider rect still
+      // overlaps the pointer.
       const tallActive =
         activeRect !== null &&
         overRect.height > 0 &&
         activeRect.height > overRect.height * 1.5;
+      const distFromMid = tallActive
+        ? pointer.y - (overRect.top + overRect.height / 2)
+        : pointer.x - (overRect.left + overRect.width / 2);
+      // Dead-band: within a few px of the midpoint, keep the current
+      // placement rather than flipping on hand tremor
+      if (Math.abs(distFromMid) < 6) return;
+      const after = distFromMid > 0;
+
+      const intent = `${over.id}:${after ? 'after' : 'before'}`;
+      if (station.applied.has(intent)) return;
 
       setDragOrder((prev) => {
         if (!prev) return prev;
         const from = prev.indexOf(active.id as string);
         const iOver = prev.indexOf(over.id as string);
         if (from === -1 || iOver === -1) return prev;
-        const to = tallActive && from < iOver ? iOver - 1 : iOver;
+        let to = after ? iOver + 1 : iOver;
+        if (from < to) to -= 1; // removing the active item shifts the target
         if (to === from) return prev;
-        lastSwapRef.current = over.id as string;
+        station.applied.add(intent);
         return arrayMove(prev, from, to);
       });
     },
