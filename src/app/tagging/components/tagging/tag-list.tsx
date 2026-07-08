@@ -11,6 +11,9 @@
  *   strategies (rectSortingStrategy) misplace them. Instead the list order
  *   itself is updated during onDragOver and flex-wrap reflows naturally,
  *   including tags wrapping between rows.
+ * - Placement: the first touch on a chip displaces it by drag direction
+ *   alone (anywhere on the chip counts); once a chip has been placed
+ *   against, re-hovers use a centrepoint test. See handleDragUpdate.
  * - The dragged tag stays in the list as a translucent placeholder (the
  *   reserved drop space at its natural width); the floating visual is a
  *   DragOverlay that settles into the gap on drop.
@@ -224,6 +227,28 @@ const TagsDisplayComponent = ({
     applied: Set<string>;
   }>({ pointer: null, applied: new Set() });
 
+  // Mirror of dragOrder for the drag handlers: placement decisions need
+  // current indices synchronously, and computing them inside a setState
+  // updater isn't StrictMode-safe (updaters are double-invoked, so the
+  // intent bookkeeping must stay outside)
+  const dragOrderRef = useRef<string[] | null>(null);
+
+  // Chips the dragged tag has been placed against this drag. A chip's first
+  // touch displaces it directionally regardless of where it was hit; after
+  // that it "has moved once" and re-hovers use the centrepoint test instead,
+  // so it isn't endlessly re-displaced just for sitting under the pointer
+  const placedChipsRef = useRef<Set<string>>(new Set());
+
+  // A directional placement can leave the pointer on the "wrong" side of the
+  // displaced chip's new midpoint (the side it was entered from). Letting the
+  // centrepoint test run immediately would flip the placement straight back —
+  // the jitter loop. So after a directional placement, centrepoint flips on
+  // that chip are suppressed until the pointer either agrees with the current
+  // placement or moves off the chip. Centrepoint flips themselves don't need
+  // this: they move the chip's midpoint away from the pointer, so agreement
+  // only strengthens
+  const flipSuppressedChipRef = useRef<string | null>(null);
+
   const handleMouseEnter = useCallback(() => setIsHovered(true), []);
   const handleMouseLeave = useCallback(() => {
     // Don't disable DnD if we're mid-drag
@@ -239,8 +264,11 @@ const TagsDisplayComponent = ({
       isDraggingRef.current = true;
       stationaryIntentsRef.current.pointer = null;
       stationaryIntentsRef.current.applied.clear();
+      placedChipsRef.current.clear();
+      flipSuppressedChipRef.current = null;
       pointerEdgeZone = null;
       setActiveId(event.active.id as string);
+      dragOrderRef.current = tagNames;
       setDragOrder(tagNames);
     },
     [tagNames],
@@ -270,60 +298,92 @@ const TagsDisplayComponent = ({
         station.applied.clear();
       }
 
+      const order = dragOrderRef.current;
+      if (!order) return;
+
+      const applyOrder = (next: string[]) => {
+        dragOrderRef.current = next;
+        setDragOrder(next);
+      };
+
       // Edge zones: place at the very start/end
       if (zone) {
         const zoneIntent = `#zone:${zone}`;
         if (station.applied.has(zoneIntent)) return;
-        setDragOrder((prev) => {
-          if (!prev) return prev;
-          const from = prev.indexOf(active.id as string);
-          if (from === -1) return prev;
-          const to = zone === 'start' ? 0 : prev.length - 1;
-          if (to === from) return prev;
-          station.applied.add(zoneIntent);
-          return arrayMove(prev, from, to);
-        });
+        const from = order.indexOf(active.id as string);
+        if (from === -1) return;
+        const to = zone === 'start' ? 0 : order.length - 1;
+        if (to === from) return;
+        station.applied.add(zoneIntent);
+        flipSuppressedChipRef.current = null;
+        applyOrder(arrayMove(order, from, to));
         return;
       }
 
       if (!over || active.id === over.id) return;
+      const overId = over.id as string;
 
-      const overRect = over.rect;
-      const activeRect = active.rect.current.initial;
-      // Which side of the hovered chip's midpoint the pointer is on decides
-      // placement: before or after that chip. The axis follows the flow — a
-      // chip much taller than the target (a wrapped multi-line tag) can't sit
-      // beside it, so it compares vertically (top half = take its spot,
-      // bottom half = slot in below); same-height chips compare horizontally.
-      // Pointing IS the position, so re-hovering a chip never toggles, and
-      // the placement stays stable when a swapped chip's wider rect still
-      // overlaps the pointer.
-      const tallActive =
-        activeRect !== null &&
-        overRect.height > 0 &&
-        activeRect.height > overRect.height * 1.5;
-      const distFromMid = tallActive
-        ? pointer.y - (overRect.top + overRect.height / 2)
-        : pointer.x - (overRect.left + overRect.width / 2);
-      // Dead-band: within a few px of the midpoint, keep the current
-      // placement rather than flipping on hand tremor
-      if (Math.abs(distFromMid) < 6) return;
-      const after = distFromMid > 0;
+      // Hovering a different chip means any earlier directional placement is
+      // no longer at risk of an immediate undo — future flips are deliberate
+      if (
+        flipSuppressedChipRef.current !== null &&
+        flipSuppressedChipRef.current !== overId
+      ) {
+        flipSuppressedChipRef.current = null;
+      }
 
-      const intent = `${over.id}:${after ? 'after' : 'before'}`;
+      const from = order.indexOf(active.id as string);
+      const iOver = order.indexOf(overId);
+      if (from === -1 || iOver === -1) return;
+
+      let after: boolean;
+      if (!placedChipsRef.current.has(overId)) {
+        // First touch: displace the chip by drag direction alone — anywhere
+        // on the chip counts. Dragging back toward earlier positions puts the
+        // dragged tag before it; dragging forward puts it after
+        after = from < iOver;
+      } else {
+        // Already placed against once: which side of the chip's midpoint the
+        // pointer is on decides placement. The axis follows the flow — a chip
+        // much taller than the target (a wrapped multi-line tag) can't sit
+        // beside it, so it compares vertically (top half = take its spot,
+        // bottom half = slot in below); same-height chips compare
+        // horizontally. Centrepoint flips move the chip's midpoint away from
+        // the pointer, so a flip never re-triggers itself
+        const overRect = over.rect;
+        const activeRect = active.rect.current.initial;
+        const tallActive =
+          activeRect !== null &&
+          overRect.height > 0 &&
+          activeRect.height > overRect.height * 1.5;
+        const distFromMid = tallActive
+          ? pointer.y - (overRect.top + overRect.height / 2)
+          : pointer.x - (overRect.left + overRect.width / 2);
+        // Dead-band: within a few px of the midpoint, keep the current
+        // placement rather than flipping on hand tremor
+        if (Math.abs(distFromMid) < 6) return;
+        after = distFromMid > 0;
+
+        if (flipSuppressedChipRef.current === overId) {
+          const currentlyAfter = from > iOver;
+          if (after !== currentlyAfter) return; // suppressed flip-back
+          flipSuppressedChipRef.current = null; // pointer agrees — lift it
+        }
+      }
+
+      const intent = `${overId}:${after ? 'after' : 'before'}`;
       if (station.applied.has(intent)) return;
 
-      setDragOrder((prev) => {
-        if (!prev) return prev;
-        const from = prev.indexOf(active.id as string);
-        const iOver = prev.indexOf(over.id as string);
-        if (from === -1 || iOver === -1) return prev;
-        let to = after ? iOver + 1 : iOver;
-        if (from < to) to -= 1; // removing the active item shifts the target
-        if (to === from) return prev;
-        station.applied.add(intent);
-        return arrayMove(prev, from, to);
-      });
+      let to = after ? iOver + 1 : iOver;
+      if (from < to) to -= 1; // removing the active item shifts the target
+      if (to === from) return;
+      station.applied.add(intent);
+      const firstTouch = !placedChipsRef.current.has(overId);
+      placedChipsRef.current.add(overId);
+      // Only directional placements can leave the pointer contradicting the
+      // result; protect them from an instant centrepoint undo
+      flipSuppressedChipRef.current = firstTouch ? overId : null;
+      applyOrder(arrayMove(order, from, to));
     },
     [],
   );
@@ -338,12 +398,14 @@ const TagsDisplayComponent = ({
       }
     }
     setActiveId(null);
+    dragOrderRef.current = null;
     setDragOrder(null);
   }, [activeId, dragOrder, tagNames, onReorder]);
 
   const handleDragCancel = useCallback(() => {
     isDraggingRef.current = false;
     setActiveId(null);
+    dragOrderRef.current = null;
     setDragOrder(null);
   }, []);
 
