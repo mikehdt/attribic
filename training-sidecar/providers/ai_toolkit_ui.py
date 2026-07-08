@@ -33,7 +33,7 @@ from providers.ai_toolkit import (
     SUPPORTED_MODELS,
     _find_model,
     _first_resolution,
-    _steps_per_epoch,
+    _resolve_save_every_steps,
 )
 from providers.base import TrainingProvider
 
@@ -503,8 +503,8 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                     },
                     "save": {
                         "dtype": "float16",
-                        "save_every": _steps_per_epoch(
-                            hp.get("save_every_n_epochs", 1),
+                        "save_every": _resolve_save_every_steps(
+                            hp,
                             hp.get("epochs", 10),
                             hp.get("steps", defaults.get("steps", 2000)),
                         ),
