@@ -28,3 +28,4 @@ Gotchas:
 - Tag DnD only mounts on hover — move the mouse over the tag list and wait ~300ms before dragging.
 - PointerSensor has an 8px activation distance — move >8px after `mouse.down()` before expecting drag state.
 - Use `steps:` on `mouse.move` and pause ~300ms before mid-drag screenshots so reflow/FLIP settles.
+- When reading tag order mid-drag, exclude the DragOverlay or it shows as a duplicate chip: filter out elements with `el.closest('.cursor-grabbing')`.
