@@ -8,7 +8,6 @@ type AutoTaggerProgressProps = {
   jobStatus: JobStatus | null;
   providerType?: ProviderType;
   onCancel: () => void;
-  onLeave?: () => void;
 };
 
 export function AutoTaggerProgress({
@@ -16,7 +15,6 @@ export function AutoTaggerProgress({
   jobStatus,
   providerType,
   onCancel,
-  onLeave,
 }: AutoTaggerProgressProps) {
   // `current` is the number of images completed so far (0 at start, total at end).
   // The "currently on" label is one ahead, clamped to total so it doesn't overshoot.
@@ -37,8 +35,8 @@ export function AutoTaggerProgress({
   const verbPresent = isCaptioning ? 'Captioning' : 'Tagging';
   const startingVerb = isCaptioning ? 'captioner' : 'tagger';
   const finishedNote = isCaptioning
-    ? 'Captions from completed images will still be applied.'
-    : 'Tags from completed images will still be applied.';
+    ? 'Safe to close — captioning continues in the background and finished captions are applied automatically.'
+    : 'Safe to close — tagging continues in the background and finished tags are applied automatically.';
 
   return (
     <div className="flex flex-col gap-4">
@@ -102,18 +100,11 @@ export function AutoTaggerProgress({
         </>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-slate-500">{finishedNote}</p>
-        <div className="flex gap-2">
-          {onLeave && (
-            <Button onClick={onLeave} color="slate" size="md">
-              Go to Projects
-            </Button>
-          )}
-          <Button onClick={onCancel} color="slate" size="md">
-            Cancel
-          </Button>
-        </div>
+        <Button onClick={onCancel} color="slate" size="md">
+          Cancel
+        </Button>
       </div>
     </div>
   );

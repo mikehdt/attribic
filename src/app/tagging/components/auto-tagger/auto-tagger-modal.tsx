@@ -1,8 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useCallback } from 'react';
-
 import { Modal } from '@/app/shared/modal';
 
 import { AutoTaggerProgress } from './auto-tagger-progress';
@@ -22,8 +19,6 @@ export function AutoTaggerModal({
   onClose,
   selectedAssets,
 }: AutoTaggerModalProps) {
-  const router = useRouter();
-
   const {
     options,
     vlmOptions,
@@ -55,11 +50,6 @@ export function AutoTaggerModal({
     handleStartTagging,
   } = useAutoTagger({ isOpen, onClose, selectedAssets });
 
-  const handleLeave = useCallback(() => {
-    onClose();
-    router.push('/');
-  }, [onClose, router]);
-
   // The project's caption mode determines which settings panel and title
   // we show. Selection gating already ensures `selectedProviderType`
   // matches, but we prefer deriving from the filtered model list so the
@@ -69,12 +59,7 @@ export function AutoTaggerModal({
   const title = isVlm ? 'Caption Images' : 'Auto-Tag Images';
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={handleClose}
-      preventClose={isTagging}
-      className="max-w-xl"
-    >
+    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-xl">
       <div className="flex flex-col gap-4">
         <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
           {title}
@@ -107,7 +92,6 @@ export function AutoTaggerModal({
             jobStatus={jobStatus}
             providerType={selectedProviderType}
             onCancel={handleCancel}
-            onLeave={handleLeave}
           />
         ) : summary ? (
           <AutoTaggerSummary
