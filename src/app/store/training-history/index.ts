@@ -22,8 +22,16 @@ import {
 import type { RootState } from '../index';
 import type { TrainingJob } from '../jobs/types';
 
-/** A single archived run — a snapshot of the job when it reached a terminal state. */
-export type TrainingHistoryEntry = TrainingJob;
+/**
+ * A single archived run — a snapshot of the job when it reached a terminal
+ * state. `dismissedFromPanel` tracks whether the user has cleared it from the
+ * activity panel; the run stays in this archive (and the Run History view)
+ * regardless. This is what lets a single store back both the transient panel
+ * list and the durable history without a second persisted copy.
+ */
+export type TrainingHistoryEntry = TrainingJob & {
+  dismissedFromPanel?: boolean;
+};
 
 type TrainingHistoryState = {
   entries: Record<string, TrainingHistoryEntry>;
@@ -35,12 +43,34 @@ const trainingHistorySlice = createSlice({
   name: 'trainingHistory',
   initialState,
   reducers: {
-    /** Insert or replace a run's snapshot (keyed by job id). */
+    /**
+     * Insert or replace a run's snapshot (keyed by job id). Preserves an
+     * existing `dismissedFromPanel` flag so re-recording the same terminal run
+     * doesn't resurrect it in the activity panel after a "Clear all".
+     */
     recordTrainingRun: (
       state,
       action: PayloadAction<TrainingHistoryEntry>,
     ) => {
-      state.entries[action.payload.id] = action.payload;
+      const existing = state.entries[action.payload.id];
+      state.entries[action.payload.id] = {
+        ...action.payload,
+        dismissedFromPanel:
+          action.payload.dismissedFromPanel ??
+          existing?.dismissedFromPanel ??
+          false,
+      };
+    },
+
+    /**
+     * Mark every archived run as cleared from the activity panel. Backs the
+     * panel's "Clear all" — the runs vanish from the panel but remain in the
+     * Run History archive.
+     */
+    dismissAllFromPanel: (state) => {
+      for (const entry of Object.values(state.entries)) {
+        entry.dismissedFromPanel = true;
+      }
     },
 
     /** Remove a single run from the archive. */
@@ -74,6 +104,7 @@ export const trainingHistoryReducer = trainingHistorySlice.reducer;
 
 export const {
   recordTrainingRun,
+  dismissAllFromPanel,
   deleteHistoryEntry,
   clearHistory,
   restoreHistory,

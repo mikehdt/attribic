@@ -211,8 +211,8 @@ class AiToolkitProvider(TrainingProvider):
                         },
                         "save": {
                             "dtype": "float16",
-                            "save_every": _steps_per_epoch(
-                                hp.get("save_every_n_epochs", 1),
+                            "save_every": _resolve_save_every_steps(
+                                hp,
                                 hp.get("epochs", 10),
                                 hp.get("steps", defaults.get("steps", 2000)),
                             ),
@@ -553,6 +553,24 @@ def _steps_per_epoch(save_every_n_epochs: int, epochs: int, total_steps: int) ->
         return total_steps
     steps_per_epoch = total_steps // epochs
     return max(1, steps_per_epoch * save_every_n_epochs)
+
+
+def _resolve_save_every_steps(hp: dict, epochs: int, total_steps: int) -> int:
+    """Resolve the checkpoint cadence in *steps* — ai-toolkit's native unit.
+
+    The Node side sends `save_every_n_steps` when the user picked step-based
+    saving, or `save_every_n_epochs` for epoch-based; whichever is non-zero
+    wins (steps take precedence). When both are 0 (saving disabled) the cadence
+    is pushed past the end of training so no intermediate checkpoints are
+    written.
+    """
+    save_every_steps = int(hp.get("save_every_n_steps", 0) or 0)
+    if save_every_steps > 0:
+        return save_every_steps
+    save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
+    if save_every_epochs > 0:
+        return _steps_per_epoch(save_every_epochs, epochs, total_steps)
+    return max(1, total_steps) + 1
 
 
 def _first_resolution(hp: dict, defaults: dict) -> int:

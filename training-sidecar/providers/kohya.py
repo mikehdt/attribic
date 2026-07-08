@@ -316,13 +316,22 @@ class KohyaProvider(TrainingProvider):
         # support fp8 for Anima. The UI hides the quantization fields for this
         # model accordingly.
 
-        # Checkpoint saving.
+        # Checkpoint saving. The user picks either a step or epoch cadence; the
+        # Node side sends whichever is non-zero (steps take precedence). sd-scripts
+        # measures its rolling-keep window in the same unit as the save interval,
+        # so `--save_last_n_steps` is a step count (interval × count), whereas
+        # `--save_last_n_epochs` is a plain checkpoint count.
+        save_every_steps = int(hp.get("save_every_n_steps", 0) or 0)
         save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
-        if save_every_epochs > 0:
-            args.append(f"--save_every_n_epochs={save_every_epochs}")
         max_keep = int(hp.get("max_saves_to_keep", 0) or 0)
-        if max_keep > 0:
-            args.append(f"--save_last_n_epochs={max_keep}")
+        if save_every_steps > 0:
+            args.append(f"--save_every_n_steps={save_every_steps}")
+            if max_keep > 0:
+                args.append(f"--save_last_n_steps={save_every_steps * max_keep}")
+        elif save_every_epochs > 0:
+            args.append(f"--save_every_n_epochs={save_every_epochs}")
+            if max_keep > 0:
+                args.append(f"--save_last_n_epochs={max_keep}")
 
         # Sample generation during training.
         if request.sample_prompts:

@@ -341,8 +341,13 @@ export function useAutoTagger({
   );
 
   const handleClose = useCallback(() => {
+    // Always dismiss. The tagging job lives in Redux and its SSE stream is
+    // owned by this (always-mounted) hook, so closing mid-run just hides the
+    // modal — the batch keeps going and drops finished tags in on completion.
+    // Only clear the completed-run UI state when nothing is in flight, so a
+    // reopen while tagging returns to the live progress view.
+    onClose();
     if (!isTagging) {
-      onClose();
       setSummary(null);
       setError(null);
       setWasCancelled(false);

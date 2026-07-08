@@ -20,7 +20,7 @@ import {
   updateTaggingProgress,
   updateTrainingProgress,
 } from '../jobs';
-import { persistDownloadJobs, persistTrainingJobs } from '../jobs/persistence';
+import { persistDownloadJobs } from '../jobs/persistence';
 import { setModelStatus } from '../model-manager';
 import { recordTrainingRun } from '../training-history';
 import { persistTrainingHistory } from '../training-history/persistence';
@@ -45,9 +45,10 @@ const NON_PERSISTING_JOB_ACTIONS = new Set<string>([
   togglePanel.type,
 ]);
 
-// Persist download + terminal training jobs to localStorage on meaningful jobs/
-// actions, and snapshot any newly-terminal training run into the durable
-// history archive.
+// Persist download jobs to localStorage on meaningful jobs/ actions, and
+// snapshot any newly-terminal training run into the durable history archive —
+// which is the single persisted home for terminal training runs (the jobs
+// slice no longer writes its own `img-tagger:training-jobs` copy).
 jobPersistenceMiddleware.startListening({
   predicate: (action) =>
     typeof action.type === 'string' &&
@@ -56,7 +57,6 @@ jobPersistenceMiddleware.startListening({
   effect: (_action, listenerApi) => {
     const state = listenerApi.getState() as RootState;
     persistDownloadJobs(state.jobs.jobs);
-    persistTrainingJobs(state.jobs.jobs);
 
     // Archive terminal training runs into the history slice. Idempotent: skip
     // any run already recorded with the same terminal status + completion time,

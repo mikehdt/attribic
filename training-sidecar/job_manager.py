@@ -46,17 +46,24 @@ def predict_checkpoint_steps(hyperparameters: dict) -> list[int]:
 
     Mirrors the client-side `deriveCheckpointSteps` (see
     src/app/store/training/training-runtime.ts) but reads the snake_case
-    hyperparameters the sidecar actually receives. The Node side collapses the
-    UI's save-mode selection into `save_every_n_epochs` (0 = saving disabled),
-    so predictions are computed from the per-epoch cadence — matching what the
-    providers pass to their backends (`--save_every_n_epochs` for Kohya,
-    `_steps_per_epoch(...)` for ai-toolkit).
+    hyperparameters the sidecar actually receives. The Node side sends the
+    save cadence in the user's chosen unit — `save_every_n_steps` for
+    step-based saving, `save_every_n_epochs` for epoch-based (0/0 = disabled) —
+    with steps taking precedence, matching what the providers pass to their
+    backends.
     """
     hp = hyperparameters or {}
     total_steps = int(hp.get("steps", 0) or 0)
     epochs = int(hp.get("epochs", 0) or 0)
+    if total_steps <= 0:
+        return []
+
+    save_every_steps = int(hp.get("save_every_n_steps", 0) or 0)
+    if save_every_steps > 0:
+        return list(range(save_every_steps, total_steps + 1, save_every_steps))
+
     save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
-    if save_every_epochs <= 0 or total_steps <= 0 or epochs <= 0:
+    if save_every_epochs <= 0 or epochs <= 0:
         return []
 
     steps_per_epoch = max(1, math.ceil(total_steps / epochs))

@@ -131,14 +131,15 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   const saveEnabled = (config.saveEnabled as boolean) ?? false;
   const saveMode = (config.saveMode as string) ?? 'epochs';
   const saveEveryEpochs = (config.saveEveryEpochs as number) ?? 1;
-  // When the user saves by steps, the provider still takes save_every_n_epochs
-  // and converts to steps internally — so pass 0 here and the provider's
-  // helper will handle it.
-  const effectiveSaveEveryEpochs = saveEnabled
-    ? saveMode === 'epochs'
-      ? saveEveryEpochs
-      : 1
-    : 0;
+  const saveEverySteps = (config.saveEverySteps as number) ?? 100;
+  // The save cadence is expressed in exactly one unit. The sidecar reads
+  // whichever field is non-zero (steps take precedence) and treats 0/0 as
+  // "saving disabled". Send the user's chosen unit as-is instead of collapsing
+  // a step interval into epochs, which silently dropped it.
+  const saveEveryNEpochs =
+    saveEnabled && saveMode === 'epochs' ? saveEveryEpochs : 0;
+  const saveEveryNSteps =
+    saveEnabled && saveMode === 'steps' ? saveEverySteps : 0;
 
   const hyperparameters: Record<string, unknown> = {
     steps: config.steps,
@@ -176,7 +177,8 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     noise_scheduler: config.noiseScheduler,
     sample_steps: config.sampleSteps,
     sample_every_n_steps: config.sampleEverySteps,
-    save_every_n_epochs: effectiveSaveEveryEpochs,
+    save_every_n_epochs: saveEveryNEpochs,
+    save_every_n_steps: saveEveryNSteps,
     save_format: config.saveFormat,
     max_saves_to_keep: config.maxSavesToKeep,
     save_state: config.saveState,
