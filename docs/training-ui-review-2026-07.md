@@ -113,8 +113,28 @@ flag today. Plan: add `experimental: true` + UI badge; video pipeline is its own
 ## Sweep 1 execution log
 
 - [x] Review doc committed
-- [ ] 1b: per-folder augmentation forwarding (both providers)
-- [ ] 2: provider-aware field visibility
-- [ ] 1a: Kohya SDXL + SDXL-family dual backend + `flux2`/`ltx23` sidecar entries + provider
-      choice persisted in saved projects
-- [ ] Opus review pass, Fable final review
+- [x] 1b: per-folder augmentation forwarding (both providers) — `c92167d`
+- [x] 2: provider-aware field visibility — `224ffca`
+- [x] 1a: Kohya SDXL + SDXL-family dual backend + `flux2`/`ltx23` sidecar entries + provider
+      fallback on project load — `56f0009` (provider choice already persisted via FormState)
+- [x] Opus review pass, Fable final review — no blockers; nits fixed in follow-up commit
+
+### Behaviour changes shipped in sweep 1
+
+- ai-toolkit caption dropout was silently hardcoded to 0.05; it now follows the per-folder
+  UI value (default 0 = disabled). Set it explicitly if the old implicit dropout mattered.
+- Kohya `--cache_text_encoder_outputs` is now suppressed whenever any dataset folder uses
+  caption shuffling or caption dropout (sd-scripts asserts on that combination — this was a
+  latent Anima crash once shuffle became live).
+- Flip-vertical is hidden per-folder when the Kohya backend is selected (sd-scripts has no
+  vertical flip; ai-toolkit uses `flip_x`/`flip_y`).
+
+### Review outcome (Opus pass + Fable final)
+
+No blockers. Nits fixed post-review: `illustrious-xl`/`noob-ai-xl` now zero their
+quantisation defaults like `sdxl` (the inherited `float8` was dead config on the ai-toolkit
+SDXL path); `ltx23`'s cosmetic HF fallback repo id was malformed. Noted and deliberately left:
+`KohyaProvider.validate()` now requires every supported model's train script to exist in the
+sd-scripts checkout (fine for the combined fork in use); the `ltx2` entry's HF fallback
+(`LTX-Video-0.9.7-dev`) predates the current `Lightricks/LTX-2` naming — cosmetic, since the
+client always sends a local checkpoint path.
