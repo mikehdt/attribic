@@ -410,12 +410,19 @@ const trainingConfigSlice = createSlice({
       state,
       action: PayloadAction<{ form: FormState; loadedProject: LoadedProject }>,
     ) => {
-      // A saved project serialises selectedProvider, which can go stale if the
-      // model's provider list changed since the save (e.g. a provider dropped,
-      // or the model was swapped). Coerce it back to a supported provider so
-      // the run doesn't fail sidecar-side with an unregistered/unknown-model
-      // error. Baseline mirrors the coerced form so the dirty flag stays clean.
-      const form = coerceProvider(action.payload.form);
+      // Saved forms can predate fields added since the save (they load as
+      // undefined and would blank dropdowns, warn on controlled inputs, and
+      // inflate the hidden-changes badges), so merge over the model's defaults
+      // first — saved values win, missing keys get defaults. selectedProvider
+      // can also go stale if the model's provider list changed since the save;
+      // coerce it back to a supported provider so the run doesn't fail
+      // sidecar-side. Baseline mirrors the merged form so dirty stays clean.
+      const incoming = action.payload.form;
+      const merged: FormState = {
+        ...defaultsToFormState(getDefaults(incoming.modelId), incoming.modelId),
+        ...incoming,
+      };
+      const form = coerceProvider(merged);
       state.form = form;
       state.loadedProject = action.payload.loadedProject;
       state.baselineSnapshot = form;

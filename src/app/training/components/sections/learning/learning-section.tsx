@@ -53,6 +53,7 @@ type LearningSectionProps = {
   diffOutputPreservation: boolean;
   diffOutputPreservationMultiplier: number;
   diffOutputPreservationClass: string;
+  cacheTextEmbeddings: boolean;
   calculatedSteps: number;
   calculatedEpochs: number;
   totalEffective: number;
@@ -123,6 +124,7 @@ const LearningSectionComponent = ({
   diffOutputPreservation,
   diffOutputPreservationMultiplier,
   diffOutputPreservationClass,
+  cacheTextEmbeddings,
   calculatedSteps,
   calculatedEpochs,
   totalEffective,
@@ -807,6 +809,13 @@ const LearningSectionComponent = ({
                 Preserves the base model&apos;s knowledge of a class word
               </span>
             </div>
+
+            {diffOutputPreservation && cacheTextEmbeddings && (
+              <p className="text-sm text-amber-500/70">
+                Incompatible with Cache Text Embeddings (Performance) — the
+                trainer will refuse to start while both are enabled.
+              </p>
+            )}
 
             {(visibleFields.has(
               'diffOutputPreservationMultiplier' satisfies keyof FormState,

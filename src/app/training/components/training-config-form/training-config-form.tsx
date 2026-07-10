@@ -280,6 +280,7 @@ const TrainingConfigFormComponent = ({
               state.diffOutputPreservationMultiplier
             }
             diffOutputPreservationClass={state.diffOutputPreservationClass}
+            cacheTextEmbeddings={state.cacheTextEmbeddings}
             calculatedSteps={calculatedSteps}
             calculatedEpochs={calculatedEpochs}
             totalEffective={datasetStats.totalEffective}

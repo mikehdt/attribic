@@ -129,7 +129,47 @@ flag today. Plan: add `experimental: true` + UI badge; video pipeline is its own
 - Flip-vertical is hidden per-folder when the Kohya backend is selected (sd-scripts has no
   vertical flip; ai-toolkit uses `flip_x`/`flip_y`).
 
-### Review outcome (Opus pass + Fable final)
+## Sweep 2 execution log (branch training-ui-sweep-2)
+
+- [x] Finding 3 tier moves — resolution→Simple, cacheLatents→Advanced, saveFormat→Intermediate,
+      seed→Learning section (it's the training seed); Expert view-mode segment enabled
+      (`VALID_VIEW_MODES` sanitiser needed updating); Wan/LTX experimental badges — `90cd2fc`
+- [x] Finding 4 sampling — sample steps/guidance live on both backends (ai-toolkit sample
+      config; Kohya per-prompt-line `--w/--h/--s/--l`); dead `noiseScheduler` field deleted
+      (arch-determined) and replaced with a Sampler dropdown; training seed reached ai-toolkit
+      via `training_seed`, so Seed is no longer Kohya-only — `d1783aa`
+- [x] Finding 4 knobs — discrete flow shift, scale weight norms, min-SNR gamma + noise offset
+      (DDPM-only; Anima's trainer overrides both hooks so they're hidden for it), bucket
+      controls, EMA decay; Prodigy/DAdaptation LR guard (snap to 1.0 / restore, never touching
+      hand-typed values). All six optimizer options turned out valid on both backends, so no
+      per-provider dropdown filtering was needed — `77db832`
+- [x] Finding 5 Expert fields — Kohya `network_args`/`optimizer_args` freeform editors (user
+      pairs win on collision), `blocks_to_swap` (Anima-only in this fork); ai-toolkit LoKr
+      factor, content-or-style, diff output preservation (+multiplier/class), layer targeting
+      (`only_if_contains`), low VRAM — `38f2ffe`
+- [x] **Trigger word: deliberately dropped** (implemented then reverted mid-branch). This app
+      is itself a tag editor — a trigger belongs in the captions as a deliberate first tag
+      protected by keep-tokens, visible in the data; train-time injection would hide part of
+      the effective caption outside the tagger. Not forgotten; decided against (Mike,
+      2026-07-10).
+- [x] Finding 6 — experimental badges shipped in `90cd2fc`; video pipeline remains its own
+      milestone.
+- [x] Opus review + Fable final pass — no blockers. Should-fix applied: `hydrateFromProject`
+      now merges saved forms over `defaultsToFormState` so projects saved before this branch
+      don't hydrate `undefined` into the ~18 new fields (blank dropdowns, controlled-input
+      warnings, phantom hidden-changes badges). Nits applied: Sampler hidden for Anima (its
+      sample path ignores `--sample_sampler`), `network_args` dedup matches `optimizer_args`
+      policy, inline warning when diff output preservation + cache text embeddings are both
+      on (ai-toolkit refuses that combination at startup).
+
+### Still open after sweep 2
+
+- Kohya SDXL and the new knobs need a real end-to-end training run.
+- Video pipeline for Wan/LTX (frame counts, video bucketing) — own milestone.
+- `ltx2`'s HF fallback repo id predates `Lightricks/LTX-2` naming (cosmetic).
+- Queue persistence / ONNX-bypasses-queue decision (pre-existing backlog).
+
+### Review outcome sweep 1 (Opus pass + Fable final)
 
 No blockers. Nits fixed post-review: `illustrious-xl`/`noob-ai-xl` now zero their
 quantisation defaults like `sdxl` (the inherited `float8` was dead config on the ai-toolkit

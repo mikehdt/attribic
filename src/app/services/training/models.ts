@@ -562,6 +562,9 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // path never consults (verified against sd-scripts anima_train_network.py).
       'minSnrGamma',
       'noiseOffset',
+      // Anima's sample path always uses its internal flow-match Euler;
+      // --sample_sampler is accepted by argparse but never consulted.
+      'sampleSampler',
     ],
     defaults: {
       ...BASE_DEFAULTS,

@@ -498,7 +498,14 @@ class KohyaProvider(TrainingProvider):
             if _te_cache_safe(request.datasets):
                 args.append("--cache_text_encoder_outputs")
 
-        network_args.extend(_parse_kv_args(hp.get("network_args", "")))
+        # User pairs win over arch defaults on key collision (same policy as
+        # the weight_decay dedup in --optimizer_args).
+        user_network_args = _parse_kv_args(hp.get("network_args", ""))
+        user_keys = {pair.split("=", 1)[0] for pair in user_network_args}
+        network_args = [
+            pair for pair in network_args if pair.split("=", 1)[0] not in user_keys
+        ]
+        network_args.extend(user_network_args)
         if network_args:
             args.append("--network_args")
             args.extend(network_args)
