@@ -171,6 +171,7 @@ const trainingConfigSlice = createSlice({
           form.lossType = ref.lossType;
           form.timestepType = ref.timestepType;
           form.timestepBias = ref.timestepBias;
+          form.seed = ref.seed;
           break;
 
         case 'loraShape':
@@ -200,7 +201,6 @@ const trainingConfigSlice = createSlice({
           form.sampleEveryEpochs = ref.sampleEveryEpochs;
           form.sampleEverySteps = ref.sampleEverySteps;
           form.sampleSteps = ref.sampleSteps;
-          form.seed = ref.seed;
           form.guidanceScale = ref.guidanceScale;
           form.noiseScheduler = ref.noiseScheduler;
           break;
@@ -517,7 +517,6 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
     form.sampleEveryEpochs !== ref.sampleEveryEpochs ||
     form.sampleEverySteps !== ref.sampleEverySteps ||
     form.sampleSteps !== ref.sampleSteps ||
-    form.seed !== ref.seed ||
     form.guidanceScale !== ref.guidanceScale ||
     form.noiseScheduler !== ref.noiseScheduler ||
     JSON.stringify(form.samplePrompts) !== JSON.stringify(ref.samplePrompts);
@@ -551,7 +550,8 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
       form.ema !== ref.ema ||
       form.lossType !== ref.lossType ||
       form.timestepType !== ref.timestepType ||
-      form.timestepBias !== ref.timestepBias,
+      form.timestepBias !== ref.timestepBias ||
+      form.seed !== ref.seed,
     loraShape:
       form.networkDim !== ref.networkDim ||
       form.networkAlpha !== ref.networkAlpha ||

@@ -41,6 +41,12 @@ export type ModelDefinition = {
   availableResolutions: number[];
   /** Fields that are irrelevant for this model (auto-set, not configurable) */
   hiddenFields?: (keyof TrainingDefaults)[];
+  /**
+   * Marks a model as experimental/untested — shows a warning badge in the
+   * model select UI. Used for video models that currently only train on
+   * still images, and require manually-supplied weights.
+   */
+  experimental?: boolean;
 };
 
 export type TrainingDefaults = {
@@ -526,6 +532,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     ],
     availableResolutions: [256, 512, 768, 1024],
     hiddenFields: ['noiseScheduler', 'trainTextEncoder'],
+    experimental: true,
     defaults: {
       ...BASE_DEFAULTS,
       learningRate: 2e-4,
@@ -546,6 +553,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     ],
     availableResolutions: [256, 512, 768, 1024],
     hiddenFields: ['noiseScheduler', 'trainTextEncoder'],
+    experimental: true,
     defaults: {
       ...BASE_DEFAULTS,
       networkDim: 32,
@@ -565,6 +573,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     ],
     availableResolutions: [256, 512, 768, 1024],
     hiddenFields: ['noiseScheduler', 'trainTextEncoder'],
+    experimental: true,
     defaults: {
       ...BASE_DEFAULTS,
       networkDim: 32,

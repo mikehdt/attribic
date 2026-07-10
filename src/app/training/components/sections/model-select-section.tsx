@@ -25,6 +25,12 @@ import type {
   ModelPaths,
 } from '../training-config-form/use-training-config-form';
 
+const ExperimentalBadge = () => (
+  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+    Experimental
+  </span>
+);
+
 type ModelSelectSectionProps = {
   modelId: string;
   selectedProvider: TrainingProvider;
@@ -63,7 +69,10 @@ const ModelSelectSectionComponent = ({
             value: m.id,
             label: (
               <div className="flex flex-col">
-                <span>{m.name}</span>
+                <span className="flex items-center gap-1.5">
+                  {m.name}
+                  {m.experimental && <ExperimentalBadge />}
+                </span>
               </div>
             ),
           }) satisfies DropdownItem<string>,
@@ -122,13 +131,23 @@ const ModelSelectSectionComponent = ({
                   selectedValue={modelId}
                   onChange={onModelChange}
                   selectedValueRenderer={() => (
-                    <span className="text-sm">{currentModel.name}</span>
+                    <span className="flex items-center gap-1.5 text-sm">
+                      {currentModel.name}
+                      {currentModel.experimental && <ExperimentalBadge />}
+                    </span>
                   )}
                   aria-label="Select base model"
                 />
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="mt-2 text-sm text-slate-400">
                   {currentModel.description}
                 </p>
+
+                {currentModel.experimental && (
+                  <p className="mt-1 text-sm text-amber-600 dark:text-amber-400">
+                    Untested — video models currently train on still images
+                    only, and weights must be supplied manually.
+                  </p>
+                )}
 
                 {currentModel.tips && currentModel.tips.length > 0 && (
                   <ul className="mt-2 ml-4 list-disc space-y-1">

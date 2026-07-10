@@ -35,6 +35,7 @@ type LearningSectionProps = {
   numRestarts: number;
   weightDecay: number;
   maxGradNorm: number;
+  seed: number;
   trainTextEncoder: boolean;
   backboneLR: number;
   textEncoderLR: number;
@@ -88,6 +89,7 @@ const LearningSectionComponent = ({
   numRestarts,
   weightDecay,
   maxGradNorm,
+  seed,
   trainTextEncoder,
   backboneLR,
   textEncoderLR,
@@ -443,9 +445,10 @@ const LearningSectionComponent = ({
           </div>
         )}
 
-        {/* Weight Decay + Max Grad Norm row */}
+        {/* Weight Decay + Max Grad Norm + Seed row */}
         {(visibleFields.has('weightDecay' satisfies keyof FormState) ||
-          visibleFields.has('maxGradNorm' satisfies keyof FormState)) && (
+          visibleFields.has('maxGradNorm' satisfies keyof FormState) ||
+          visibleFields.has('seed' satisfies keyof FormState)) && (
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has('weightDecay' satisfies keyof FormState) && (
               <div>
@@ -483,6 +486,26 @@ const LearningSectionComponent = ({
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   Clip gradients (0 = disabled, 1.0 standard)
+                </p>
+              </div>
+            )}
+
+            {visibleFields.has('seed' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>Seed</FormTitle>
+                <Input
+                  type="number"
+                  min={-1}
+                  value={seed}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= -1) onFieldChange('seed', val);
+                  }}
+                  className="w-full"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  -1 for random, fixed for reproducibility. Seeds the training
+                  run, not sample generation.
                 </p>
               </div>
             )}

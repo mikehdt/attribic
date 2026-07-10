@@ -67,6 +67,12 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     group: 'learning',
     defaultKey: 'optimizer',
   },
+  seed: {
+    tier: 'simple',
+    group: 'learning',
+    defaultKey: null,
+    providers: ['kohya'],
+  },
   scheduler: {
     tier: 'simple',
     group: 'learning',
@@ -202,13 +208,13 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     providers: ['ai-toolkit'],
   },
   cacheLatents: {
-    tier: 'simple',
+    tier: 'advanced',
     group: 'performance',
     defaultKey: 'cacheLatents',
     providers: ['kohya'],
   },
   resolution: {
-    tier: 'intermediate',
+    tier: 'simple',
     group: 'performance',
     defaultKey: 'resolution',
   },
@@ -256,12 +262,6 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     // Dead on both real backends today; sweep 2 will plumb this through.
     providers: [],
   },
-  seed: {
-    tier: 'simple',
-    group: 'sampling',
-    defaultKey: null,
-    providers: ['kohya'],
-  },
   guidanceScale: {
     tier: 'advanced',
     group: 'sampling',
@@ -279,7 +279,7 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
 
   // Saving
   saveFormat: {
-    tier: 'simple',
+    tier: 'intermediate',
     group: 'saving',
     defaultKey: 'saveFormat',
     providers: ['kohya'],

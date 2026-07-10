@@ -19,6 +19,7 @@ const VALID_VIEW_MODES: TrainingViewMode[] = [
   'simple',
   'intermediate',
   'advanced',
+  'expert',
 ];
 
 /**

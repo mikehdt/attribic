@@ -20,7 +20,6 @@ type SamplingSectionProps = {
   sampleEveryEpochs: number;
   sampleEverySteps: number;
   sampleSteps: number;
-  seed: number;
   guidanceScale: number;
   noiseScheduler: string;
   visibleFields: Set<string>;
@@ -42,7 +41,6 @@ const SamplingSectionComponent = ({
   sampleEveryEpochs,
   sampleEverySteps,
   sampleSteps,
-  seed,
   guidanceScale,
   noiseScheduler,
   visibleFields,
@@ -64,7 +62,6 @@ const SamplingSectionComponent = ({
     visibleFields.has('sampleEveryEpochs') ||
     visibleFields.has('sampleEverySteps') ||
     visibleFields.has('sampleSteps') ||
-    visibleFields.has('seed') ||
     visibleFields.has('guidanceScale') ||
     visibleFields.has('noiseScheduler');
 
@@ -220,28 +217,6 @@ const SamplingSectionComponent = ({
               )}
             </div>
           </>
-        )}
-
-        {/* Seed — always visible regardless of samplingEnabled */}
-        {visibleFields.has('seed' satisfies keyof FormState) && (
-          <div className="grid grid-cols-4 gap-x-4">
-            <div>
-              <FormTitle>Seed</FormTitle>
-              <Input
-                type="number"
-                min={-1}
-                value={seed}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= -1) onFieldChange('seed', val);
-                }}
-                className="w-full"
-              />
-              <p className="mt-1 text-xs text-slate-400">
-                -1 for random, fixed for reproducibility
-              </p>
-            </div>
-          </div>
         )}
       </div>
     </CollapsibleSection>

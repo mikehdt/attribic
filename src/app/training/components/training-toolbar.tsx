@@ -33,6 +33,7 @@ const VIEW_MODE_OPTIONS: { value: TrainingViewMode; label: string }[] = [
   { value: 'simple', label: 'Simple' },
   { value: 'intermediate', label: 'Intermediate' },
   { value: 'advanced', label: 'Advanced' },
+  { value: 'expert', label: 'Expert' },
 ];
 
 const TrainingToolbarComponent = () => {
