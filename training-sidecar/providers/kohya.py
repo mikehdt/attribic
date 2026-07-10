@@ -156,10 +156,6 @@ class KohyaProvider(TrainingProvider):
         lines: list[str] = []
         lines.append("[general]")
         lines.append('caption_extension = ".txt"')
-        lines.append(
-            f"shuffle_caption = {_toml_bool(hp.get('caption_shuffling', False))}"
-        )
-        lines.append(f"keep_tokens = {int(hp.get('keep_tokens', 0))}")
         lines.append("")
         lines.append("[[datasets]]")
         lines.append(f"resolution = {max_res}")
@@ -170,18 +166,26 @@ class KohyaProvider(TrainingProvider):
             lines.append("bucket_reso_steps = 64")
             lines.append(f"min_bucket_reso = {min_res}")
             lines.append(f"max_bucket_reso = {max_res}")
-        caption_dropout = float(hp.get("caption_dropout_rate", 0) or 0)
-        if caption_dropout > 0:
-            lines.append(f"caption_dropout_rate = {caption_dropout}")
         lines.append("")
 
+        # shuffle_caption / keep_tokens / caption_dropout_rate / flip_aug are
+        # all "ascendable" subset params in sd-scripts (library/config_util.py
+        # SUBSET_ASCENDABLE_SCHEMA / DO_SUBSET_ASCENDABLE_SCHEMA) — valid to set
+        # per-[[datasets.subsets]] entry, which is what lets each dataset folder
+        # carry its own augmentation settings. sd-scripts has no vertical-flip
+        # augmentation, so ds.flip_v_augment is intentionally not used here.
         for ds in request.datasets:
             lines.append("[[datasets.subsets]]")
             lines.append(f"image_dir = {_toml_str(ds.path)}")
             lines.append(f"num_repeats = {int(ds.num_repeats)}")
             if ds.is_regularization:
                 lines.append("is_reg = true")
-            if hp.get("flip_augment", False):
+            lines.append(f"shuffle_caption = {_toml_bool(ds.caption_shuffling)}")
+            lines.append(f"keep_tokens = {int(ds.keep_tokens)}")
+            caption_dropout = float(ds.caption_dropout_rate or 0)
+            if caption_dropout > 0:
+                lines.append(f"caption_dropout_rate = {caption_dropout}")
+            if ds.flip_augment:
                 lines.append("flip_aug = true")
             lines.append("")
 

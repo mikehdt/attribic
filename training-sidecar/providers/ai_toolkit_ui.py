@@ -519,16 +519,23 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                         {
                             "folder_path": ds.path,
                             "caption_ext": "txt",
-                            "caption_dropout_rate": 0.05,
-                            "shuffle_tokens": False,
+                            # Per-folder augmentation, sourced from the UI's
+                            # folder-level settings (toolkit/config_modules.py
+                            # DatasetConfig). Previously hardcoded here — note
+                            # caption_dropout_rate now defaults to 0 (disabled)
+                            # rather than the old hardcoded 0.05.
+                            "caption_dropout_rate": ds.caption_dropout_rate,
+                            "shuffle_tokens": ds.caption_shuffling,
                             "cache_latents_to_disk": True,
                             "resolution": hp.get(
                                 "resolution", defaults.get("resolution", [1024])
                             ),
                             "num_repeats": ds.num_repeats,
-                            "keep_tokens": hp.get("keep_tokens", 0),
+                            "keep_tokens": ds.keep_tokens,
                             "network_weight": ds.lora_weight,
                             "is_reg": ds.is_regularization,
+                            "flip_x": ds.flip_augment,
+                            "flip_y": ds.flip_v_augment,
                         }
                         for ds in request.datasets
                     ],

@@ -2,6 +2,7 @@ import { FolderIcon, FolderOpenIcon, PlusIcon, XIcon } from 'lucide-react';
 import Image from 'next/image';
 import { memo, useCallback, useMemo, useState } from 'react';
 
+import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 
@@ -20,6 +21,7 @@ import { FolderRow } from './folder-row';
 type DatasetSectionProps = {
   datasets: DatasetSource[];
   extraFolders: ExtraFolder[];
+  selectedProvider: TrainingProvider;
   hasChanges: boolean;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
@@ -50,6 +52,7 @@ type DatasetSectionProps = {
 const DatasetSectionComponent = ({
   datasets,
   extraFolders,
+  selectedProvider,
   hasChanges,
   visibleFields,
   hiddenChangesCount,
@@ -204,6 +207,7 @@ const DatasetSectionComponent = ({
                     <FolderRow
                       key={folder.name}
                       datasetIndex={dsIndex}
+                      selectedProvider={selectedProvider}
                       folderName={folder.name}
                       detectedRepeats={folder.detectedRepeats}
                       effectiveRepeats={
@@ -268,6 +272,7 @@ const DatasetSectionComponent = ({
                 <FolderRow
                   key={ef.path}
                   datasetIndex={null}
+                  selectedProvider={selectedProvider}
                   folderName={ef.path}
                   detectedRepeats={1}
                   effectiveRepeats={ef.overrideRepeats ?? 1}

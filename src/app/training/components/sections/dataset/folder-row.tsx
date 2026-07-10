@@ -8,6 +8,7 @@ import {
   XIcon,
 } from 'lucide-react';
 
+import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { FormTitle } from '@/app/shared/form-title/form-title';
@@ -17,6 +18,9 @@ import type { FolderAugmentation } from '../../training-config-form/use-training
 
 type FolderRowProps = {
   datasetIndex: number | null; // null = extra folder
+  // Drives which augmentation controls are shown — e.g. Kohya/sd-scripts has
+  // no vertical-flip augmentation, so "Flip vertically" is hidden for it.
+  selectedProvider: TrainingProvider;
   folderName: string;
   detectedRepeats: number;
   effectiveRepeats: number;
@@ -43,6 +47,7 @@ type FolderRowProps = {
 
 export function FolderRow({
   datasetIndex,
+  selectedProvider,
   folderName,
   detectedRepeats,
   effectiveRepeats,
@@ -59,6 +64,9 @@ export function FolderRow({
   const isDisabled = effectiveRepeats === 0;
   const label = displayName ?? folderName;
   const isRoot = folderName === 'Root';
+  // Kohya/sd-scripts has no vertical-flip augmentation (only `flip_aug`,
+  // which is horizontal). ai-toolkit supports both (flip_x / flip_y).
+  const supportsVerticalFlip = selectedProvider !== 'kohya';
 
   return (
     <div className={isDisabled ? 'opacity-40' : undefined}>
@@ -224,18 +232,20 @@ export function FolderRow({
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <Checkbox
-              isSelected={augmentation.flipVAugment}
-              onChange={() =>
-                onUpdateAugment(datasetIndex, folderName, {
-                  flipVAugment: !augmentation.flipVAugment,
-                })
-              }
-              label="Flip vertically"
-              size="sm"
-            />
-          </div>
+          {supportsVerticalFlip && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                isSelected={augmentation.flipVAugment}
+                onChange={() =>
+                  onUpdateAugment(datasetIndex, folderName, {
+                    flipVAugment: !augmentation.flipVAugment,
+                  })
+                }
+                label="Flip vertically"
+                size="sm"
+              />
+            </div>
+          )}
 
           <div>
             <FormTitle>LoRA Weight</FormTitle>

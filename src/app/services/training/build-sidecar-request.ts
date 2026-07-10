@@ -12,6 +12,14 @@ import { resolveLoraOutputDir } from './output-path';
 
 type ClientFormConfig = Record<string, unknown>;
 
+type ClientFolderAugmentation = {
+  captionShuffling: boolean;
+  keepTokens: number;
+  captionDropoutRate: number;
+  flipAugment: boolean;
+  flipVAugment: boolean;
+};
+
 type ClientDatasetFolder = {
   name: string;
   imageCount: number;
@@ -19,7 +27,7 @@ type ClientDatasetFolder = {
   overrideRepeats: number | null;
   loraWeight: number;
   isRegularization: boolean;
-};
+} & ClientFolderAugmentation;
 
 type ClientDatasetSource = {
   folderName: string;
@@ -31,6 +39,18 @@ type ClientExtraFolder = {
   overrideRepeats: number | null;
   loraWeight: number;
   isRegularization: boolean;
+} & ClientFolderAugmentation;
+
+type SidecarDatasetEntry = {
+  path: string;
+  num_repeats: number;
+  lora_weight: number;
+  is_regularization: boolean;
+  caption_shuffling: boolean;
+  keep_tokens: number;
+  caption_dropout_rate: number;
+  flip_augment: boolean;
+  flip_v_augment: boolean;
 };
 
 function buildDatasets(
@@ -38,12 +58,7 @@ function buildDatasets(
   extraFolders: ClientExtraFolder[],
   projectsFolder: string,
 ) {
-  const entries: Array<{
-    path: string;
-    num_repeats: number;
-    lora_weight: number;
-    is_regularization: boolean;
-  }> = [];
+  const entries: SidecarDatasetEntry[] = [];
 
   for (const ds of datasets) {
     for (const folder of ds.folders) {
@@ -62,6 +77,11 @@ function buildDatasets(
         num_repeats: repeats,
         lora_weight: folder.loraWeight,
         is_regularization: folder.isRegularization,
+        caption_shuffling: folder.captionShuffling,
+        keep_tokens: folder.keepTokens,
+        caption_dropout_rate: folder.captionDropoutRate,
+        flip_augment: folder.flipAugment,
+        flip_v_augment: folder.flipVAugment,
       });
     }
   }
@@ -74,6 +94,11 @@ function buildDatasets(
       num_repeats: repeats,
       lora_weight: extra.loraWeight,
       is_regularization: extra.isRegularization,
+      caption_shuffling: extra.captionShuffling,
+      keep_tokens: extra.keepTokens,
+      caption_dropout_rate: extra.captionDropoutRate,
+      flip_augment: extra.flipAugment,
+      flip_v_augment: extra.flipVAugment,
     });
   }
 
@@ -91,12 +116,7 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   base_model: string;
   output_path: string;
   output_name: string;
-  datasets: Array<{
-    path: string;
-    num_repeats: number;
-    lora_weight: number;
-    is_regularization: boolean;
-  }>;
+  datasets: SidecarDatasetEntry[];
   hyperparameters: Record<string, unknown>;
   sample_prompts: string[];
 } {

@@ -38,6 +38,16 @@ class DatasetEntry(BaseModel):
     # side doesn't supply them.
     lora_weight: float = 1.0
     is_regularization: bool = False
+    # Per-folder augmentation controls, forwarded from the UI's folder-level
+    # settings. Providers previously read these from top-level hyperparameters
+    # (never actually sent by the client); they now come from here instead.
+    caption_shuffling: bool = False
+    keep_tokens: int = 0
+    caption_dropout_rate: float = 0.0
+    flip_augment: bool = False
+    # Vertical flip — only ai-toolkit supports this (flip_y); sd-scripts/Kohya
+    # has no vertical-flip augmentation and ignores this field.
+    flip_v_augment: bool = False
 
 
 class StartJobRequest(BaseModel):
