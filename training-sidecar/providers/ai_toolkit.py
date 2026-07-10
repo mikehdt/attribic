@@ -69,8 +69,66 @@ SUPPORTED_MODELS = [
         },
     },
     {
+        # Node catalogue id is "flux2"; ai-toolkit arch is the 9B Klein variant
+        # (extensions_built_in/diffusion_models/flux2/flux2_klein_model.py).
+        # Klein-base is NOT guidance-distilled, so CFG is on for samples
+        # (guidance_scale > 1), unlike flux-dev.
+        "id": "flux2",
+        "name": "Flux.2 Klein 9B",
+        "architecture": "flux2_klein_9b",
+        "model_path": "black-forest-labs/FLUX.2-klein-base-9B",
+        "config": {"arch": "flux2_klein_9b", "quantize": True},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 30,
+        },
+    },
+    {
         "id": "sdxl",
         "name": "Stable Diffusion XL",
+        "architecture": "sdxl",
+        "model_path": "stabilityai/stable-diffusion-xl-base-1.0",
+        "config": {"arch": "sdxl"},
+        "train_defaults": {
+            "noise_scheduler": "ddpm",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+            "guidance_scale": 7,
+            "sample_steps": 25,
+        },
+    },
+    # Illustrious XL / NoobAI XL are SDXL-architecture finetunes — same arch and
+    # training config as sdxl above. The client always sends the local
+    # checkpoint as `model_path`, so the HF fallback just mirrors sdxl's.
+    {
+        "id": "illustrious-xl",
+        "name": "Illustrious XL",
+        "architecture": "sdxl",
+        "model_path": "stabilityai/stable-diffusion-xl-base-1.0",
+        "config": {"arch": "sdxl"},
+        "train_defaults": {
+            "noise_scheduler": "ddpm",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+            "guidance_scale": 7,
+            "sample_steps": 25,
+        },
+    },
+    {
+        "id": "noob-ai-xl",
+        "name": "NoobAI XL",
         "architecture": "sdxl",
         "model_path": "stabilityai/stable-diffusion-xl-base-1.0",
         "config": {"arch": "sdxl"},
@@ -134,6 +192,25 @@ SUPPORTED_MODELS = [
             "steps": 2000,
             "guidance_scale": 4,
             "sample_steps": 20,
+        },
+    },
+    {
+        # Node catalogue id is "ltx23"; ai-toolkit arch is "ltx2.3"
+        # (LTX23Model in extensions_built_in/diffusion_models/ltx2/ltx2.py).
+        "id": "ltx23",
+        "name": "LTX-Video 2.3",
+        "architecture": "ltx2.3",
+        "model_path": "Lightricks/LTX-2.3/ltx-2.3-22b-dev.safetensors",
+        "config": {"arch": "ltx2.3"},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [768, 768],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 30,
         },
     },
 ]

@@ -287,7 +287,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Stable Diffusion XL',
     architecture: 'sdxl',
     description: 'Mature ecosystem, wide compatibility',
-    providers: ['kohya', 'mock'],
+    providers: ['kohya', 'ai-toolkit', 'mock'],
     components: [
       {
         type: 'checkpoint',
@@ -308,6 +308,13 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Lower alpha (8) helps prevent overfitting',
     ],
     availableResolutions: [768, 1024, 1280, 1536, 1920],
+    // Kept hidden on both provider paths (shared by all three SDXL models):
+    // - transformer/textEncoder quantization: ai-toolkit has no SDXL quanto
+    //   path (the sdxl load branch ignores `quantize`), and Kohya doesn't fp8
+    //   SDXL either — pointless here, and SDXL fits comfortably at bf16.
+    // - timestepType/timestepBias: flow-matching timestep controls, meaningless
+    //   for SDXL's DDPM schedule (Kohya emits neither; ai-toolkit's values only
+    //   bite for flow-matching archs).
     hiddenFields: [
       'transformerQuantization',
       'textEncoderQuantization',
@@ -333,7 +340,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Illustrious XL v2.0',
     architecture: 'sdxl',
     description: 'Illustration-focused SDXL base model',
-    providers: ['kohya', 'mock'],
+    providers: ['kohya', 'ai-toolkit', 'mock'],
     components: [
       {
         type: 'checkpoint',
@@ -378,7 +385,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'NoobAI XL 1.1',
     architecture: 'sdxl',
     description: 'Anime/illustration SDXL, non-vpred variant',
-    providers: ['kohya', 'mock'],
+    providers: ['kohya', 'ai-toolkit', 'mock'],
     components: [
       {
         type: 'checkpoint',

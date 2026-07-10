@@ -115,8 +115,8 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
         )
 
     # Kohya (sd-scripts) — subprocess-driven, stderr-scraped (sd-scripts has no
-    # UI/API of its own). Currently supports Anima; SDXL/Flux scripts can be
-    # added to KohyaProvider.SUPPORTED_MODELS later.
+    # UI/API of its own). Supports SDXL (+ Illustrious/NoobAI finetunes) and
+    # Anima; add more architectures to KohyaProvider.SUPPORTED_MODELS.
     kohya_path = backends.get("kohya")
     if kohya_path:
         provider = KohyaProvider(kohya_path)

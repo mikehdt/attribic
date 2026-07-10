@@ -43,10 +43,111 @@ EPOCH_PATTERN = re.compile(r"epoch\s+(\d+)\s*/\s*(\d+)")
 
 # --- Model definitions ---
 #
-# Kohya-side catalogue. Scoped to Anima for now; add SDXL/Flux entries here
-# (with their own `train_script`) when those backends are lit up.
+# Kohya-side catalogue. Each entry carries the per-architecture differences —
+# entry script, LoRA network module, which model-file components it needs, and
+# a handful of arch-specific flags — so `_build_cli_args` stays generic and the
+# common training args flow identically for every model. Add new architectures
+# here (with their own `train_script`) rather than branching in the builder.
+#
+# Component spec: `components` lists the model files an arch needs, each mapped
+# to the sd-scripts CLI flag that carries its path. `required` entries raise if
+# the client didn't send a path; the "checkpoint" key additionally falls back
+# to the flat `model_path` hyperparameter. SDXL resolves the VAE/TEs from the
+# single checkpoint, so it only requires the checkpoint (VAE optional); Anima
+# needs the DiT, Qwen3 TE and Qwen-Image VAE as three explicit files.
 
 SUPPORTED_MODELS = [
+    {
+        "id": "sdxl",
+        "name": "Stable Diffusion XL",
+        "architecture": "sdxl",
+        "train_script": "sdxl_train_network.py",
+        # Standard SDXL LoRA module (networks/lora.py).
+        "network_module": "networks.lora",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "pretrained_model_name_or_path",
+                "label": "SDXL checkpoint",
+                "required": True,
+            },
+            # Optional: sd-scripts uses the checkpoint's own VAE unless one is
+            # given (sdxl_train_util._load_target_model).
+            {"key": "vae", "flag": "vae", "label": "VAE", "required": False},
+        ],
+        # SDXL is DDPM, not flow-matching — no timestep_sampling/flow_shift.
+        "flow_matching": False,
+        # SDXL's VAE is numerically unstable in fp16; keep it fp32 under mixed
+        # precision (sd-scripts recommends --no_half_vae for bf16/fp16 SDXL).
+        "no_half_vae": True,
+        # No arch-specific static flags (Anima's --vae_chunk_size is not a valid
+        # sdxl_train_network.py argument).
+        "extra_args": [],
+        # SDXL trains its two text encoders directly via --text_encoder_lr; no
+        # special network arg is needed to unfreeze them.
+        "te_network_args": [],
+        "train_defaults": {
+            "optimizer": "AdamW8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+        },
+    },
+    {
+        "id": "illustrious-xl",
+        "name": "Illustrious XL",
+        "architecture": "sdxl",
+        "train_script": "sdxl_train_network.py",
+        "network_module": "networks.lora",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "pretrained_model_name_or_path",
+                "label": "Illustrious XL checkpoint",
+                "required": True,
+            },
+            {"key": "vae", "flag": "vae", "label": "VAE", "required": False},
+        ],
+        "flow_matching": False,
+        "no_half_vae": True,
+        "extra_args": [],
+        "te_network_args": [],
+        "train_defaults": {
+            "optimizer": "AdamW8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+        },
+    },
+    {
+        "id": "noob-ai-xl",
+        "name": "NoobAI XL",
+        "architecture": "sdxl",
+        "train_script": "sdxl_train_network.py",
+        "network_module": "networks.lora",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "pretrained_model_name_or_path",
+                "label": "NoobAI XL checkpoint",
+                "required": True,
+            },
+            {"key": "vae", "flag": "vae", "label": "VAE", "required": False},
+        ],
+        "flow_matching": False,
+        "no_half_vae": True,
+        "extra_args": [],
+        "te_network_args": [],
+        "train_defaults": {
+            "optimizer": "AdamW8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+        },
+    },
     {
         "id": "anima",
         "name": "Anima",
@@ -55,13 +156,35 @@ SUPPORTED_MODELS = [
         "train_script": "anima_train_network.py",
         # LoRA network module implementing the Anima adapter.
         "network_module": "networks.lora_anima",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "pretrained_model_name_or_path",
+                "label": "DiT checkpoint",
+                "required": True,
+            },
+            {
+                "key": "qwen",
+                "flag": "qwen3",
+                "label": "Qwen3 text encoder",
+                "required": True,
+            },
+            {"key": "vae", "flag": "vae", "label": "VAE", "required": True},
+        ],
+        # Anima is flow-matching (Cosmos-Predict2 lineage).
+        "flow_matching": True,
+        "no_half_vae": False,
+        # Qwen-Image VAE is memory-hungry at full frame; chunking keeps it
+        # within budget (matches the sd-scripts Anima doc example).
+        "extra_args": ["--vae_chunk_size=64"],
+        # sd-scripts trains the Anima LLM adapter via a network arg.
+        "te_network_args": ["train_llm_adapter=True"],
         "train_defaults": {
             "optimizer": "AdamW8bit",
             "lr": 1e-4,
             "dtype": "bf16",
             "resolution": [768, 1024],
             "steps": 2000,
-            # Anima is flow-matching (Cosmos-Predict2 lineage).
             "timestep_sampling": "sigmoid",
             "discrete_flow_shift": 1.0,
         },
@@ -114,16 +237,16 @@ class KohyaProvider(TrainingProvider):
         if not self._scripts_path.exists():
             return False, f"sd-scripts path does not exist: {self._scripts_path}"
 
-        # Every supported model's train script must be present. Right now that's
-        # just Anima's; missing it means this isn't an Anima-capable checkout.
+        # Every supported model's train script must be present. Missing one
+        # means this checkout can't train that architecture.
         for model in SUPPORTED_MODELS:
             script = self._scripts_path / model["train_script"]
             if not script.exists():
                 return (
                     False,
                     f"sd-scripts checkout at {self._scripts_path} is missing "
-                    f"{model['train_script']} — update to a version with Anima "
-                    f"support (mainline kohya-ss/sd-scripts).",
+                    f"{model['train_script']} — needed to train "
+                    f"{model['name']}. Update to a checkout that includes it.",
                 )
 
         return True, None
@@ -198,30 +321,35 @@ class KohyaProvider(TrainingProvider):
     def _build_cli_args(
         self, request: StartJobRequest, dataset_config: str, config_dir: str
     ) -> list[str]:
-        """Translate the generic request into sd-scripts CLI flags for Anima."""
+        """Translate the generic request into sd-scripts CLI flags.
+
+        Model-specific differences (component paths, flow-matching controls,
+        VAE handling, text-encoder wiring) come from the SUPPORTED_MODELS entry
+        rather than being forked per architecture — the generic training args
+        below are identical for every model.
+        """
         model_def = _find_model(request.base_model)
         assert model_def is not None  # validated in generate_config
         hp = request.hyperparameters
         defaults = model_def["train_defaults"]
 
         model_paths = hp.get("model_paths") or {}
-        dit_path = model_paths.get("checkpoint") or hp.get("model_path")
-        qwen_path = model_paths.get("qwen")
-        vae_path = model_paths.get("vae")
 
-        missing = [
-            name
-            for name, val in (
-                ("DiT checkpoint", dit_path),
-                ("Qwen3 text encoder", qwen_path),
-                ("VAE", vae_path),
-            )
-            if not val
-        ]
+        # Resolve each declared component to its CLI flag. The checkpoint also
+        # falls back to the flat `model_path` hyperparameter.
+        component_args: list[str] = []
+        missing: list[str] = []
+        for comp in model_def["components"]:
+            path = model_paths.get(comp["key"])
+            if comp["key"] == "checkpoint" and not path:
+                path = hp.get("model_path")
+            if path:
+                component_args.append(f"--{comp['flag']}={path}")
+            elif comp["required"]:
+                missing.append(comp["label"])
         if missing:
             raise ValueError(
-                "Anima training needs all three model files; missing: "
-                + ", ".join(missing)
+                f"{model_def['name']} training needs: " + ", ".join(missing)
             )
 
         train_text_encoder = bool(hp.get("train_text_encoder", False))
@@ -230,9 +358,7 @@ class KohyaProvider(TrainingProvider):
         )
 
         args: list[str] = [
-            f"--pretrained_model_name_or_path={dit_path}",
-            f"--qwen3={qwen_path}",
-            f"--vae={vae_path}",
+            *component_args,
             f"--dataset_config={dataset_config}",
             f"--output_dir={request.output_path}",
             f"--output_name={request.output_name}",
@@ -249,13 +375,24 @@ class KohyaProvider(TrainingProvider):
             f"--mixed_precision={hp.get('mixed_precision', defaults.get('dtype', 'bf16'))}",
             f"--save_precision={_SAVE_PRECISION_MAP.get(hp.get('save_format', 'fp16'), 'fp16')}",
             f"--max_grad_norm={_num(hp.get('max_grad_norm', 1.0))}",
-            # Anima-specific flow-matching controls (documented defaults).
-            f"--timestep_sampling={hp.get('timestep_type', defaults.get('timestep_sampling', 'sigmoid'))}",
-            f"--discrete_flow_shift={_num(defaults.get('discrete_flow_shift', 1.0))}",
-            # Qwen-Image VAE is memory-hungry at full frame; chunking keeps it
-            # within budget (matches the sd-scripts Anima doc example).
-            "--vae_chunk_size=64",
         ]
+
+        # Flow-matching controls (Anima). SDXL is DDPM and its train script
+        # does not accept these flags, so they're gated on the model entry.
+        if model_def.get("flow_matching"):
+            args.append(
+                f"--timestep_sampling={hp.get('timestep_type', defaults.get('timestep_sampling', 'sigmoid'))}"
+            )
+            args.append(
+                f"--discrete_flow_shift={_num(defaults.get('discrete_flow_shift', 1.0))}"
+            )
+
+        # Keep the VAE in fp32 for archs whose VAE is fp16-unstable (SDXL).
+        if model_def.get("no_half_vae"):
+            args.append("--no_half_vae")
+
+        # Static per-arch extras (e.g. Anima's --vae_chunk_size).
+        args.extend(model_def.get("extra_args", []))
 
         # Optimizer-specific extras.
         if float(hp.get("weight_decay", 0) or 0) > 0 and optimizer in (
@@ -299,26 +436,37 @@ class KohyaProvider(TrainingProvider):
         # incremented" log spam (one line per freshly-respawned worker).
         args.append("--persistent_data_loader_workers")
 
-        # Text encoder: Anima keeps the Qwen3 "LLM adapter" frozen by default.
-        # When not training it, we can precompute and cache its outputs (big
-        # VRAM/time win). When the user opts to train it, wire an LR through.
+        # Text encoder handling. When training it, wire an LR through and add
+        # any arch-specific network arg (Anima unfreezes its Qwen3 LLM adapter
+        # via train_llm_adapter=True; SDXL trains its two text encoders
+        # directly). When frozen, restrict the LoRA to the UNet/DiT and — when
+        # safe — cache the TE outputs for a big VRAM/time win.
         if train_text_encoder:
             te_lr = hp.get("text_encoder_lr", 0) or 0
             if float(te_lr) > 0:
                 args.append(f"--text_encoder_lr={_num(te_lr)}")
-            # sd-scripts trains the Anima LLM adapter via a network arg.
-            args.append("--network_args")
-            args.append("train_llm_adapter=True")
+            te_network_args = model_def.get("te_network_args") or []
+            if te_network_args:
+                # --network_args takes space-separated key=value pairs (nargs=*).
+                args.append("--network_args")
+                args.extend(te_network_args)
         else:
-            # Frozen TE: precompute its outputs. sd-scripts requires the
-            # network to be UNet/DiT-only when caching TE outputs, otherwise it
-            # asserts (a cached TE can't also have trainable LoRA weights).
+            # network_train_unet_only is a precondition for TE-output caching
+            # (sd-scripts asserts it), and is correct regardless: a frozen TE
+            # can't carry trainable LoRA weights.
             args.append("--network_train_unet_only")
-            args.append("--cache_text_encoder_outputs")
+            # sd-scripts asserts (sdxl_train_network.assert_extra_args ->
+            # dataset.is_text_encoder_output_cacheable) that TE-output caching
+            # is incompatible with caption shuffling or a caption dropout rate
+            # > 0 — a cached embedding can't reflect a shuffled/dropped caption.
+            # Only cache when no subset uses either, else the run aborts at
+            # startup. This matters now that shuffle/dropout are per-subset live.
+            if _te_cache_safe(request.datasets):
+                args.append("--cache_text_encoder_outputs")
 
-        # NOTE: --fp8_base is deliberately NOT emitted — sd-scripts does not
-        # support fp8 for Anima. The UI hides the quantization fields for this
-        # model accordingly.
+        # NOTE: --fp8_base is deliberately NOT emitted — the UI hides the
+        # quantization fields for these models accordingly (Anima has no fp8
+        # support; SDXL fits comfortably at bf16).
 
         # Checkpoint saving. The user picks either a step or epoch cadence; the
         # Node side sends whichever is non-zero (steps take precedence). sd-scripts
@@ -658,6 +806,25 @@ class KohyaProvider(TrainingProvider):
 
 
 # --- Helpers ---
+
+
+def _te_cache_safe(datasets) -> bool:
+    """Whether it's safe to emit --cache_text_encoder_outputs.
+
+    sd-scripts refuses to cache text-encoder outputs when any subset uses
+    caption shuffling or a caption dropout rate > 0 (the cached embedding is
+    computed once and can't reflect a per-step shuffled/dropped caption). The
+    check lives in dataset.is_text_encoder_output_cacheable, gated from
+    <arch>_train_network.assert_extra_args. We only ever set shuffle_caption
+    and caption_dropout_rate in our generated TOML (never token_warmup_step or
+    caption_tag_dropout_rate), so those two are the only conditions to mirror.
+    """
+    for ds in datasets:
+        if ds.caption_shuffling:
+            return False
+        if float(ds.caption_dropout_rate or 0) > 0:
+            return False
+    return True
 
 
 def _toml_bool(value: bool) -> str:

@@ -359,9 +359,15 @@ const trainingConfigSlice = createSlice({
       state,
       action: PayloadAction<{ form: FormState; loadedProject: LoadedProject }>,
     ) => {
-      state.form = action.payload.form;
+      // A saved project serialises selectedProvider, which can go stale if the
+      // model's provider list changed since the save (e.g. a provider dropped,
+      // or the model was swapped). Coerce it back to a supported provider so
+      // the run doesn't fail sidecar-side with an unregistered/unknown-model
+      // error. Baseline mirrors the coerced form so the dirty flag stays clean.
+      const form = coerceProvider(action.payload.form);
+      state.form = form;
       state.loadedProject = action.payload.loadedProject;
-      state.baselineSnapshot = action.payload.form;
+      state.baselineSnapshot = form;
     },
 
     /**
@@ -601,6 +607,23 @@ export const selectCanReset = createSelector(selectSlice, (slice) => {
 });
 
 // --- Helpers ---
+
+/**
+ * Ensure `form.selectedProvider` is one the current model actually supports,
+ * falling back to the model's first (preferred) provider otherwise. Guards
+ * against a saved/loaded provider that's gone stale relative to the model.
+ */
+function coerceProvider(form: FormState): FormState {
+  const model = getModelById(form.modelId);
+  if (
+    model &&
+    model.providers.length > 0 &&
+    !model.providers.includes(form.selectedProvider)
+  ) {
+    return { ...form, selectedProvider: model.providers[0] };
+  }
+  return form;
+}
 
 function extractAugment(f: FolderAugmentation): FolderAugmentation {
   return {
