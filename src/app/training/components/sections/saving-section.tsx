@@ -1,6 +1,7 @@
 import { FolderOpenIcon } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
+import type { TrainingDefaults } from '@/app/services/training/models';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
@@ -10,6 +11,7 @@ import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 
+import { FieldTitle } from '../field-title';
 import type {
   FormState,
   SectionName,
@@ -26,6 +28,7 @@ type SavingSectionProps = {
   maxSavesToKeep: number;
   saveState: boolean;
   resumeState: string;
+  defaults: TrainingDefaults;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
@@ -52,6 +55,7 @@ const SavingSectionComponent = ({
   maxSavesToKeep,
   saveState,
   resumeState,
+  defaults,
   visibleFields,
   hiddenChangesCount,
   onFieldChange,
@@ -119,7 +123,13 @@ const SavingSectionComponent = ({
 
           {visibleFields.has('saveFormat' satisfies keyof FormState) && (
             <div>
-              <FormTitle>Output Precision</FormTitle>
+              <FieldTitle
+                field="saveFormat"
+                label="Output Precision"
+                value={saveFormat}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+              />
               <Dropdown
                 items={SAVE_FORMAT_ITEMS}
                 selectedValue={saveFormat}
@@ -174,7 +184,13 @@ const SavingSectionComponent = ({
                   'maxSavesToKeep' satisfies keyof FormState,
                 ) && (
                   <div>
-                    <FormTitle>Max Saves to Keep</FormTitle>
+                    <FieldTitle
+                      field="maxSavesToKeep"
+                      label="Max Saves to Keep"
+                      value={maxSavesToKeep}
+                      defaults={defaults}
+                      onFieldChange={onFieldChange}
+                    />
                     <Input
                       type="number"
                       min={0}

@@ -1,6 +1,7 @@
 import { PlusIcon, XIcon } from 'lucide-react';
 import { memo } from 'react';
 
+import type { TrainingDefaults } from '@/app/services/training/models';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
@@ -8,6 +9,7 @@ import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 
+import { FieldTitle } from '../field-title';
 import type {
   FormState,
   SectionName,
@@ -47,6 +49,7 @@ type SamplingSectionProps = {
   sampleSteps: number;
   guidanceScale: number;
   sampleSampler: string;
+  defaults: TrainingDefaults;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
@@ -68,6 +71,7 @@ const SamplingSectionComponent = ({
   sampleSteps,
   guidanceScale,
   sampleSampler,
+  defaults,
   visibleFields,
   hiddenChangesCount,
   onFieldChange,
@@ -194,7 +198,13 @@ const SamplingSectionComponent = ({
 
               {visibleFields.has('sampleSteps' satisfies keyof FormState) && (
                 <div>
-                  <FormTitle>Sample Steps</FormTitle>
+                  <FieldTitle
+                    field="sampleSteps"
+                    label="Sample Steps"
+                    value={sampleSteps}
+                    defaults={defaults}
+                    onFieldChange={onFieldChange}
+                  />
                   <Input
                     type="number"
                     min={1}
@@ -211,7 +221,13 @@ const SamplingSectionComponent = ({
 
               {visibleFields.has('guidanceScale' satisfies keyof FormState) && (
                 <div>
-                  <FormTitle>Guidance Scale</FormTitle>
+                  <FieldTitle
+                    field="guidanceScale"
+                    label="Guidance Scale"
+                    value={guidanceScale}
+                    defaults={defaults}
+                    onFieldChange={onFieldChange}
+                  />
                   <Input
                     type="text"
                     value={guidanceScale}
@@ -227,7 +243,13 @@ const SamplingSectionComponent = ({
 
               {visibleFields.has('sampleSampler' satisfies keyof FormState) && (
                 <div>
-                  <FormTitle>Sampler</FormTitle>
+                  <FieldTitle
+                    field="sampleSampler"
+                    label="Sampler"
+                    value={sampleSampler}
+                    defaults={defaults}
+                    onFieldChange={onFieldChange}
+                  />
                   <Dropdown
                     items={SAMPLE_SAMPLER_ITEMS}
                     selectedValue={sampleSampler}

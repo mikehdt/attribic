@@ -1,6 +1,7 @@
 import { Link2Icon, Unlink2Icon } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
+import type { TrainingDefaults } from '@/app/services/training/models';
 import { Button } from '@/app/shared/button/button';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
@@ -8,6 +9,7 @@ import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { Slider } from '@/app/shared/slider/slider';
 
+import { FieldTitle } from '../field-title';
 import type {
   FormState,
   SectionName,
@@ -25,6 +27,7 @@ type LoraShapeSectionProps = {
   lokrFactor: number;
   layerTargeting: string;
   hasChanges: boolean;
+  defaults: TrainingDefaults;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
@@ -50,6 +53,7 @@ const LoraShapeSectionComponent = ({
   lokrFactor,
   layerTargeting,
   hasChanges,
+  defaults,
   visibleFields,
   hiddenChangesCount,
   onFieldChange,
@@ -89,6 +93,19 @@ const LoraShapeSectionComponent = ({
       if (networkDimAlphaLinked) onFieldChange('networkDim', v);
     },
     [networkDimAlphaLinked, onFieldChange],
+  );
+
+  // Reset-to-default for Rank/Alpha routes through the same linked-value
+  // handlers as manual edits, so resetting one keeps the pair in sync when
+  // they're linked.
+  const handleNetworkDimReset = useCallback(
+    (_field: 'networkDim', value: number) => handleRankChange(value),
+    [handleRankChange],
+  );
+
+  const handleNetworkAlphaReset = useCallback(
+    (_field: 'networkAlpha', value: number) => handleAlphaChange(value),
+    [handleAlphaChange],
   );
 
   const toggleLinked = useCallback(() => {
@@ -150,7 +167,13 @@ const LoraShapeSectionComponent = ({
 
             {visibleFields.has('networkDropout' satisfies keyof FormState) && (
               <div>
-                <FormTitle>Dropout</FormTitle>
+                <FieldTitle
+                  field="networkDropout"
+                  label="Dropout"
+                  value={networkDropout}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                />
                 <Input
                   type="text"
                   value={networkDropout}
@@ -173,7 +196,13 @@ const LoraShapeSectionComponent = ({
               'scaleWeightNorms' satisfies keyof FormState,
             ) && (
               <div>
-                <FormTitle>Max Weight Norm</FormTitle>
+                <FieldTitle
+                  field="scaleWeightNorms"
+                  label="Max Weight Norm"
+                  value={scaleWeightNorms}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                />
                 <Input
                   type="text"
                   value={scaleWeightNorms}
@@ -193,7 +222,13 @@ const LoraShapeSectionComponent = ({
 
             {visibleFields.has('lokrFactor' satisfies keyof FormState) && (
               <div>
-                <FormTitle>LoKr Factor</FormTitle>
+                <FieldTitle
+                  field="lokrFactor"
+                  label="LoKr Factor"
+                  value={lokrFactor}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                />
                 <Input
                   type="number"
                   min={-1}
@@ -218,7 +253,13 @@ const LoraShapeSectionComponent = ({
         <div className="flex items-end gap-2">
           {visibleFields.has('networkDim' satisfies keyof FormState) && (
             <div className="flex-1">
-              <FormTitle>Rank (dim)</FormTitle>
+              <FieldTitle
+                field="networkDim"
+                label="Rank (dim)"
+                value={networkDim}
+                defaults={defaults}
+                onFieldChange={handleNetworkDimReset}
+              />
               <Slider
                 min={1}
                 max={128}
@@ -259,7 +300,13 @@ const LoraShapeSectionComponent = ({
 
           {visibleFields.has('networkAlpha' satisfies keyof FormState) && (
             <div className="flex-1">
-              <FormTitle>Alpha</FormTitle>
+              <FieldTitle
+                field="networkAlpha"
+                label="Alpha"
+                value={networkAlpha}
+                defaults={defaults}
+                onFieldChange={handleNetworkAlphaReset}
+              />
               <Slider
                 min={1}
                 max={128}
@@ -280,7 +327,13 @@ const LoraShapeSectionComponent = ({
 
         {visibleFields.has('layerTargeting' satisfies keyof FormState) && (
           <div>
-            <FormTitle>Layer Targeting</FormTitle>
+            <FieldTitle
+              field="layerTargeting"
+              label="Layer Targeting"
+              value={layerTargeting}
+              defaults={defaults}
+              onFieldChange={onFieldChange}
+            />
             <Input
               type="text"
               value={layerTargeting}
@@ -297,7 +350,13 @@ const LoraShapeSectionComponent = ({
 
         {visibleFields.has('networkArgs' satisfies keyof FormState) && (
           <div>
-            <FormTitle>Network Args</FormTitle>
+            <FieldTitle
+              field="networkArgs"
+              label="Network Args"
+              value={networkArgs}
+              defaults={defaults}
+              onFieldChange={onFieldChange}
+            />
             <Input
               type="text"
               value={networkArgs}

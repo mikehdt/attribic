@@ -1,12 +1,13 @@
 import { memo } from 'react';
 
+import type { TrainingDefaults } from '@/app/services/training/models';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
-import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 
+import { FieldTitle } from '../field-title';
 import type {
   FormState,
   SectionName,
@@ -32,6 +33,7 @@ type PerformanceSectionProps = {
   blocksToSwap: number;
   lowVram: boolean;
   hasChanges: boolean;
+  defaults: TrainingDefaults;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
@@ -69,6 +71,7 @@ const PerformanceSectionComponent = ({
   blocksToSwap,
   lowVram,
   hasChanges,
+  defaults,
   visibleFields,
   hiddenChangesCount,
   onFieldChange,
@@ -93,13 +96,11 @@ const PerformanceSectionComponent = ({
 
   if (!hasVisibleFields) return null;
 
+  // Multi-select on both backends. ai-toolkit trains each selected size;
+  // Kohya trains at the largest and enables aspect bucketing across the
+  // min–max range when more than one is selected (the sidecar derives
+  // enable_bucket / min_bucket_reso / max_bucket_reso from this list).
   const handleToggleResolution = (res: number) => {
-    if (isKohya) {
-      // Kohya: single-select — replace the entire array
-      onFieldChange('resolution', [res]);
-      return;
-    }
-    // ai-toolkit: multi-select toggle
     if (resolution.includes(res)) {
       if (resolution.length > 1) {
         onFieldChange(
@@ -142,7 +143,13 @@ const PerformanceSectionComponent = ({
         <div className="grid grid-cols-3 gap-x-4 gap-y-3">
           {visibleFields.has('mixedPrecision' satisfies keyof FormState) && (
             <div>
-              <FormTitle>Training Precision</FormTitle>
+              <FieldTitle
+                field="mixedPrecision"
+                label="Training Precision"
+                value={mixedPrecision}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+              />
               <Dropdown
                 items={PRECISION_ITEMS}
                 selectedValue={mixedPrecision}
@@ -164,7 +171,13 @@ const PerformanceSectionComponent = ({
             'transformerQuantization' satisfies keyof FormState,
           ) && (
             <div>
-              <FormTitle>Transformer Quantization</FormTitle>
+              <FieldTitle
+                field="transformerQuantization"
+                label="Transformer Quantization"
+                value={transformerQuantization}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+              />
               <Dropdown
                 items={QUANTIZATION_ITEMS}
                 selectedValue={transformerQuantization}
@@ -186,7 +199,13 @@ const PerformanceSectionComponent = ({
             'textEncoderQuantization' satisfies keyof FormState,
           ) && (
             <div>
-              <FormTitle>Text Encoder Quantization</FormTitle>
+              <FieldTitle
+                field="textEncoderQuantization"
+                label="Text Encoder Quantization"
+                value={textEncoderQuantization}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+              />
               <Dropdown
                 items={QUANTIZATION_ITEMS}
                 selectedValue={textEncoderQuantization}
@@ -208,9 +227,13 @@ const PerformanceSectionComponent = ({
         {/* Resolution */}
         {visibleFields.has('resolution' satisfies keyof FormState) && (
           <div>
-            <FormTitle>
-              {isKohya ? 'Base Resolution' : 'Training Resolutions'}
-            </FormTitle>
+            <FieldTitle
+              field="resolution"
+              label="Training Resolutions"
+              value={resolution}
+              defaults={defaults}
+              onFieldChange={onFieldChange}
+            />
             <div className="flex flex-wrap gap-1.5">
               {availableResolutions.map((res) => {
                 const isActive = resolution.includes(res);
@@ -230,6 +253,11 @@ const PerformanceSectionComponent = ({
                 );
               })}
             </div>
+            <p className="mt-1 text-sm text-slate-400">
+              {isKohya
+                ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
+                : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
+            </p>
           </div>
         )}
 
@@ -244,7 +272,13 @@ const PerformanceSectionComponent = ({
               'gradientAccumulationSteps' satisfies keyof FormState,
             ) && (
               <div>
-                <FormTitle>Gradient Accumulation Steps</FormTitle>
+                <FieldTitle
+                  field="gradientAccumulationSteps"
+                  label="Gradient Accumulation Steps"
+                  value={gradientAccumulationSteps}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                />
                 <Input
                   type="number"
                   min={1}
@@ -271,7 +305,13 @@ const PerformanceSectionComponent = ({
 
             {visibleFields.has('bucketResoSteps' satisfies keyof FormState) && (
               <div>
-                <FormTitle>Bucket Resolution Steps</FormTitle>
+                <FieldTitle
+                  field="bucketResoSteps"
+                  label="Bucket Resolution Steps"
+                  value={bucketResoSteps}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                />
                 <Input
                   type="number"
                   min={1}
@@ -291,7 +331,13 @@ const PerformanceSectionComponent = ({
 
             {visibleFields.has('blocksToSwap' satisfies keyof FormState) && (
               <div>
-                <FormTitle>Blocks to Swap</FormTitle>
+                <FieldTitle
+                  field="blocksToSwap"
+                  label="Blocks to Swap"
+                  value={blocksToSwap}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                />
                 <Input
                   type="number"
                   min={0}
