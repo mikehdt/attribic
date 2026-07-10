@@ -113,6 +113,7 @@ const trainingConfigSlice = createSlice({
           : (nextModel?.providers[0] ?? 'ai-toolkit'),
         ...preserved,
       };
+      fillEmptyModelPaths(state.form, state.appModelDefaults[modelId]);
     },
 
     setProvider: (state, action: PayloadAction<TrainingProvider>) => {
@@ -127,13 +128,7 @@ const trainingConfigSlice = createSlice({
     },
 
     applyAppDefaults: (state, action: PayloadAction<ModelPaths>) => {
-      // Fill in paths that are empty, preserving user edits.
-      for (const [key, value] of Object.entries(action.payload)) {
-        const component = key as ModelComponentType;
-        if (value && !state.form.modelPaths[component]) {
-          state.form.modelPaths[component] = value;
-        }
-      }
+      fillEmptyModelPaths(state.form, action.payload);
     },
 
     resetSection: (state, action: PayloadAction<SectionName>) => {
@@ -144,10 +139,7 @@ const trainingConfigSlice = createSlice({
       //   - Ephemeral: fall back to suggested defaults for the model.
       const ref =
         state.baselineSnapshot ??
-        defaultsToFormState(
-          getDefaults(state.form.modelId),
-          state.form.modelId,
-        );
+        pristineFormState(state.form.modelId, state.appModelDefaults);
       const { form } = state;
 
       switch (action.payload) {
@@ -270,17 +262,17 @@ const trainingConfigSlice = createSlice({
     },
 
     resetAll: (state) => {
-      state.form = defaultsToFormState(
-        getDefaults(state.form.modelId),
+      state.form = pristineFormState(
         state.form.modelId,
+        state.appModelDefaults,
       );
     },
 
     /** Revert the form to suggested defaults AND drop any loaded project. */
     resetToSuggestedDefaults: (state) => {
-      state.form = defaultsToFormState(
-        getDefaults(state.form.modelId),
+      state.form = pristineFormState(
         state.form.modelId,
+        state.appModelDefaults,
       );
       state.loadedProject = null;
       state.baselineSnapshot = null;
@@ -676,9 +668,9 @@ export const selectCanReset = createSelector(selectSlice, (slice) => {
   if (slice.baselineSnapshot) {
     return !formsEqual(slice.form, slice.baselineSnapshot);
   }
-  const pristine = defaultsToFormState(
-    getDefaults(slice.form.modelId),
+  const pristine = pristineFormState(
     slice.form.modelId,
+    slice.appModelDefaults,
   );
   return !formsEqual(slice.form, pristine);
 });
@@ -699,6 +691,32 @@ function coerceProvider(form: FormState): FormState {
   ) {
     return { ...form, selectedProvider: model.providers[0] };
   }
+  return form;
+}
+
+/** Fill empty model paths from app-level defaults, preserving user edits. */
+function fillEmptyModelPaths(form: FormState, paths?: ModelPaths): void {
+  if (!paths) return;
+  for (const [key, value] of Object.entries(paths)) {
+    const component = key as ModelComponentType;
+    if (value && !form.modelPaths[component]) {
+      form.modelPaths[component] = value;
+    }
+  }
+}
+
+/**
+ * The "untouched" form for a model: suggested defaults with app-level default
+ * paths applied. App defaults are auto-filled on load (applyAppDefaults), so
+ * they must count as pristine — otherwise the reset button lights up on a
+ * form the user never touched, and resetting would wipe the configured paths.
+ */
+function pristineFormState(
+  modelId: string,
+  appModelDefaults: AppModelDefaults,
+): FormState {
+  const form = defaultsToFormState(getDefaults(modelId), modelId);
+  fillEmptyModelPaths(form, appModelDefaults[modelId]);
   return form;
 }
 

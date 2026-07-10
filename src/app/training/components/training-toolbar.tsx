@@ -41,19 +41,21 @@ const TrainingToolbarComponent = () => {
   const viewMode = useTrainingViewMode();
   const hydrated = useHydrated();
 
-  // Jobs-slice state can be written by layout-level effects (persisted-job
-  // load, active-run hydration, WebSocket progress) before this page chunk
-  // hydrates, so pin job-derived props to their SSR values until hydration
-  // completes — see useHydrated. Form-derived state (isDirty/canReset/
-  // loadedProject) is only mutated by this page's own effects, which cannot
-  // run before it hydrates, so it needs no gate.
+  // This shelf lives in the layout, so other boundaries (the jobs effects,
+  // and the training page itself with its config-fetch effects that dispatch
+  // setAppModelDefaults/applyAppDefaults) can hydrate and mutate the store
+  // before this component's hydration render. Pin every store-derived prop
+  // to its SSR value until hydration completes — see useHydrated.
   const panelOpenValue = useAppSelector(selectPanelOpen);
-  const loadedProject = useAppSelector(selectLoadedProject);
-  const isDirty = useAppSelector(selectIsDirty);
-  const canReset = useAppSelector(selectCanReset);
+  const loadedProjectValue = useAppSelector(selectLoadedProject);
+  const isDirtyValue = useAppSelector(selectIsDirty);
+  const canResetValue = useAppSelector(selectCanReset);
   const form = useAppSelector(selectForm);
 
   const panelOpen = hydrated && panelOpenValue;
+  const loadedProject = hydrated ? loadedProjectValue : null;
+  const isDirty = hydrated && isDirtyValue;
+  const canReset = hydrated && canResetValue;
 
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [loadOpen, setLoadOpen] = useState(false);
