@@ -487,16 +487,36 @@ class KohyaProvider(TrainingProvider):
 
         # Sample generation during training.
         if request.sample_prompts:
+            resolution = hp.get("resolution", defaults.get("resolution", [1024]))
+            if not isinstance(resolution, list):
+                resolution = [int(resolution)]
+            sample_res = max(resolution) if resolution else 1024
+            sample_steps = int(
+                hp.get("sample_steps", defaults.get("sample_steps", 20))
+            )
+            sample_guidance = _num(
+                hp.get("guidance_scale", defaults.get("guidance_scale", 7))
+            )
+
+            prompt_lines = [
+                _add_missing_sample_flags(
+                    prompt, sample_res, sample_res, sample_steps, sample_guidance
+                )
+                for prompt in request.sample_prompts
+            ]
+
             prompt_file = os.path.join(
                 config_dir, f"{request.output_name}.sample-prompts.txt"
             )
             with open(prompt_file, "w", encoding="utf-8") as f:
-                f.write("\n".join(request.sample_prompts))
+                f.write("\n".join(prompt_lines))
             args.append(f"--sample_prompts={prompt_file}")
             args.append(
                 f"--sample_every_n_steps={int(hp.get('sample_every_n_steps', 250))}"
             )
-            args.append("--sample_sampler=euler_a")
+            args.append(
+                f"--sample_sampler={hp.get('sample_sampler', 'euler_a')}"
+            )
 
         # Resume from a saved training state directory.
         if hp.get("resume_state"):
@@ -825,6 +845,42 @@ def _te_cache_safe(datasets) -> bool:
         if float(ds.caption_dropout_rate or 0) > 0:
             return False
     return True
+
+
+def _prompt_line_has_flag(line: str, flag: str) -> bool:
+    r"""Whether `line` already sets `--{flag}` in sd-scripts prompt-line syntax.
+
+    Mirrors library/sampling.py's line_to_prompt_dict: a prompt line is split
+    on " --" and each resulting segment matched against e.g. `r"w (\d+)"` at
+    its start — so we replicate that same split/prefix check rather than a
+    naive substring search (which would e.g. mistake "--ss euler_a" for a "-s"
+    steps flag).
+    """
+    for segment in line.split(" --")[1:]:
+        m = re.match(r"^(\w+)\s", segment)
+        if m and m.group(1).lower() == flag:
+            return True
+    return False
+
+
+def _add_missing_sample_flags(
+    line: str, width: int, height: int, steps: int, guidance: str
+) -> str:
+    """Append `--w`/`--h`/`--s`/`--l` to a sample prompt line, unless the user
+    already set that flag on the line themselves (their explicit choice wins).
+    """
+    extras: list[str] = []
+    if not _prompt_line_has_flag(line, "w"):
+        extras.append(f"--w {width}")
+    if not _prompt_line_has_flag(line, "h"):
+        extras.append(f"--h {height}")
+    if not _prompt_line_has_flag(line, "s"):
+        extras.append(f"--s {steps}")
+    if not _prompt_line_has_flag(line, "l"):
+        extras.append(f"--l {guidance}")
+    if not extras:
+        return line
+    return line + " " + " ".join(extras)
 
 
 def _toml_bool(value: bool) -> str:

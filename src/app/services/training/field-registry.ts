@@ -71,7 +71,6 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     tier: 'simple',
     group: 'learning',
     defaultKey: null,
-    providers: ['kohya'],
   },
   scheduler: {
     tier: 'simple',
@@ -259,22 +258,16 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     tier: 'intermediate',
     group: 'sampling',
     defaultKey: 'sampleSteps',
-    // Dead on both real backends today; sweep 2 will plumb this through.
-    providers: [],
   },
   guidanceScale: {
     tier: 'advanced',
     group: 'sampling',
     defaultKey: 'guidanceScale',
-    // Dead on both real backends today; sweep 2 will plumb this through.
-    providers: [],
   },
-  noiseScheduler: {
+  sampleSampler: {
     tier: 'advanced',
     group: 'sampling',
-    defaultKey: 'noiseScheduler',
-    // Dead on both real backends today; sweep 2 will plumb this through.
-    providers: [],
+    defaultKey: 'sampleSampler',
   },
 
   // Saving

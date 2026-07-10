@@ -202,7 +202,7 @@ const trainingConfigSlice = createSlice({
           form.sampleEverySteps = ref.sampleEverySteps;
           form.sampleSteps = ref.sampleSteps;
           form.guidanceScale = ref.guidanceScale;
-          form.noiseScheduler = ref.noiseScheduler;
+          form.sampleSampler = ref.sampleSampler;
           break;
 
         case 'saving':
@@ -518,7 +518,7 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
     form.sampleEverySteps !== ref.sampleEverySteps ||
     form.sampleSteps !== ref.sampleSteps ||
     form.guidanceScale !== ref.guidanceScale ||
-    form.noiseScheduler !== ref.noiseScheduler ||
+    form.sampleSampler !== ref.sampleSampler ||
     JSON.stringify(form.samplePrompts) !== JSON.stringify(ref.samplePrompts);
 
   const savingDiffers =

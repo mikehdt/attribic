@@ -96,7 +96,7 @@ export type FormState = {
   sampleSteps: number;
   seed: number;
   guidanceScale: number;
-  noiseScheduler: string;
+  sampleSampler: string;
 
   saveEnabled: boolean;
   saveMode: 'epochs' | 'steps';

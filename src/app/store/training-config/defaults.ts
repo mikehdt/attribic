@@ -72,7 +72,7 @@ export function defaultsToFormState(
     sampleSteps: defaults.sampleSteps,
     seed: defaults.seed,
     guidanceScale: defaults.guidanceScale,
-    noiseScheduler: defaults.noiseScheduler,
+    sampleSampler: defaults.sampleSampler,
     saveEnabled: false,
     saveMode: 'epochs',
     saveEveryEpochs: defaults.saveEvery,

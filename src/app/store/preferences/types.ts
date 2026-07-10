@@ -1,10 +1,7 @@
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
 export type TrainingViewMode =
-  | 'simple'
-  | 'intermediate'
-  | 'advanced'
-  | 'expert';
+  'simple' | 'intermediate' | 'advanced' | 'expert';
 
 export enum TagEditMode {
   BUTTON = 'BUTTON',

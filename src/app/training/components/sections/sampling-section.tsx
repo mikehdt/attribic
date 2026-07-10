@@ -3,6 +3,7 @@ import { memo } from 'react';
 
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
+import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
@@ -13,6 +14,30 @@ import type {
 } from '../training-config-form/use-training-config-form';
 import { SectionResetButton } from './section-reset-button';
 
+/**
+ * Sampler choices shared by both backends. Verified against each backend's
+ * actual accepted values rather than guessed:
+ *  - ai-toolkit (`toolkit/sampler.py` get_sampler): ddim, ddpm, pndm,
+ *    lms/k_lms, euler/k_euler, euler_a, dpmsolver/dpmsolver++ (+k_ variants),
+ *    dpmsingle, heun, dpm_2, dpm_2_a, lcm, custom_lcm, mean_flow, flowmatch.
+ *  - sd-scripts (`library/args.py` --sample_sampler choices): ddim, pndm,
+ *    lms, euler, euler_a, heun, dpm_2, dpm_2_a, dpmsolver, dpmsolver++,
+ *    dpmsingle, k_lms, k_euler, k_euler_a, k_dpm_2, k_dpm_2_a.
+ * This list is the intersection (values valid verbatim on both), trimmed to
+ * the handful users actually reach for. Flow-matching ai-toolkit models
+ * (Flux/Z-Image/Wan/LTX) always sample with "flowmatch" regardless of this
+ * choice — the sidecar overrides it for those archs since anything else
+ * would build the wrong scheduler class for a flow-matching transformer.
+ */
+export const SAMPLE_SAMPLER_ITEMS: DropdownItem<string>[] = [
+  { value: 'euler_a', label: 'Euler Ancestral' },
+  { value: 'euler', label: 'Euler' },
+  { value: 'ddim', label: 'DDIM' },
+  { value: 'dpmsolver++', label: 'DPM Solver++' },
+  { value: 'heun', label: 'Heun' },
+  { value: 'pndm', label: 'PNDM' },
+];
+
 type SamplingSectionProps = {
   samplingEnabled: boolean;
   samplePrompts: string[];
@@ -21,7 +46,7 @@ type SamplingSectionProps = {
   sampleEverySteps: number;
   sampleSteps: number;
   guidanceScale: number;
-  noiseScheduler: string;
+  sampleSampler: string;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
@@ -42,7 +67,7 @@ const SamplingSectionComponent = ({
   sampleEverySteps,
   sampleSteps,
   guidanceScale,
-  noiseScheduler,
+  sampleSampler,
   visibleFields,
   hiddenChangesCount,
   onFieldChange,
@@ -63,7 +88,7 @@ const SamplingSectionComponent = ({
     visibleFields.has('sampleEverySteps') ||
     visibleFields.has('sampleSteps') ||
     visibleFields.has('guidanceScale') ||
-    visibleFields.has('noiseScheduler');
+    visibleFields.has('sampleSampler');
 
   if (!hasVisibleFields) return null;
 
@@ -200,18 +225,14 @@ const SamplingSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has(
-                'noiseScheduler' satisfies keyof FormState,
-              ) && (
+              {visibleFields.has('sampleSampler' satisfies keyof FormState) && (
                 <div>
-                  <FormTitle>Noise Scheduler</FormTitle>
-                  <Input
-                    type="text"
-                    value={noiseScheduler}
-                    onChange={(e) =>
-                      onFieldChange('noiseScheduler', e.target.value)
-                    }
-                    className="w-full"
+                  <FormTitle>Sampler</FormTitle>
+                  <Dropdown
+                    items={SAMPLE_SAMPLER_ITEMS}
+                    selectedValue={sampleSampler}
+                    onChange={(val) => onFieldChange('sampleSampler', val)}
+                    fullWidth
                   />
                 </div>
               )}

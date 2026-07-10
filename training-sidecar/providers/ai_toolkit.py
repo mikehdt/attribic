@@ -274,6 +274,20 @@ class AiToolkitProvider(TrainingProvider):
                         "type": "sd_trainer",
                         "training_folder": request.output_path,
                         "device": "cuda:0",
+                        # Training-time RNG seed (torch/cuda/random), read by
+                        # BaseTrainProcess.__init__ via
+                        # get_conf('training_seed', ...) — a process-level key,
+                        # sibling to network/save/datasets/train/model/sample
+                        # below. Distinct from the sample block's own
+                        # hardcoded seed=42 (that reproducibly walks sample
+                        # images across saves; this is the actual
+                        # training-loop seed). -1 means "random" client-side,
+                        # so only emit when the user picked a fixed value.
+                        **(
+                            {"training_seed": int(hp["seed"])}
+                            if int(hp.get("seed", -1)) >= 0
+                            else {}
+                        ),
                         "network": {
                             "type": hp.get("network_type", "lora"),
                             "linear": hp.get("network_dim", 16),
@@ -401,9 +415,7 @@ class AiToolkitProvider(TrainingProvider):
                         **(
                             {
                                 "sample": {
-                                    "sampler": defaults.get(
-                                        "noise_scheduler", "flowmatch"
-                                    ),
+                                    "sampler": _resolve_sample_sampler(hp, defaults),
                                     "sample_every": hp.get(
                                         "sample_every_n_steps", 250
                                     ),
@@ -412,10 +424,14 @@ class AiToolkitProvider(TrainingProvider):
                                     "prompts": request.sample_prompts,
                                     "seed": 42,
                                     "walk_seed": True,
-                                    "guidance_scale": defaults.get(
-                                        "guidance_scale", 4
+                                    "guidance_scale": hp.get(
+                                        "guidance_scale",
+                                        defaults.get("guidance_scale", 4),
                                     ),
-                                    "sample_steps": defaults.get("sample_steps", 20),
+                                    "sample_steps": hp.get(
+                                        "sample_steps",
+                                        defaults.get("sample_steps", 20),
+                                    ),
                                 },
                             }
                             if request.sample_prompts
@@ -655,6 +671,25 @@ def _resolve_save_every_steps(hp: dict, epochs: int, total_steps: int) -> int:
     if save_every_epochs > 0:
         return _steps_per_epoch(save_every_epochs, epochs, total_steps)
     return max(1, total_steps) + 1
+
+
+def _resolve_sample_sampler(hp: dict, defaults: dict) -> str:
+    """Resolve the sampler used for training-time sample images.
+
+    ai-toolkit's `sample.sampler` is fed straight into `toolkit.sampler.get_sampler`
+    (see toolkit/stable_diffusion_model.py), which instantiates a diffusers
+    scheduler class by name. For flow-matching architectures (Flux, Z-Image,
+    Wan, LTX — anything with a "flowmatch" `noise_scheduler` model default)
+    that *must* stay "flowmatch" (CustomFlowMatchEulerDiscreteScheduler) —
+    picking a classic diffusion sampler like "euler_a" would build a
+    non-flow-matching scheduler for a flow-matching transformer and produce
+    garbage samples. Only non-flow-matching archs (SDXL family, "ddpm") honor
+    the user's `sample_sampler` choice.
+    """
+    model_scheduler = defaults.get("noise_scheduler", "flowmatch")
+    if model_scheduler == "flowmatch":
+        return "flowmatch"
+    return hp.get("sample_sampler", model_scheduler)
 
 
 def _first_resolution(hp: dict, defaults: dict) -> int:

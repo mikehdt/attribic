@@ -152,8 +152,8 @@ const TrainingConfigFormComponent = ({
       extraFolders: state.extraFolders,
       seed: state.seed,
       guidanceScale: state.guidanceScale,
-      noiseScheduler: state.noiseScheduler,
       sampleSteps: state.sampleSteps,
+      sampleSampler: state.sampleSampler,
       saveEnabled: state.saveEnabled,
       saveMode: state.saveMode,
       saveEveryEpochs: state.saveEveryEpochs,
@@ -287,7 +287,7 @@ const TrainingConfigFormComponent = ({
             sampleEverySteps={state.sampleEverySteps}
             sampleSteps={state.sampleSteps}
             guidanceScale={state.guidanceScale}
-            noiseScheduler={state.noiseScheduler}
+            sampleSampler={state.sampleSampler}
             visibleFields={visibleFields}
             hiddenChangesCount={hiddenChanges.sampling}
             onFieldChange={setField}

@@ -100,9 +100,9 @@ export type TrainingDefaults = {
   /** Bias the timestep distribution towards earlier/later/balanced training. */
   timestepBias: 'balanced' | 'earlier' | 'later';
   sampleEvery: number;
-  noiseScheduler: string;
   guidanceScale: number;
   sampleSteps: number;
+  sampleSampler: string;
 };
 
 /**
@@ -153,9 +153,9 @@ const BASE_DEFAULTS: TrainingDefaults = {
   timestepType: 'sigmoid',
   timestepBias: 'balanced',
   sampleEvery: 500,
-  noiseScheduler: 'flowmatch',
   guidanceScale: 4,
   sampleSteps: 20,
+  sampleSampler: 'euler_a',
 };
 
 export const MODEL_DEFINITIONS: ModelDefinition[] = [
@@ -192,7 +192,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Uses Qwen3 text encoder instead of T5-XXL + CLIP-L',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
-    hiddenFields: ['noiseScheduler'],
     defaults: {
       ...BASE_DEFAULTS,
       sampleEvery: 250,
@@ -235,7 +234,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Rank 16 is a good starting point; increase for complex subjects',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
-    hiddenFields: ['noiseScheduler'],
     defaults: {
       ...BASE_DEFAULTS,
       sampleEvery: 250,
@@ -278,7 +276,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Uses unconditioned generation (guidance scale 1.0)',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
-    hiddenFields: ['noiseScheduler'],
     defaults: {
       ...BASE_DEFAULTS,
       steps: 1500,
@@ -336,7 +333,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       transformerQuantization: 'none',
       textEncoderQuantization: 'none',
       trainTextEncoder: true,
-      noiseScheduler: 'ddpm',
       guidanceScale: 7,
       sampleSteps: 25,
     },
@@ -381,7 +377,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       networkAlpha: 8,
       resolution: [1024],
       trainTextEncoder: true,
-      noiseScheduler: 'ddpm',
       transformerQuantization: 'none',
       textEncoderQuantization: 'none',
       guidanceScale: 7,
@@ -428,7 +423,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       networkAlpha: 8,
       resolution: [1024],
       trainTextEncoder: true,
-      noiseScheduler: 'ddpm',
       transformerQuantization: 'none',
       textEncoderQuantization: 'none',
       guidanceScale: 7,
@@ -455,7 +449,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Uses Qwen3-4B as the text encoder — no separate T5/CLIP needed',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
-    hiddenFields: ['noiseScheduler'],
     defaults: {
       ...BASE_DEFAULTS,
       sampleEvery: 250,
@@ -498,7 +491,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     ],
     availableResolutions: [512, 768, 1024, 1536],
     hiddenFields: [
-      'noiseScheduler',
       'timestepBias',
       'transformerQuantization',
       'textEncoderQuantization',
@@ -531,7 +523,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Supports image-only training via single-frame clips',
     ],
     availableResolutions: [256, 512, 768, 1024],
-    hiddenFields: ['noiseScheduler', 'trainTextEncoder'],
+    hiddenFields: ['trainTextEncoder'],
     experimental: true,
     defaults: {
       ...BASE_DEFAULTS,
@@ -552,7 +544,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Supports image-only training via single-frame clips',
     ],
     availableResolutions: [256, 512, 768, 1024],
-    hiddenFields: ['noiseScheduler', 'trainTextEncoder'],
+    hiddenFields: ['trainTextEncoder'],
     experimental: true,
     defaults: {
       ...BASE_DEFAULTS,
@@ -572,7 +564,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Supports image-only training via single-frame clips',
     ],
     availableResolutions: [256, 512, 768, 1024],
-    hiddenFields: ['noiseScheduler', 'trainTextEncoder'],
+    hiddenFields: ['trainTextEncoder'],
     experimental: true,
     defaults: {
       ...BASE_DEFAULTS,

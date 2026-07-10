@@ -33,6 +33,7 @@ from providers.ai_toolkit import (
     SUPPORTED_MODELS,
     _find_model,
     _first_resolution,
+    _resolve_sample_sampler,
     _resolve_save_every_steps,
 )
 from providers.base import TrainingProvider
@@ -491,6 +492,20 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                     "type": "ui_trainer",
                     "training_folder": request.output_path,
                     "device": f"cuda:{gpu_id}",
+                    # Training-time RNG seed (torch/cuda/random), read by
+                    # BaseTrainProcess.__init__ via
+                    # get_conf('training_seed', ...) — a process-level key,
+                    # sibling to network/save/datasets/train/model/sample
+                    # below. Distinct from the sample block's own hardcoded
+                    # seed=42 (that reproducibly walks sample images across
+                    # saves; this is the actual training-loop seed). -1
+                    # means "random" client-side, so only emit when the user
+                    # picked a fixed value.
+                    **(
+                        {"training_seed": int(hp["seed"])}
+                        if int(hp.get("seed", -1)) >= 0
+                        else {}
+                    ),
                     "network": {
                         "type": hp.get("network_type", "lora"),
                         "linear": hp.get("network_dim", 16),
@@ -610,9 +625,7 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                     **(
                         {
                             "sample": {
-                                "sampler": defaults.get(
-                                    "noise_scheduler", "flowmatch"
-                                ),
+                                "sampler": _resolve_sample_sampler(hp, defaults),
                                 "sample_every": hp.get(
                                     "sample_every_n_steps", 250
                                 ),
@@ -621,8 +634,14 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                                 "prompts": request.sample_prompts,
                                 "seed": 42,
                                 "walk_seed": True,
-                                "guidance_scale": defaults.get("guidance_scale", 4),
-                                "sample_steps": defaults.get("sample_steps", 20),
+                                "guidance_scale": hp.get(
+                                    "guidance_scale",
+                                    defaults.get("guidance_scale", 4),
+                                ),
+                                "sample_steps": hp.get(
+                                    "sample_steps",
+                                    defaults.get("sample_steps", 20),
+                                ),
                             },
                         }
                         if request.sample_prompts
