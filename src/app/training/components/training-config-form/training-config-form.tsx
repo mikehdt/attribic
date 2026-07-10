@@ -83,6 +83,13 @@ const TrainingConfigFormComponent = ({
       fields.delete('bucketResoSteps');
       fields.delete('bucketNoUpscale');
     }
+    // LoKr factor only applies to LoKr networks
+    if (state.networkType !== 'lokr') fields.delete('lokrFactor');
+    // DOP multiplier/class only apply when DOP is enabled
+    if (!state.diffOutputPreservation) {
+      fields.delete('diffOutputPreservationMultiplier');
+      fields.delete('diffOutputPreservationClass');
+    }
     return fields;
   }, [
     viewMode,
@@ -92,6 +99,8 @@ const TrainingConfigFormComponent = ({
     state.trainTextEncoder,
     state.ema,
     state.resolution,
+    state.networkType,
+    state.diffOutputPreservation,
   ]);
 
   // Compute hidden changes per section
@@ -179,6 +188,16 @@ const TrainingConfigFormComponent = ({
       maxSavesToKeep: state.maxSavesToKeep,
       saveState: state.saveState,
       resumeState: state.resumeState,
+      networkArgs: state.networkArgs,
+      optimizerArgs: state.optimizerArgs,
+      blocksToSwap: state.blocksToSwap,
+      lokrFactor: state.lokrFactor,
+      contentOrStyle: state.contentOrStyle,
+      diffOutputPreservation: state.diffOutputPreservation,
+      diffOutputPreservationMultiplier: state.diffOutputPreservationMultiplier,
+      diffOutputPreservationClass: state.diffOutputPreservationClass,
+      layerTargeting: state.layerTargeting,
+      lowVram: state.lowVram,
       samplingEnabled: state.samplingEnabled,
       sampleMode: state.sampleMode,
       sampleEveryEpochs: state.sampleEveryEpochs,
@@ -254,6 +273,13 @@ const TrainingConfigFormComponent = ({
             discreteFlowShift={state.discreteFlowShift}
             minSnrGamma={state.minSnrGamma}
             noiseOffset={state.noiseOffset}
+            optimizerArgs={state.optimizerArgs}
+            contentOrStyle={state.contentOrStyle}
+            diffOutputPreservation={state.diffOutputPreservation}
+            diffOutputPreservationMultiplier={
+              state.diffOutputPreservationMultiplier
+            }
+            diffOutputPreservationClass={state.diffOutputPreservationClass}
             calculatedSteps={calculatedSteps}
             calculatedEpochs={calculatedEpochs}
             totalEffective={datasetStats.totalEffective}
@@ -275,6 +301,9 @@ const TrainingConfigFormComponent = ({
             networkDimAlphaLinked={state.networkDimAlphaLinked}
             networkDropout={state.networkDropout}
             scaleWeightNorms={state.scaleWeightNorms}
+            networkArgs={state.networkArgs}
+            lokrFactor={state.lokrFactor}
+            layerTargeting={state.layerTargeting}
             hasChanges={sectionHasChanges.loraShape}
             visibleFields={visibleFields}
             hiddenChangesCount={hiddenChanges.loraShape}
@@ -297,6 +326,8 @@ const TrainingConfigFormComponent = ({
             cacheLatents={state.cacheLatents}
             bucketResoSteps={state.bucketResoSteps}
             bucketNoUpscale={state.bucketNoUpscale}
+            blocksToSwap={state.blocksToSwap}
+            lowVram={state.lowVram}
             hasChanges={sectionHasChanges.performance}
             visibleFields={visibleFields}
             hiddenChangesCount={hiddenChanges.performance}

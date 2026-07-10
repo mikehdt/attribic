@@ -88,6 +88,16 @@ export function defaultsToFormState(
     maxSavesToKeep: defaults.maxSavesToKeep,
     saveState: false,
     resumeState: '',
+    networkArgs: defaults.networkArgs,
+    optimizerArgs: defaults.optimizerArgs,
+    blocksToSwap: defaults.blocksToSwap,
+    lokrFactor: defaults.lokrFactor,
+    contentOrStyle: defaults.contentOrStyle,
+    diffOutputPreservation: defaults.diffOutputPreservation,
+    diffOutputPreservationMultiplier: defaults.diffOutputPreservationMultiplier,
+    diffOutputPreservationClass: defaults.diffOutputPreservationClass,
+    layerTargeting: defaults.layerTargeting,
+    lowVram: defaults.lowVram,
   };
 }
 

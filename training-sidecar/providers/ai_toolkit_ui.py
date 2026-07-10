@@ -35,6 +35,7 @@ from providers.ai_toolkit import (
     _first_resolution,
     _resolve_sample_sampler,
     _resolve_save_every_steps,
+    _split_csv,
 )
 from providers.base import TrainingProvider
 
@@ -515,6 +516,27 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                             if hp.get("network_dropout", 0) > 0
                             else {}
                         ),
+                        # LoKr factor (-1 = auto). Only meaningful for lokr, so
+                        # only emit when the user overrode it on a lokr network.
+                        **(
+                            {"lokr_factor": hp["lokr_factor"]}
+                            if hp.get("network_type") == "lokr"
+                            and hp.get("lokr_factor", -1) != -1
+                            else {}
+                        ),
+                        # Restrict LoRA to layers whose names contain any of
+                        # these substrings (network_kwargs.only_if_contains).
+                        **(
+                            {
+                                "network_kwargs": {
+                                    "only_if_contains": _split_csv(
+                                        hp.get("layer_targeting", "")
+                                    )
+                                }
+                            }
+                            if _split_csv(hp.get("layer_targeting", ""))
+                            else {}
+                        ),
                     },
                     "save": {
                         "dtype": "float16",
@@ -605,6 +627,23 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                         "loss_type": hp.get("loss_type", "mse"),
                         "timestep_type": hp.get("timestep_type", "sigmoid"),
                         "timestep_bias": hp.get("timestep_bias", "balanced"),
+                        # Bias training toward subject content vs style.
+                        "content_or_style": hp.get("content_or_style", "balanced"),
+                        # Differential output preservation — only emit the
+                        # multiplier/class when DOP itself is enabled.
+                        **(
+                            {
+                                "diff_output_preservation": True,
+                                "diff_output_preservation_multiplier": hp.get(
+                                    "diff_output_preservation_multiplier", 1.0
+                                ),
+                                "diff_output_preservation_class": hp.get(
+                                    "diff_output_preservation_class", ""
+                                ),
+                            }
+                            if hp.get("diff_output_preservation", False)
+                            else {}
+                        ),
                         "cache_text_embeddings": hp.get(
                             "cache_text_embeddings", False
                         ),
@@ -626,6 +665,8 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                         "quantize_te": hp.get(
                             "text_encoder_quantization", "float8"
                         ) == "float8",
+                        # Low-VRAM mode (ModelConfig.low_vram).
+                        "low_vram": hp.get("low_vram", False),
                     },
                     **(
                         {

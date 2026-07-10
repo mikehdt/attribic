@@ -120,6 +120,28 @@ export type FormState = {
   maxSavesToKeep: number;
   saveState: boolean;
   resumeState: string;
+
+  // --- Expert tier ---
+  /** Kohya-only. Raw --network_args key=value pairs, space-separated. */
+  networkArgs: string;
+  /** Kohya-only. Raw --optimizer_args key=value pairs, space-separated. */
+  optimizerArgs: string;
+  /** Kohya-only (anima). Transformer blocks offloaded to CPU. 0 = disabled. */
+  blocksToSwap: number;
+  /** ai-toolkit-only. LoKr factor; only meaningful when networkType is lokr. */
+  lokrFactor: number;
+  /** ai-toolkit-only. Bias training toward content vs style. */
+  contentOrStyle: 'balanced' | 'content' | 'style';
+  /** ai-toolkit-only. Differential output preservation. */
+  diffOutputPreservation: boolean;
+  /** ai-toolkit-only. DOP multiplier; only meaningful when DOP is enabled. */
+  diffOutputPreservationMultiplier: number;
+  /** ai-toolkit-only. DOP class word; only meaningful when DOP is enabled. */
+  diffOutputPreservationClass: string;
+  /** ai-toolkit-only. Comma-separated layer-name substrings to restrict LoRA to. */
+  layerTargeting: string;
+  /** ai-toolkit-only. Low-VRAM mode. */
+  lowVram: boolean;
 };
 
 export type SectionName =

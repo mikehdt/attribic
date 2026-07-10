@@ -299,6 +299,29 @@ class AiToolkitProvider(TrainingProvider):
                                 if hp.get("network_dropout", 0) > 0
                                 else {}
                             ),
+                            # LoKr factor (NetworkConfig.lokr_factor). -1 = auto
+                            # (largest factor); only meaningful for lokr, so only
+                            # emit when the user overrode it on a lokr network.
+                            **(
+                                {"lokr_factor": hp["lokr_factor"]}
+                                if hp.get("network_type") == "lokr"
+                                and hp.get("lokr_factor", -1) != -1
+                                else {}
+                            ),
+                            # Restrict LoRA to layers whose names contain any of
+                            # these substrings (flows through network_kwargs into
+                            # LoRASpecialNetwork.only_if_contains).
+                            **(
+                                {
+                                    "network_kwargs": {
+                                        "only_if_contains": _split_csv(
+                                            hp.get("layer_targeting", "")
+                                        )
+                                    }
+                                }
+                                if _split_csv(hp.get("layer_targeting", ""))
+                                else {}
+                            ),
                         },
                         "save": {
                             "dtype": "float16",
@@ -388,6 +411,26 @@ class AiToolkitProvider(TrainingProvider):
                             "loss_type": hp.get("loss_type", "mse"),
                             "timestep_type": hp.get("timestep_type", "sigmoid"),
                             "timestep_bias": hp.get("timestep_bias", "balanced"),
+                            # Bias training toward subject content vs style
+                            # (TrainConfig.content_or_style).
+                            "content_or_style": hp.get(
+                                "content_or_style", "balanced"
+                            ),
+                            # Differential output preservation — only emit the
+                            # multiplier/class when DOP itself is enabled.
+                            **(
+                                {
+                                    "diff_output_preservation": True,
+                                    "diff_output_preservation_multiplier": hp.get(
+                                        "diff_output_preservation_multiplier", 1.0
+                                    ),
+                                    "diff_output_preservation_class": hp.get(
+                                        "diff_output_preservation_class", ""
+                                    ),
+                                }
+                                if hp.get("diff_output_preservation", False)
+                                else {}
+                            ),
                             # Text-encoder VRAM optimisations
                             "cache_text_embeddings": hp.get(
                                 "cache_text_embeddings", False
@@ -416,6 +459,9 @@ class AiToolkitProvider(TrainingProvider):
                             "quantize_te": hp.get(
                                 "text_encoder_quantization", "float8"
                             ) == "float8",
+                            # Low-VRAM mode (ModelConfig.low_vram) — offloads
+                            # model components to trade speed for VRAM.
+                            "low_vram": hp.get("low_vram", False),
                         },
                         **(
                             {
@@ -695,6 +741,16 @@ def _resolve_sample_sampler(hp: dict, defaults: dict) -> str:
     if model_scheduler == "flowmatch":
         return "flowmatch"
     return hp.get("sample_sampler", model_scheduler)
+
+
+def _split_csv(raw) -> list[str]:
+    """Split a comma-separated UI string into a trimmed, non-empty list.
+
+    Used for expert-tier `layer_targeting` → network_kwargs.only_if_contains.
+    """
+    if not raw:
+        return []
+    return [part.strip() for part in str(raw).split(",") if part.strip()]
 
 
 def _first_resolution(hp: dict, defaults: dict) -> int:

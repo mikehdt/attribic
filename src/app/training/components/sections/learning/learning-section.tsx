@@ -48,6 +48,11 @@ type LearningSectionProps = {
   discreteFlowShift: number;
   minSnrGamma: number;
   noiseOffset: number;
+  optimizerArgs: string;
+  contentOrStyle: 'balanced' | 'content' | 'style';
+  diffOutputPreservation: boolean;
+  diffOutputPreservationMultiplier: number;
+  diffOutputPreservationClass: string;
   calculatedSteps: number;
   calculatedEpochs: number;
   totalEffective: number;
@@ -84,6 +89,12 @@ const TIMESTEP_BIAS_ITEMS: DropdownItem<string>[] = [
   { value: 'later', label: 'Later (fine details)' },
 ];
 
+const CONTENT_OR_STYLE_ITEMS: DropdownItem<string>[] = [
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'content', label: 'Content (subject)' },
+  { value: 'style', label: 'Style' },
+];
+
 const LearningSectionComponent = ({
   durationMode,
   epochs,
@@ -107,6 +118,11 @@ const LearningSectionComponent = ({
   discreteFlowShift,
   minSnrGamma,
   noiseOffset,
+  optimizerArgs,
+  contentOrStyle,
+  diffOutputPreservation,
+  diffOutputPreservationMultiplier,
+  diffOutputPreservationClass,
   calculatedSteps,
   calculatedEpochs,
   totalEffective,
@@ -193,6 +209,15 @@ const LearningSectionComponent = ({
     },
     [onFieldChange],
   );
+
+  // Non-blocking shape check for the raw optimizer_args editor: each
+  // whitespace-separated chunk should look like key=value.
+  const optimizerArgsInvalid =
+    optimizerArgs.trim() !== '' &&
+    optimizerArgs
+      .trim()
+      .split(/\s+/)
+      .some((chunk) => !/^[^=\s]+=[^=\s]*$/.test(chunk));
 
   return (
     <CollapsibleSection
@@ -736,6 +761,130 @@ const LearningSectionComponent = ({
                 />
                 <p className="mt-1 text-xs text-slate-400">0 = disabled</p>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* Content vs style bias */}
+        {visibleFields.has('contentOrStyle' satisfies keyof FormState) && (
+          <div className="w-1/2">
+            <FormTitle>Content or Style</FormTitle>
+            <Dropdown
+              items={CONTENT_OR_STYLE_ITEMS}
+              selectedValue={contentOrStyle}
+              onChange={(val) =>
+                onFieldChange(
+                  'contentOrStyle',
+                  val as FormState['contentOrStyle'],
+                )
+              }
+              aria-label="Content or style"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Bias timestep weighting toward subject content or overall style
+            </p>
+          </div>
+        )}
+
+        {/* Differential output preservation */}
+        {visibleFields.has(
+          'diffOutputPreservation' satisfies keyof FormState,
+        ) && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                isSelected={diffOutputPreservation}
+                onChange={() =>
+                  onFieldChange(
+                    'diffOutputPreservation',
+                    !diffOutputPreservation,
+                  )
+                }
+                label="Differential Output Preservation"
+                size="sm"
+              />
+              <span className="text-xs text-slate-400">
+                Preserves the base model&apos;s knowledge of a class word
+              </span>
+            </div>
+
+            {(visibleFields.has(
+              'diffOutputPreservationMultiplier' satisfies keyof FormState,
+            ) ||
+              visibleFields.has(
+                'diffOutputPreservationClass' satisfies keyof FormState,
+              )) && (
+              <div className="grid grid-cols-4 gap-x-4 gap-y-3">
+                {visibleFields.has(
+                  'diffOutputPreservationMultiplier' satisfies keyof FormState,
+                ) && (
+                  <div>
+                    <FormTitle>DOP Multiplier</FormTitle>
+                    <Input
+                      type="text"
+                      value={diffOutputPreservationMultiplier}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val) && val >= 0)
+                          onFieldChange(
+                            'diffOutputPreservationMultiplier',
+                            val,
+                          );
+                      }}
+                      placeholder={String(
+                        defaults.diffOutputPreservationMultiplier,
+                      )}
+                      className="w-full tabular-nums"
+                    />
+                  </div>
+                )}
+
+                {visibleFields.has(
+                  'diffOutputPreservationClass' satisfies keyof FormState,
+                ) && (
+                  <div>
+                    <FormTitle>DOP Class</FormTitle>
+                    <Input
+                      type="text"
+                      value={diffOutputPreservationClass}
+                      onChange={(e) =>
+                        onFieldChange(
+                          'diffOutputPreservationClass',
+                          e.target.value,
+                        )
+                      }
+                      placeholder="e.g. woman"
+                      className="w-full"
+                    />
+                    <p className="mt-1 text-xs text-slate-400">
+                      Class word the LoRA should preserve (e.g. woman).
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Raw optimizer args */}
+        {visibleFields.has('optimizerArgs' satisfies keyof FormState) && (
+          <div>
+            <FormTitle>Optimizer Args</FormTitle>
+            <Input
+              type="text"
+              value={optimizerArgs}
+              onChange={(e) => onFieldChange('optimizerArgs', e.target.value)}
+              placeholder="weight_decay=0.01 betas=0.9,0.99"
+              className="w-full"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Raw optimizer_args key=value pairs, space-separated. Overrides the
+              Weight Decay field if you set weight_decay here.
+            </p>
+            {optimizerArgsInvalid && (
+              <p className="mt-1 text-xs text-amber-500/70">
+                Each entry should be key=value; malformed entries are ignored.
+              </p>
             )}
           </div>
         )}

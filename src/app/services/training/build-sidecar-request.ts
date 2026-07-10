@@ -210,6 +210,18 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     max_saves_to_keep: config.maxSavesToKeep,
     save_state: config.saveState,
     resume_state: config.resumeState || undefined,
+    // Expert-tier extras. Kohya-only: raw arg strings + block swap.
+    network_args: config.networkArgs,
+    optimizer_args: config.optimizerArgs,
+    blocks_to_swap: config.blocksToSwap,
+    // ai-toolkit-only expert extras.
+    lokr_factor: config.lokrFactor,
+    content_or_style: config.contentOrStyle,
+    diff_output_preservation: config.diffOutputPreservation,
+    diff_output_preservation_multiplier: config.diffOutputPreservationMultiplier,
+    diff_output_preservation_class: config.diffOutputPreservationClass,
+    layer_targeting: config.layerTargeting,
+    low_vram: config.lowVram,
     // Pass through the user-selected checkpoint path so the sidecar uses
     // the local file rather than the registry's default HF URL.
     model_path: checkpointPath,

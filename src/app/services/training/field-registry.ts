@@ -164,6 +164,37 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     defaultKey: 'emaDecay',
     providers: ['ai-toolkit'],
   },
+  // Expert
+  optimizerArgs: {
+    tier: 'expert',
+    group: 'learning',
+    defaultKey: 'optimizerArgs',
+    providers: ['kohya'],
+  },
+  contentOrStyle: {
+    tier: 'expert',
+    group: 'learning',
+    defaultKey: 'contentOrStyle',
+    providers: ['ai-toolkit'],
+  },
+  diffOutputPreservation: {
+    tier: 'expert',
+    group: 'learning',
+    defaultKey: 'diffOutputPreservation',
+    providers: ['ai-toolkit'],
+  },
+  diffOutputPreservationMultiplier: {
+    tier: 'expert',
+    group: 'learning',
+    defaultKey: 'diffOutputPreservationMultiplier',
+    providers: ['ai-toolkit'],
+  },
+  diffOutputPreservationClass: {
+    tier: 'expert',
+    group: 'learning',
+    defaultKey: 'diffOutputPreservationClass',
+    providers: ['ai-toolkit'],
+  },
 
   // LoRA Shape
   networkDim: {
@@ -199,6 +230,25 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     group: 'loraShape',
     defaultKey: 'scaleWeightNorms',
     providers: ['kohya'],
+  },
+  // Expert
+  networkArgs: {
+    tier: 'expert',
+    group: 'loraShape',
+    defaultKey: 'networkArgs',
+    providers: ['kohya'],
+  },
+  lokrFactor: {
+    tier: 'expert',
+    group: 'loraShape',
+    defaultKey: 'lokrFactor',
+    providers: ['ai-toolkit'],
+  },
+  layerTargeting: {
+    tier: 'expert',
+    group: 'loraShape',
+    defaultKey: 'layerTargeting',
+    providers: ['ai-toolkit'],
   },
 
   // Performance
@@ -269,6 +319,19 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     group: 'performance',
     defaultKey: 'bucketNoUpscale',
     providers: ['kohya'],
+  },
+  // Expert
+  blocksToSwap: {
+    tier: 'expert',
+    group: 'performance',
+    defaultKey: 'blocksToSwap',
+    providers: ['kohya'],
+  },
+  lowVram: {
+    tier: 'expert',
+    group: 'performance',
+    defaultKey: 'lowVram',
+    providers: ['ai-toolkit'],
   },
   // Per-folder augmentation (captionShuffling, captionDropoutRate,
   // keepTokens, flipAugment, flipVAugment) lives on DatasetFolder itself,

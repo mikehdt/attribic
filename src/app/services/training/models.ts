@@ -117,6 +117,27 @@ export type TrainingDefaults = {
   bucketNoUpscale: boolean;
   /** ai-toolkit-only: EMA decay rate, only used when `ema` is enabled. */
   emaDecay: number;
+  // --- Expert tier ---
+  /** Kohya-only: raw --network_args key=value pairs, space-separated. */
+  networkArgs: string;
+  /** Kohya-only: raw --optimizer_args key=value pairs, space-separated. */
+  optimizerArgs: string;
+  /** Kohya-only (anima): transformer blocks to offload to CPU. 0 = disabled. */
+  blocksToSwap: number;
+  /** ai-toolkit-only: LoKr decomposition factor. -1 = auto-detect largest. */
+  lokrFactor: number;
+  /** ai-toolkit-only: bias training toward content vs style. */
+  contentOrStyle: 'balanced' | 'content' | 'style';
+  /** ai-toolkit-only: differential output preservation (DOP). */
+  diffOutputPreservation: boolean;
+  /** ai-toolkit-only: DOP loss multiplier, only used when DOP is enabled. */
+  diffOutputPreservationMultiplier: number;
+  /** ai-toolkit-only: DOP class word, only used when DOP is enabled. */
+  diffOutputPreservationClass: string;
+  /** ai-toolkit-only: comma-separated layer-name substrings to restrict LoRA to. */
+  layerTargeting: string;
+  /** ai-toolkit-only: low-VRAM mode (offloads model components). */
+  lowVram: boolean;
 };
 
 /**
@@ -177,6 +198,16 @@ const BASE_DEFAULTS: TrainingDefaults = {
   bucketResoSteps: 64,
   bucketNoUpscale: false,
   emaDecay: 0.99,
+  networkArgs: '',
+  optimizerArgs: '',
+  blocksToSwap: 0,
+  lokrFactor: -1,
+  contentOrStyle: 'balanced',
+  diffOutputPreservation: false,
+  diffOutputPreservationMultiplier: 1.0,
+  diffOutputPreservationClass: '',
+  layerTargeting: '',
+  lowVram: false,
 };
 
 export const MODEL_DEFINITIONS: ModelDefinition[] = [
@@ -346,6 +377,9 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'timestepBias',
       // Flow-matching-only timestep shift — SDXL is DDPM, no equivalent flag.
       'discreteFlowShift',
+      // Kohya's sdxl_train_network.py doesn't accept --blocks_to_swap (anima
+      // only), so hide it on the SDXL-family Kohya path.
+      'blocksToSwap',
     ],
     defaults: {
       ...BASE_DEFAULTS,
@@ -393,6 +427,8 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'timestepType',
       'timestepBias',
       'discreteFlowShift',
+      // sdxl_train_network.py doesn't accept --blocks_to_swap (anima only).
+      'blocksToSwap',
     ],
     defaults: {
       ...BASE_DEFAULTS,
@@ -440,6 +476,8 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'timestepType',
       'timestepBias',
       'discreteFlowShift',
+      // sdxl_train_network.py doesn't accept --blocks_to_swap (anima only).
+      'blocksToSwap',
     ],
     defaults: {
       ...BASE_DEFAULTS,

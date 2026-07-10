@@ -209,6 +209,12 @@ const trainingConfigSlice = createSlice({
           form.noiseOffset = ref.noiseOffset;
           form.emaDecay = ref.emaDecay;
           form.seed = ref.seed;
+          form.optimizerArgs = ref.optimizerArgs;
+          form.contentOrStyle = ref.contentOrStyle;
+          form.diffOutputPreservation = ref.diffOutputPreservation;
+          form.diffOutputPreservationMultiplier =
+            ref.diffOutputPreservationMultiplier;
+          form.diffOutputPreservationClass = ref.diffOutputPreservationClass;
           break;
 
         case 'loraShape':
@@ -218,6 +224,9 @@ const trainingConfigSlice = createSlice({
           form.networkDimAlphaLinked = ref.networkDimAlphaLinked;
           form.networkDropout = ref.networkDropout;
           form.scaleWeightNorms = ref.scaleWeightNorms;
+          form.networkArgs = ref.networkArgs;
+          form.lokrFactor = ref.lokrFactor;
+          form.layerTargeting = ref.layerTargeting;
           break;
 
         case 'performance':
@@ -232,6 +241,8 @@ const trainingConfigSlice = createSlice({
           form.cacheLatents = ref.cacheLatents;
           form.bucketResoSteps = ref.bucketResoSteps;
           form.bucketNoUpscale = ref.bucketNoUpscale;
+          form.blocksToSwap = ref.blocksToSwap;
+          form.lowVram = ref.lowVram;
           break;
 
         case 'sampling':
@@ -596,13 +607,22 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
       form.minSnrGamma !== ref.minSnrGamma ||
       form.noiseOffset !== ref.noiseOffset ||
       form.emaDecay !== ref.emaDecay ||
-      form.seed !== ref.seed,
+      form.seed !== ref.seed ||
+      form.optimizerArgs !== ref.optimizerArgs ||
+      form.contentOrStyle !== ref.contentOrStyle ||
+      form.diffOutputPreservation !== ref.diffOutputPreservation ||
+      form.diffOutputPreservationMultiplier !==
+        ref.diffOutputPreservationMultiplier ||
+      form.diffOutputPreservationClass !== ref.diffOutputPreservationClass,
     loraShape:
       form.networkDim !== ref.networkDim ||
       form.networkAlpha !== ref.networkAlpha ||
       form.networkType !== ref.networkType ||
       form.networkDropout !== ref.networkDropout ||
-      form.scaleWeightNorms !== ref.scaleWeightNorms,
+      form.scaleWeightNorms !== ref.scaleWeightNorms ||
+      form.networkArgs !== ref.networkArgs ||
+      form.lokrFactor !== ref.lokrFactor ||
+      form.layerTargeting !== ref.layerTargeting,
     performance:
       form.mixedPrecision !== ref.mixedPrecision ||
       form.transformerQuantization !== ref.transformerQuantization ||
@@ -613,7 +633,9 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
       form.gradientCheckpointing !== ref.gradientCheckpointing ||
       form.cacheLatents !== ref.cacheLatents ||
       form.bucketResoSteps !== ref.bucketResoSteps ||
-      form.bucketNoUpscale !== ref.bucketNoUpscale,
+      form.bucketNoUpscale !== ref.bucketNoUpscale ||
+      form.blocksToSwap !== ref.blocksToSwap ||
+      form.lowVram !== ref.lowVram,
     // Sampling and saving are opt-in for ephemeral configs (no "has changes"
     // indicator when the user just hasn't touched them). Once a project is
     // loaded, any deviation from the baseline does count.

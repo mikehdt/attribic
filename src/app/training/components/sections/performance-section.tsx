@@ -29,6 +29,8 @@ type PerformanceSectionProps = {
   cacheLatents: boolean;
   bucketResoSteps: number;
   bucketNoUpscale: boolean;
+  blocksToSwap: number;
+  lowVram: boolean;
   hasChanges: boolean;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
@@ -64,6 +66,8 @@ const PerformanceSectionComponent = ({
   cacheLatents,
   bucketResoSteps,
   bucketNoUpscale,
+  blocksToSwap,
+  lowVram,
   hasChanges,
   visibleFields,
   hiddenChangesCount,
@@ -83,7 +87,9 @@ const PerformanceSectionComponent = ({
     visibleFields.has('gradientCheckpointing') ||
     visibleFields.has('cacheLatents') ||
     visibleFields.has('bucketResoSteps') ||
-    visibleFields.has('bucketNoUpscale');
+    visibleFields.has('bucketNoUpscale') ||
+    visibleFields.has('blocksToSwap') ||
+    visibleFields.has('lowVram');
 
   if (!hasVisibleFields) return null;
 
@@ -231,7 +237,8 @@ const PerformanceSectionComponent = ({
         {(visibleFields.has(
           'gradientAccumulationSteps' satisfies keyof FormState,
         ) ||
-          visibleFields.has('bucketResoSteps' satisfies keyof FormState)) && (
+          visibleFields.has('bucketResoSteps' satisfies keyof FormState) ||
+          visibleFields.has('blocksToSwap' satisfies keyof FormState)) && (
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has(
               'gradientAccumulationSteps' satisfies keyof FormState,
@@ -278,6 +285,28 @@ const PerformanceSectionComponent = ({
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   Bucket size increment for multi-resolution training
+                </p>
+              </div>
+            )}
+
+            {visibleFields.has('blocksToSwap' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>Blocks to Swap</FormTitle>
+                <Input
+                  type="number"
+                  min={0}
+                  value={blocksToSwap}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 0)
+                      onFieldChange('blocksToSwap', val);
+                  }}
+                  placeholder="0"
+                  className="w-full"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Offloads N transformer blocks to CPU to cut VRAM; slows
+                  training.
                 </p>
               </div>
             )}
@@ -364,6 +393,20 @@ const PerformanceSectionComponent = ({
               />
               <span className="text-xs text-slate-400">
                 Don&apos;t upscale small images to fit a bucket
+              </span>
+            </div>
+          )}
+
+          {visibleFields.has('lowVram' satisfies keyof FormState) && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                isSelected={lowVram}
+                onChange={() => onFieldChange('lowVram', !lowVram)}
+                label="Low VRAM"
+                size="sm"
+              />
+              <span className="text-xs text-slate-400">
+                Offload model components to cut VRAM at the cost of speed
               </span>
             </div>
           )}

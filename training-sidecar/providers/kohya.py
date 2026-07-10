@@ -174,6 +174,9 @@ SUPPORTED_MODELS = [
         # Anima is flow-matching (Cosmos-Predict2 lineage).
         "flow_matching": True,
         "no_half_vae": False,
+        # anima_train_network.py accepts --blocks_to_swap; sdxl_train_network.py
+        # does not (verified against the local sd-scripts checkout).
+        "supports_block_swap": True,
         # Qwen-Image VAE is memory-hungry at full frame; chunking keeps it
         # within budget (matches the sd-scripts Anima doc example).
         "extra_args": ["--vae_chunk_size=64"],
@@ -409,14 +412,25 @@ class KohyaProvider(TrainingProvider):
         # Static per-arch extras (e.g. Anima's --vae_chunk_size).
         args.extend(model_def.get("extra_args", []))
 
-        # Optimizer-specific extras.
+        # Optimizer args (--optimizer_args is nargs=*). Start with our
+        # weight_decay emission, then merge the user's freeform expert pairs.
+        # If the user supplied their own weight_decay (or any key we also emit),
+        # theirs wins — drop our duplicate so argparse doesn't see the key twice.
+        optimizer_args: list[str] = []
         if float(hp.get("weight_decay", 0) or 0) > 0 and optimizer in (
             "AdamW",
             "AdamW8bit",
         ):
-            args.append(
-                f'--optimizer_args=weight_decay={_num(hp["weight_decay"])}'
-            )
+            optimizer_args.append(f'weight_decay={_num(hp["weight_decay"])}')
+        user_optimizer_args = _parse_kv_args(hp.get("optimizer_args", ""))
+        user_keys = {a.split("=", 1)[0] for a in user_optimizer_args}
+        optimizer_args = [
+            a for a in optimizer_args if a.split("=", 1)[0] not in user_keys
+        ]
+        optimizer_args.extend(user_optimizer_args)
+        if optimizer_args:
+            args.append("--optimizer_args")
+            args.extend(optimizer_args)
 
         # Seed — only pin it when the user chose a fixed value; -1 means
         # "random", which sd-scripts gets by us omitting the flag entirely.
@@ -461,15 +475,15 @@ class KohyaProvider(TrainingProvider):
         # via train_llm_adapter=True; SDXL trains its two text encoders
         # directly). When frozen, restrict the LoRA to the UNet/DiT and — when
         # safe — cache the TE outputs for a big VRAM/time win.
+        # --network_args (nargs=*): arch-specific TE args when the text encoder
+        # is trained, plus any user-supplied freeform expert pairs. Collected
+        # here and emitted once below.
+        network_args: list[str] = []
         if train_text_encoder:
             te_lr = hp.get("text_encoder_lr", 0) or 0
             if float(te_lr) > 0:
                 args.append(f"--text_encoder_lr={_num(te_lr)}")
-            te_network_args = model_def.get("te_network_args") or []
-            if te_network_args:
-                # --network_args takes space-separated key=value pairs (nargs=*).
-                args.append("--network_args")
-                args.extend(te_network_args)
+            network_args.extend(model_def.get("te_network_args") or [])
         else:
             # network_train_unet_only is a precondition for TE-output caching
             # (sd-scripts asserts it), and is correct regardless: a frozen TE
@@ -483,6 +497,19 @@ class KohyaProvider(TrainingProvider):
             # startup. This matters now that shuffle/dropout are per-subset live.
             if _te_cache_safe(request.datasets):
                 args.append("--cache_text_encoder_outputs")
+
+        network_args.extend(_parse_kv_args(hp.get("network_args", "")))
+        if network_args:
+            args.append("--network_args")
+            args.extend(network_args)
+
+        # Block swap (anima only): offload N transformer blocks to CPU to cut
+        # VRAM. Gated on the model entry — sdxl_train_network.py rejects the
+        # flag, so it's hidden in the UI and skipped here for non-supporting
+        # architectures.
+        blocks_to_swap = int(hp.get("blocks_to_swap", 0) or 0)
+        if blocks_to_swap > 0 and model_def.get("supports_block_swap"):
+            args.append(f"--blocks_to_swap={blocks_to_swap}")
 
         # NOTE: --fp8_base is deliberately NOT emitted — the UI hides the
         # quantization fields for these models accordingly (Anima has no fp8
@@ -901,6 +928,19 @@ def _add_missing_sample_flags(
     if not extras:
         return line
     return line + " " + " ".join(extras)
+
+
+def _parse_kv_args(raw) -> list[str]:
+    """Parse a freeform "key=value key2=value2" string into a list of chunks.
+
+    Splits on whitespace and keeps only chunks that contain '=' (a bare key
+    with no value, or stray tokens, are silently dropped — the UI surfaces a
+    non-blocking hint for malformed input). Used for the expert-tier
+    --network_args / --optimizer_args editors.
+    """
+    if not raw:
+        return []
+    return [chunk for chunk in str(raw).split() if "=" in chunk]
 
 
 def _toml_bool(value: bool) -> str:

@@ -21,6 +21,9 @@ type LoraShapeSectionProps = {
   networkDimAlphaLinked: boolean;
   networkDropout: number;
   scaleWeightNorms: number;
+  networkArgs: string;
+  lokrFactor: number;
+  layerTargeting: string;
   hasChanges: boolean;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
@@ -43,6 +46,9 @@ const LoraShapeSectionComponent = ({
   networkDimAlphaLinked,
   networkDropout,
   scaleWeightNorms,
+  networkArgs,
+  lokrFactor,
+  layerTargeting,
   hasChanges,
   visibleFields,
   hiddenChangesCount,
@@ -54,7 +60,20 @@ const LoraShapeSectionComponent = ({
     visibleFields.has('networkAlpha') ||
     visibleFields.has('networkType') ||
     visibleFields.has('networkDropout') ||
-    visibleFields.has('scaleWeightNorms');
+    visibleFields.has('scaleWeightNorms') ||
+    visibleFields.has('networkArgs') ||
+    visibleFields.has('lokrFactor') ||
+    visibleFields.has('layerTargeting');
+
+  // Lightweight shape check for the raw network_args editor: each
+  // whitespace-separated chunk should look like key=value. Non-blocking —
+  // just surfaces an inline hint (the sidecar silently drops bad chunks).
+  const networkArgsInvalid =
+    networkArgs.trim() !== '' &&
+    networkArgs
+      .trim()
+      .split(/\s+/)
+      .some((chunk) => !/^[^=\s]+=[^=\s]*$/.test(chunk));
 
   const handleRankChange = useCallback(
     (v: number) => {
@@ -109,6 +128,7 @@ const LoraShapeSectionComponent = ({
         {/* Type + Dropout row */}
         {(visibleFields.has('networkType' satisfies keyof FormState) ||
           visibleFields.has('networkDropout' satisfies keyof FormState) ||
+          visibleFields.has('lokrFactor' satisfies keyof FormState) ||
           visibleFields.has('scaleWeightNorms' satisfies keyof FormState)) && (
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has('networkType' satisfies keyof FormState) && (
@@ -167,6 +187,27 @@ const LoraShapeSectionComponent = ({
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   Caps LoRA weight norms; 1.0 typical, 0 = disabled
+                </p>
+              </div>
+            )}
+
+            {visibleFields.has('lokrFactor' satisfies keyof FormState) && (
+              <div>
+                <FormTitle>LoKr Factor</FormTitle>
+                <Input
+                  type="number"
+                  min={-1}
+                  value={lokrFactor}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= -1)
+                      onFieldChange('lokrFactor', val);
+                  }}
+                  placeholder="-1"
+                  className="w-full tabular-nums"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  -1 = auto (largest factor)
                 </p>
               </div>
             )}
@@ -236,6 +277,45 @@ const LoraShapeSectionComponent = ({
         <p className="text-xs text-slate-400">
           Higher rank = more expressive, but uses more VRAM and can overfit
         </p>
+
+        {visibleFields.has('layerTargeting' satisfies keyof FormState) && (
+          <div>
+            <FormTitle>Layer Targeting</FormTitle>
+            <Input
+              type="text"
+              value={layerTargeting}
+              onChange={(e) => onFieldChange('layerTargeting', e.target.value)}
+              placeholder="e.g. attn, ff"
+              className="w-full"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Restrict training to layers whose names contain these strings
+              (comma-separated).
+            </p>
+          </div>
+        )}
+
+        {visibleFields.has('networkArgs' satisfies keyof FormState) && (
+          <div>
+            <FormTitle>Network Args</FormTitle>
+            <Input
+              type="text"
+              value={networkArgs}
+              onChange={(e) => onFieldChange('networkArgs', e.target.value)}
+              placeholder="conv_dim=4 conv_alpha=1"
+              className="w-full"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Raw network_args key=value pairs, space-separated (e.g. conv_dim=4
+              conv_alpha=1).
+            </p>
+            {networkArgsInvalid && (
+              <p className="mt-1 text-xs text-amber-500/70">
+                Each entry should be key=value; malformed entries are ignored.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </CollapsibleSection>
   );
