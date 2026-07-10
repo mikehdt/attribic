@@ -9,6 +9,9 @@ description: Build/launch/drive recipe for verifying img-tagger changes at the b
 
 - A dev server is often already running on port 3000 (the user's own `pnpm dev`) — check before starting one; Next.js refuses a second instance for the same dir. Turbopack HMR means code edits are live on fresh page loads.
 - App config lives in `config.json` at the repo root; `projectsFolder` points at real user data (`F:\Training`).
+- Headless Edge against the user's running dev server may never hydrate React (clicks silently no-op, `input.fill` "works" but only writes the DOM; the HMR websocket also fails with ERR_INVALID_HTTP_RESPONSE — observed 2026-07). SSR HTML is still faithful, so verify state-dependent renders by seeding state server-side instead of clicking.
+- Preferences (e.g. training view mode) are cookie-seeded for SSR: set cookie `img-tagger-preferences` = URL-encoded JSON (e.g. `{"trainingViewMode":"advanced"}`) on the context, then load the page — each variant renders fully without any client interaction.
+- The training form lives at `/training` (no project segment).
 
 ## Safe test data
 
