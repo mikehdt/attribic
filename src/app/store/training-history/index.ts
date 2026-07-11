@@ -70,6 +70,17 @@ const trainingHistorySlice = createSlice({
       }
     },
 
+    /**
+     * Mark a single archived run as cleared from the activity panel. Backs a
+     * training card's per-item "Clear" — without this the run stays in the
+     * durable archive with `dismissedFromPanel: false` and gets re-seeded into
+     * the panel on the next hard refresh.
+     */
+    dismissFromPanel: (state, action: PayloadAction<string>) => {
+      const entry = state.entries[action.payload];
+      if (entry) entry.dismissedFromPanel = true;
+    },
+
     /** Remove a single run from the archive. */
     deleteHistoryEntry: (state, action: PayloadAction<string>) => {
       delete state.entries[action.payload];
@@ -99,6 +110,7 @@ export const trainingHistoryReducer = trainingHistorySlice.reducer;
 export const {
   recordTrainingRun,
   dismissAllFromPanel,
+  dismissFromPanel,
   deleteHistoryEntry,
   clearHistory,
   restoreHistory,

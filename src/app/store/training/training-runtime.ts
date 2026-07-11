@@ -23,6 +23,7 @@ type ThunkDispatch = (action: unknown) => unknown;
 import { addJob, openPanel, removeJob, updateTrainingProgress } from '../jobs';
 import type { TrainingJob } from '../jobs/types';
 import { addToast } from '../toasts/reducers';
+import { dismissFromPanel } from '../training-history';
 
 // ---------------------------------------------------------------------------
 // Sidecar progress payload (snake_case — matches training-sidecar/models.py)
@@ -368,6 +369,10 @@ export function cancelTraining(jobId: string): AppThunk {
 export function clearTrainingJob(jobId: string): AppThunk {
   return async (dispatch) => {
     dispatch(removeJob(jobId));
+    // Terminal runs live in the durable history archive, which the activity
+    // panel re-seeds from on refresh. Mark this one dismissed so it stays out
+    // of the panel (it remains in the Run History view).
+    dispatch(dismissFromPanel(jobId));
     try {
       await fetch('/api/training/clear', { method: 'POST' });
     } catch (err) {
