@@ -34,12 +34,45 @@ const TERMINAL_TRAINING_STATUSES = new Set([
 
 export const jobPersistenceMiddleware = createListenerMiddleware();
 
+/**
+ * Snapshot any training job that has reached a terminal state into the durable
+ * history archive. Idempotent: skips a run already recorded with the same
+ * terminal status + completion time, so repeat calls (and live progress ticks)
+ * do no work. Safe to call from any listener.
+ */
+function archiveTerminalTrainingRuns(
+  state: RootState,
+  dispatch: (action: unknown) => unknown,
+) {
+  const history = state.trainingHistory.entries;
+  for (const job of Object.values(state.jobs.jobs)) {
+    if (job.type !== 'training') continue;
+    if (!TERMINAL_TRAINING_STATUSES.has(job.status)) continue;
+    const existing = history[job.id];
+    if (
+      existing &&
+      existing.status === job.status &&
+      existing.completedAt === job.completedAt
+    ) {
+      continue;
+    }
+    dispatch(recordTrainingRun(job));
+  }
+}
+
 // High-frequency / UI-only jobs actions that never change what actually gets
 // persisted (all downloads + *terminal* training runs). Progress ticks fire
 // many times a second during active work, tagging jobs aren't persisted at all,
 // and panel toggles are pure UI state — so serialising + writing localStorage on
 // them is wasted work. Everything else still persists (fail-safe denylist: a
 // future job-mutating action persists by default).
+//
+// NOTE: `updateTrainingProgress` is excluded here to avoid serialising on every
+// tick, but a training run reaches its terminal status *through* this same
+// action (the sidecar broadcasts the final completed/failed/cancelled progress
+// over the WebSocket). Archiving is therefore handled by its own dedicated
+// listener below, which short-circuits on non-terminal ticks — without it,
+// terminal runs would never be recorded to history.
 const NON_PERSISTING_JOB_ACTIONS = new Set<string>([
   updateTrainingProgress.type,
   updateDownloadProgress.type,
@@ -52,7 +85,9 @@ const NON_PERSISTING_JOB_ACTIONS = new Set<string>([
 // Persist download jobs to localStorage on meaningful jobs/ actions, and
 // snapshot any newly-terminal training run into the durable history archive —
 // which is the single persisted home for terminal training runs (the jobs
-// slice no longer writes its own `img-tagger:training-jobs` copy).
+// slice no longer writes its own `img-tagger:training-jobs` copy). This covers
+// terminal transitions that arrive via a non-excluded action (e.g. a manual
+// `updateJobStatus`); the WebSocket-driven common case is handled below.
 jobPersistenceMiddleware.startListening({
   predicate: (action) =>
     typeof action.type === 'string' &&
@@ -61,24 +96,23 @@ jobPersistenceMiddleware.startListening({
   effect: (_action, listenerApi) => {
     const state = listenerApi.getState() as RootState;
     persistDownloadJobs(state.jobs.jobs);
+    archiveTerminalTrainingRuns(state, listenerApi.dispatch);
+  },
+});
 
-    // Archive terminal training runs into the history slice. Idempotent: skip
-    // any run already recorded with the same terminal status + completion time,
-    // so live progress ticks on running jobs (the common case) do no work.
-    const history = state.trainingHistory.entries;
-    for (const job of Object.values(state.jobs.jobs)) {
-      if (job.type !== 'training') continue;
-      if (!TERMINAL_TRAINING_STATUSES.has(job.status)) continue;
-      const existing = history[job.id];
-      if (
-        existing &&
-        existing.status === job.status &&
-        existing.completedAt === job.completedAt
-      ) {
-        continue;
-      }
-      listenerApi.dispatch(recordTrainingRun(job));
-    }
+// Archive a training run the moment its streamed progress goes terminal.
+// `updateTrainingProgress` fires many times a second, so we short-circuit on
+// non-terminal ticks (the common case does no work) — but we must listen for
+// it, because completed/failed/cancelled status only ever arrives on this
+// action, and it's deliberately absent from the download-persistence path above.
+jobPersistenceMiddleware.startListening({
+  actionCreator: updateTrainingProgress,
+  effect: (action, listenerApi) => {
+    if (!TERMINAL_TRAINING_STATUSES.has(action.payload.progress.status)) return;
+    archiveTerminalTrainingRuns(
+      listenerApi.getState() as RootState,
+      listenerApi.dispatch,
+    );
   },
 });
 

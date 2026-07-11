@@ -25,6 +25,13 @@ export type SidecarStatus = 'stopped' | 'starting' | 'ready' | 'error';
 /** One sampled point in the loss-over-steps series. */
 export type LossPoint = { step: number; loss: number };
 
+/**
+ * One sampled point in the speed-over-steps series. Always seconds-per-iteration
+ * (the sidecar normalises the trainer's it/s or s/it rate), sampled at the same
+ * downsampled steps as {@link LossPoint} so the two curves share an x-axis.
+ */
+export type SpeedPoint = { step: number; secPerIt: number };
+
 export type TrainingProgress = {
   jobId: string;
   status: TrainingJobStatus;
@@ -40,6 +47,12 @@ export type TrainingProgress = {
    * refresh via the sidecar's persisted job state.
    */
   lossHistory: LossPoint[];
+  /**
+   * Downsampled seconds-per-iteration series, sampled at the same steps as
+   * {@link lossHistory}. Empty for backends that don't report a rate. Drives
+   * the speed graph in the expanded training detail view.
+   */
+  speedHistory: SpeedPoint[];
   learningRate: number | null;
   etaSeconds: number | null;
   sampleImagePaths: string[];

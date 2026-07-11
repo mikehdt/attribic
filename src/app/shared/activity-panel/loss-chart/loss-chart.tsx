@@ -1,8 +1,8 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 
 import type { LossPoint } from '@/app/services/training/types';
 
-import { formatLoss } from '../helpers';
+import { formatLoss, trimSettleSteps } from '../helpers';
 import { useLossChartScale } from './use-loss-chart-scale';
 
 type LossChartVariant = 'compact' | 'detail';
@@ -54,6 +54,12 @@ const LossChartComponent = ({
   const isDetail = variant === 'detail';
   const padding = isDetail ? DETAIL_PADDING : COMPACT_PADDING;
 
+  // Hide the leading warmup spike so it doesn't squash the rest of the curve.
+  const visibleHistory = useMemo(
+    () => trimSettleSteps(lossHistory),
+    [lossHistory],
+  );
+
   const {
     innerWidth,
     innerHeight,
@@ -64,7 +70,7 @@ const LossChartComponent = ({
     linePath,
     smoothedPath,
   } = useLossChartScale({
-    lossHistory,
+    lossHistory: visibleHistory,
     totalSteps,
     width,
     height,
@@ -75,7 +81,7 @@ const LossChartComponent = ({
   });
 
   // Empty series: a subtle placeholder, never a NaN'd path.
-  if (lossHistory.length === 0) {
+  if (visibleHistory.length === 0) {
     return (
       <svg
         width={width}
@@ -139,7 +145,7 @@ const LossChartComponent = ({
   const lineTop = padding.top;
   const lineBottom = height - padding.bottom;
 
-  const lastPoint = lossHistory[lossHistory.length - 1];
+  const lastPoint = visibleHistory[visibleHistory.length - 1];
 
   // LR schedule background: curve points spread across the full plot width,
   // normalised so peak LR touches the top edge. Rendered as a faint fill

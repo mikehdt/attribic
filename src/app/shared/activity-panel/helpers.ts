@@ -20,6 +20,37 @@ export function formatLoss(loss: number): string {
 }
 
 /**
+ * Steps of warmup noise to hide from the training graphs. The first handful of
+ * optimizer steps are settling noise — a large first-batch loss spike and an
+ * unrepresentatively slow first few iterations (cold caches, lazy CUDA init) —
+ * that squash the rest of the curve. Dropping them lets the meaningful part of
+ * the run use the full plot range.
+ */
+export const SETTLE_STEPS = 16;
+
+/**
+ * Drop the leading settling-noise points from a step-indexed series so the
+ * graph focuses on the representative part of the run. Falls back to the full
+ * series while there aren't yet enough points past the window to plot a line —
+ * so an early run still shows something rather than an empty chart.
+ */
+export function trimSettleSteps<T extends { step: number }>(
+  points: T[],
+  settle: number = SETTLE_STEPS,
+): T[] {
+  const trimmed = points.filter((p) => p.step > settle);
+  return trimmed.length >= 2 ? trimmed : points;
+}
+
+/** Format a seconds-per-iteration value compactly for the speed graph. */
+export function formatSecPerIt(secPerIt: number): string {
+  if (!Number.isFinite(secPerIt)) return '—';
+  if (secPerIt >= 100) return secPerIt.toFixed(0);
+  if (secPerIt >= 10) return secPerIt.toFixed(1);
+  return secPerIt.toFixed(2);
+}
+
+/**
  * Checkpoint count to display for a job. Prefers the trainer-confirmed
  * saved list; falls back to counting predicted positions already reached,
  * so older persisted data (and providers not yet reporting confirmed saves)

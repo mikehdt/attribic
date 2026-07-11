@@ -10,11 +10,14 @@ from pathlib import Path
 from typing import Optional
 
 from job_registry import JobKind, JobRegistry, LifecycleStatus
+import re
+
 from models import (
     JobProgress,
     JobState,
     JobStatus,
     LossPoint,
+    SpeedPoint,
     StartJobRequest,
     StartJobResponse,
 )
@@ -39,6 +42,33 @@ _MAX_LOSS_POINTS = 1000
 # updates, fresh checkpoint confirmations, and the first update always persist
 # immediately regardless of this throttle.
 _PERSIST_THROTTLE_SECONDS = 5.0
+
+# Matches a trainer-reported iteration rate like "2.30it/s" or "23.01 s/it".
+_RATE_RE = re.compile(r"([\d.]+)\s*(it/s|s/it)", re.IGNORECASE)
+
+
+def _parse_sec_per_it(speed: Optional[str]) -> Optional[float]:
+    """Normalise a trainer's speed string to seconds-per-iteration.
+
+    Trainers print the rate in whichever unit reads nicer for the current
+    pace — "2.30 it/s" when fast, "23.01 s/it" when slow. We store a single
+    consistent series (s/it) so the client doesn't have to branch per point:
+    an it/s value is inverted, an s/it value is taken as-is. Returns None when
+    the string is missing or unparseable (best-effort — don't rely on it).
+    """
+    if not speed:
+        return None
+    m = _RATE_RE.search(speed)
+    if not m:
+        return None
+    try:
+        value = float(m.group(1))
+    except ValueError:
+        return None
+    if value <= 0:
+        return None
+    unit = m.group(2).lower()
+    return 1.0 / value if unit == "it/s" else value
 
 
 def predict_checkpoint_steps(hyperparameters: dict) -> list[int]:
@@ -199,6 +229,7 @@ class JobManager:
         )
         self._accumulators[job_id] = {
             "history": [],
+            "speed_history": [],
             "last_step": 0,
             "stride": 1,
             "raw_count": 0,
@@ -338,6 +369,7 @@ class JobManager:
             # update for a job that predates the accumulator.
             acc = {
                 "history": list(job.progress.loss_history),
+                "speed_history": list(job.progress.speed_history),
                 "last_step": job.progress.current_step,
                 "stride": 1,
                 "raw_count": len(job.progress.loss_history),
@@ -366,13 +398,24 @@ class JobManager:
                 acc["history"].append(
                     LossPoint(step=progress.current_step, loss=progress.loss)
                 )
+                # Speed rides alongside loss at the same downsampled steps, so
+                # the two curves share an x-axis. Skip the point (rather than
+                # storing a gap) when the backend didn't report a parseable
+                # rate this tick — the series stays sparse but valid.
+                sec_per_it = _parse_sec_per_it(progress.speed)
+                if sec_per_it is not None:
+                    acc["speed_history"].append(
+                        SpeedPoint(step=progress.current_step, sec_per_it=sec_per_it)
+                    )
                 if len(acc["history"]) > _MAX_LOSS_POINTS:
-                    # Halve the series and sample half as often from here on.
+                    # Halve both series and sample half as often from here on.
                     acc["history"] = acc["history"][::2]
+                    acc["speed_history"] = acc["speed_history"][::2]
                     acc["stride"] *= 2
 
         # Write the accumulated view onto the outgoing progress.
         progress.loss_history = list(acc["history"])
+        progress.speed_history = list(acc["speed_history"])
         progress.checkpoint_steps = list(acc["checkpoint_steps"])
         progress.saved_checkpoints = sorted(acc["saved"])
 

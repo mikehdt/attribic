@@ -91,6 +91,12 @@ class MockProvider(TrainingProvider):
             lr = round(base_lr * (1 - frac * 0.3), 8)
             eta = max(0, int((total_steps - current) * self._tick_interval / step_increment))
 
+            # Synthetic speed (s/it): slow for the first ~16 steps (cold
+            # caches) then a steady rate with light jitter — exercises the
+            # speed graph and the settle-step trim it applies.
+            speed_noise = (hash((job_id, current, "s")) % 100 - 50) / 1000.0
+            sec_per_it = round(1.2 + max(0.0, 2.0 - current * 0.12) + speed_noise, 2)
+
             # Any predicted checkpoint the step has now reached is "written".
             newly_saved = [s for s in pending_saves if s <= current]
             pending_saves = [s for s in pending_saves if s > current]
@@ -105,6 +111,7 @@ class MockProvider(TrainingProvider):
                 loss=loss,
                 learning_rate=lr,
                 eta_seconds=eta,
+                speed=f"{sec_per_it} s/it",
                 saved_checkpoints=newly_saved,
                 log_lines=[f"[mock] step {current}/{total_steps}"],
             )

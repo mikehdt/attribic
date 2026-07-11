@@ -365,7 +365,7 @@ class AiToolkitUiProvider(TrainingProvider):
                                 log_lines=log_tail,
                             )
                         else:
-                            loss, lr, eta = _parse_speed_string(speed)
+                            loss, lr, eta, rate = _parse_speed_string(speed)
                             yield JobProgress(
                                 job_id=local_job_id,
                                 status=JobStatus.TRAINING,
@@ -374,6 +374,7 @@ class AiToolkitUiProvider(TrainingProvider):
                                 loss=loss,
                                 learning_rate=lr,
                                 eta_seconds=eta,
+                                speed=rate,
                                 saved_checkpoints=newly_saved,
                                 sample_image_paths=sample_paths,
                                 log_lines=log_tail,
@@ -700,19 +701,27 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
     }
 
 
-def _parse_speed_string(s: str) -> tuple[Optional[float], Optional[float], Optional[int]]:
-    """Pick out loss / lr / eta from ai-toolkit's `speed_string` field
+def _parse_speed_string(
+    s: str,
+) -> tuple[Optional[float], Optional[float], Optional[int], Optional[str]]:
+    """Pick out loss / lr / eta / rate from ai-toolkit's `speed_string` field
     if present. Format varies — best-effort parse, returns None where
-    unrecognised. Don't rely on these being populated."""
+    unrecognised. Don't rely on these being populated.
+
+    The rate is returned as the raw matched token (e.g. "2.30it/s") so the
+    JobManager can normalise it to s/it the same way it does for other
+    providers; None when no it/s or s/it token is present."""
     import re
 
     if not s:
-        return None, None, None
+        return None, None, None, None
     loss_m = re.search(r"loss:\s*([\d.eE+-]+)", s)
     lr_m = re.search(r"lr:\s*([\d.eE+-]+)", s)
     eta_m = re.search(r"(?:eta|ETA)[:\s]+(\d+)", s)
+    rate_m = re.search(r"[\d.]+\s*(?:it/s|s/it)", s, re.IGNORECASE)
     return (
         float(loss_m.group(1)) if loss_m else None,
         float(lr_m.group(1)) if lr_m else None,
         int(eta_m.group(1)) if eta_m else None,
+        rate_m.group(0) if rate_m else None,
     )

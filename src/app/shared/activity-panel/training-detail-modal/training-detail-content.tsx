@@ -8,6 +8,7 @@ import {
   formatLoss,
 } from '../helpers';
 import { LossChart } from '../loss-chart/loss-chart';
+import { SpeedChart } from '../speed-chart/speed-chart';
 import { useTrainingDetailView } from './use-training-detail-view';
 
 function Stat({ label, value }: { label: string; value: string | null }) {
@@ -41,6 +42,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const totalSteps = progress.totalSteps ?? 0;
   const savedCheckpoints = progress.savedCheckpoints ?? [];
   const checkpointSteps = progress.checkpointSteps ?? [];
+  const speedHistory = progress.speedHistory ?? [];
   const savedCount = deriveSavedCount(progress);
 
   const elapsed =
@@ -116,6 +118,24 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
           )}
         </div>
       </div>
+
+      {speedHistory.length > 0 && (
+        <div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs text-slate-400 uppercase">Speed</span>
+            <span className="text-xs text-slate-400">s/it</span>
+          </div>
+          <div className="mt-1 rounded border border-slate-300 bg-slate-100 p-2 dark:border-slate-600 dark:bg-slate-900">
+            <SpeedChart
+              speedHistory={speedHistory}
+              totalSteps={totalSteps}
+              width={640}
+              height={90}
+              className="w-full"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat

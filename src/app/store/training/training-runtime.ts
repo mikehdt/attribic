@@ -40,6 +40,7 @@ type SidecarJobProgress = {
   total_epochs?: number;
   loss?: number | null;
   loss_history?: { step: number; loss: number }[];
+  speed_history?: { step: number; sec_per_it: number }[];
   learning_rate?: number | null;
   eta_seconds?: number | null;
   sample_image_paths?: string[];
@@ -122,6 +123,10 @@ function buildProgress(
     totalEpochs: msg.total_epochs ?? 0,
     loss: msg.loss ?? null,
     lossHistory: msg.loss_history ?? [],
+    speedHistory: (msg.speed_history ?? []).map((p) => ({
+      step: p.step,
+      secPerIt: p.sec_per_it,
+    })),
     learningRate: msg.learning_rate ?? null,
     etaSeconds: msg.eta_seconds ?? null,
     sampleImagePaths: msg.sample_image_paths ?? [],

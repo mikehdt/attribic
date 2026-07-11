@@ -31,6 +31,18 @@ class LossPoint(BaseModel):
     loss: float
 
 
+class SpeedPoint(BaseModel):
+    """A single downsampled point on the training speed curve.
+
+    Stored as seconds-per-iteration (normalised from the trainer's it/s or
+    s/it rate) so the client can plot a consistent s/it series regardless of
+    which unit the backend printed.
+    """
+
+    step: int
+    sec_per_it: float
+
+
 class DatasetEntry(BaseModel):
     path: str
     num_repeats: int = 1
@@ -73,6 +85,10 @@ class JobProgress(BaseModel):
     # the whole run (providers only report the latest `loss`; the manager
     # appends and bounds the series). Survives state persistence + rehydration.
     loss_history: list[LossPoint] = []
+    # Downsampled speed curve (seconds-per-iteration), accumulated centrally in
+    # lockstep with loss_history at the same downsampled steps. Empty for
+    # providers/backends that don't report an iteration rate.
+    speed_history: list[SpeedPoint] = []
     learning_rate: Optional[float] = None
     eta_seconds: Optional[int] = None
     sample_image_paths: list[str] = []

@@ -1,5 +1,5 @@
 import { Maximize2Icon, XIcon } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppDispatch } from '@/app/store/hooks';
 import { type TrainingJob } from '@/app/store/jobs';
@@ -71,6 +71,39 @@ export function TrainingJobCard({
 }) {
   const dispatch = useAppDispatch();
 
+  // Cancel is a two-step confirm — the button sits right beside Enlarge in a
+  // cramped row, so a stray click shouldn't kill a long run. First click arms
+  // it ("Confirm?"), a second within the window commits; it disarms itself if
+  // the user doesn't follow through.
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const cancelResetTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (cancelResetTimer.current !== null) {
+        clearTimeout(cancelResetTimer.current);
+      }
+    },
+    [],
+  );
+
+  const handleCancelClick = useCallback(() => {
+    if (confirmingCancel) {
+      if (cancelResetTimer.current !== null) {
+        clearTimeout(cancelResetTimer.current);
+        cancelResetTimer.current = null;
+      }
+      setConfirmingCancel(false);
+      dispatch(cancelTraining(job.id));
+      return;
+    }
+    setConfirmingCancel(true);
+    cancelResetTimer.current = window.setTimeout(() => {
+      setConfirmingCancel(false);
+      cancelResetTimer.current = null;
+    }, 3500);
+  }, [confirmingCancel, dispatch, job.id]);
+
   const isRunning = job.status === 'running' || job.status === 'preparing';
   const isCompleted = job.status === 'completed';
   const isFailed = job.status === 'failed';
@@ -139,12 +172,16 @@ export function TrainingJobCard({
           )}
           {isRunning && (
             <ActionButton
-              onClick={() => dispatch(cancelTraining(job.id))}
-              title="Cancel training"
+              onClick={handleCancelClick}
+              title={
+                confirmingCancel
+                  ? 'Click again to confirm cancellation'
+                  : 'Cancel training'
+              }
               variant="danger"
             >
               <XIcon className="h-2.5 w-2.5" />
-              Cancel
+              {confirmingCancel ? 'Confirm?' : 'Cancel'}
             </ActionButton>
           )}
           {isDone && (
