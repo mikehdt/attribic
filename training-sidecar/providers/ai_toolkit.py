@@ -242,6 +242,9 @@ class AiToolkitProvider(TrainingProvider):
     def __init__(self, toolkit_path: str):
         self._toolkit_path = Path(toolkit_path)
         self._process: Optional[asyncio.subprocess.Process] = None
+        # Set by cancel_training() so the run loop can distinguish a
+        # user-initiated stop from a genuine non-zero exit and stay quiet.
+        self._cancelled = False
 
     async def validate_environment(self) -> tuple[bool, Optional[str]]:
         run_py = self._toolkit_path / "run.py"
@@ -505,6 +508,7 @@ class AiToolkitProvider(TrainingProvider):
     ) -> AsyncGenerator[JobProgress, None]:
         job_id = request.output_name  # Will be overridden by caller with real job ID
 
+        self._cancelled = False
         # Find the Python executable — prefer the ai-toolkit venv
         python_exe = _find_python(self._toolkit_path)
         run_py = str(self._toolkit_path / "run.py")
@@ -523,6 +527,9 @@ class AiToolkitProvider(TrainingProvider):
                 "CUDA_VISIBLE_DEVICES": str(gpu_id),
             },
         )
+        # Hold a local handle: cancel_training() nulls self._process, and the
+        # tail of this loop must still be able to await the exit code.
+        proc = self._process
 
         # Yield preparing status
         yield JobProgress(job_id=job_id, status=JobStatus.PREPARING)
@@ -641,8 +648,13 @@ class AiToolkitProvider(TrainingProvider):
 
         await stdout_task
         await stderr_task
-        return_code = await self._process.wait()
+        return_code = await proc.wait()
         self._process = None
+
+        # User asked to stop: cancel_job() emits the CANCELLED update, so the
+        # non-zero exit from the kill is expected — don't report it as a failure.
+        if self._cancelled:
+            return
 
         if return_code == 0:
             yield JobProgress(
@@ -672,19 +684,21 @@ class AiToolkitProvider(TrainingProvider):
             )
 
     async def cancel_training(self) -> None:
-        if self._process is None:
+        self._cancelled = True
+        proc = self._process
+        if proc is None:
             return
 
         if sys.platform == "win32":
             # On Windows, kill the process tree
-            os.system(f"taskkill /F /T /PID {self._process.pid}")
+            os.system(f"taskkill /F /T /PID {proc.pid}")
         else:
-            self._process.send_signal(signal.SIGTERM)
+            proc.send_signal(signal.SIGTERM)
 
         try:
-            await asyncio.wait_for(self._process.wait(), timeout=10)
+            await asyncio.wait_for(proc.wait(), timeout=10)
         except asyncio.TimeoutError:
-            self._process.kill()
+            proc.kill()
 
         self._process = None
 

@@ -235,6 +235,9 @@ class KohyaProvider(TrainingProvider):
     def __init__(self, scripts_path: str):
         self._scripts_path = Path(scripts_path)
         self._process: Optional[asyncio.subprocess.Process] = None
+        # Set by cancel_training() so the run loop can distinguish a
+        # user-initiated stop from a genuine non-zero exit and stay quiet.
+        self._cancelled = False
 
     async def validate_environment(self) -> tuple[bool, Optional[str]]:
         if not self._scripts_path.exists():
@@ -589,6 +592,7 @@ class KohyaProvider(TrainingProvider):
         if model_def is None:
             raise ValueError(f"Unknown model: {request.base_model}")
 
+        self._cancelled = False
         python_exe = _find_python(self._scripts_path)
         script = str(self._scripts_path / model_def["train_script"])
         config_dir = os.path.dirname(config_path)
@@ -625,6 +629,9 @@ class KohyaProvider(TrainingProvider):
                 "CUDA_VISIBLE_DEVICES": str(gpu_id),
             },
         )
+        # Hold a local handle: cancel_training() nulls self._process, and the
+        # tail of this loop must still be able to await the exit code.
+        proc = self._process
 
         yield JobProgress(job_id=job_id, status=JobStatus.PREPARING)
 
@@ -825,8 +832,13 @@ class KohyaProvider(TrainingProvider):
 
         await stdout_task
         await stderr_task
-        return_code = await self._process.wait()
+        return_code = await proc.wait()
         self._process = None
+
+        # User asked to stop: cancel_job() emits the CANCELLED update, so the
+        # non-zero exit from the kill is expected — don't report it as a failure.
+        if self._cancelled:
+            return
 
         if return_code == 0:
             yield JobProgress(
@@ -856,19 +868,21 @@ class KohyaProvider(TrainingProvider):
             )
 
     async def cancel_training(self) -> None:
-        if self._process is None:
+        self._cancelled = True
+        proc = self._process
+        if proc is None:
             return
 
         if sys.platform == "win32":
             # accelerate spawns child worker processes; kill the whole tree.
-            os.system(f"taskkill /F /T /PID {self._process.pid}")
+            os.system(f"taskkill /F /T /PID {proc.pid}")
         else:
-            self._process.send_signal(signal.SIGTERM)
+            proc.send_signal(signal.SIGTERM)
 
         try:
-            await asyncio.wait_for(self._process.wait(), timeout=10)
+            await asyncio.wait_for(proc.wait(), timeout=10)
         except asyncio.TimeoutError:
-            self._process.kill()
+            proc.kill()
 
         self._process = None
 

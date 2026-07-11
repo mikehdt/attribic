@@ -313,7 +313,7 @@ class JobManager:
                 status=JobStatus.CANCELLED,
                 current_step=job.progress.current_step,
                 total_steps=job.progress.total_steps,
-                error="Cancelled by user",
+                error="Training run cancelled",
             )
         )
         return True
