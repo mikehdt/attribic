@@ -231,7 +231,6 @@ export function TrainingJobCard({
               value={progress!.currentStep}
               max={progress!.totalSteps}
               color={isCompleted ? 'green' : isFailed ? 'red' : 'sky'}
-              marks={checkpointPositions}
               size={isCompleted ? 'xs' : 'sm'}
             />
 

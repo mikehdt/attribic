@@ -157,7 +157,6 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
           color={
             isCompleted ? 'green' : job.status === 'failed' ? 'red' : 'sky'
           }
-          marks={checkpointSteps}
           size={isCompleted ? 'xs' : 'sm'}
         />
       ) : isRunning ? (
