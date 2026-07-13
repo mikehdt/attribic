@@ -10,6 +10,7 @@ import {
   formatDuration,
   formatEta,
   formatLoss,
+  formatPct,
 } from '../helpers';
 import { LossChart } from '../loss-chart/loss-chart';
 import { SpeedChart } from '../speed-chart/speed-chart';
@@ -44,8 +45,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
 
   const currentStep = progress.currentStep ?? 0;
   const totalSteps = progress.totalSteps ?? 0;
-  const stepPct =
-    totalSteps > 0 ? Math.round((currentStep / totalSteps) * 100) : 0;
+  const stepPct = formatPct(currentStep, totalSteps);
   const savedCheckpoints = progress.savedCheckpoints ?? [];
   const checkpointSteps = progress.checkpointSteps ?? [];
   const speedHistory = progress.speedHistory ?? [];

@@ -13,6 +13,16 @@ export function formatEta(seconds: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+/**
+ * Progress through `max` as a percentage, to one decimal place. Training runs
+ * are long enough that a whole-number percentage sits still for minutes at a
+ * time and reads as a stalled run.
+ */
+export function formatPct(value: number, max: number): string {
+  if (max <= 0) return '0.0';
+  return (Math.min(1, value / max) * 100).toFixed(1);
+}
+
 /** Format a loss value with enough precision to be useful at typical LoRA loss magnitudes. */
 export function formatLoss(loss: number): string {
   if (!Number.isFinite(loss)) return '—';

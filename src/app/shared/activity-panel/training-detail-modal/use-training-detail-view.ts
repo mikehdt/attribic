@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
-import { buildLrScheduleCurve } from '@/app/services/training/lr-schedule';
 import type { TrainingJob } from '@/app/store/jobs';
+
+import { useLrScheduleCurve } from '../use-lr-schedule-curve';
 
 /**
  * Derives everything the training detail *content* needs from a single job:
@@ -14,16 +15,7 @@ export function useTrainingDetailView(job: TrainingJob | null) {
   const config = job?.config ?? null;
 
   const totalSteps = progress?.totalSteps ?? 0;
-  const lrCurve = useMemo(() => {
-    const hp = config?.hyperparameters;
-    if (!hp) return null;
-    return buildLrScheduleCurve({
-      scheduler: hp.scheduler,
-      totalSteps,
-      warmupSteps: hp.warmupSteps ?? 0,
-      numRestarts: Number(hp.extra?.numRestarts ?? 1) || 1,
-    });
-  }, [config, totalSteps]);
+  const lrCurve = useLrScheduleCurve(config, totalSteps);
 
   // Auto-scroll the log panel to the bottom while training runs, unless the
   // user has scrolled up to read earlier lines.

@@ -60,7 +60,9 @@ export function ProgressBar({
   children,
   className = '',
 }: ProgressBarProps) {
-  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  // Unrounded: on a long run a whole-percent fill only moves every ~20 steps,
+  // and it would visibly disagree with the decimal percentage shown alongside.
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
 
   return (
     <div

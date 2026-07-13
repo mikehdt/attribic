@@ -19,7 +19,7 @@ type LossChartProps = {
   savedCheckpoints?: number[];
   /**
    * Normalised (0–1) LR schedule curve drawn as a background area across
-   * the full step range. Detail only.
+   * the full step range.
    */
   lrCurve?: number[] | null;
   variant?: LossChartVariant;
@@ -151,7 +151,7 @@ const LossChartComponent = ({
   // normalised so peak LR touches the top edge. Rendered as a faint fill
   // with a slightly stronger top edge carrying the shape.
   const lrPoints =
-    isDetail && lrCurve && lrCurve.length >= 2
+    lrCurve && lrCurve.length >= 2
       ? lrCurve.map((v, i) => {
           const x = padding.left + (i / (lrCurve.length - 1)) * innerWidth;
           const y = padding.top + (1 - v) * innerHeight;

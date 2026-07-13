@@ -15,8 +15,10 @@ import {
   formatDuration,
   formatEta,
   formatLoss,
+  formatPct,
 } from './helpers';
 import { LossChart } from './loss-chart/loss-chart';
+import { useLrScheduleCurve } from './use-lr-schedule-curve';
 
 const TQDM_RE = /(\d+)\/(\d+)\s+\[/;
 
@@ -121,11 +123,11 @@ export function TrainingJobCard({
   const hasPrepCount = isPreparing && (progress?.totalSteps ?? 0) > 0;
 
   const pct = hasStepInfo
-    ? Math.round((progress!.currentStep / progress!.totalSteps) * 100)
-    : 0;
+    ? formatPct(progress!.currentStep, progress!.totalSteps)
+    : '0.0';
   const prepPct = hasPrepCount
-    ? Math.round((progress!.currentStep / progress!.totalSteps) * 100)
-    : 0;
+    ? formatPct(progress!.currentStep, progress!.totalSteps)
+    : '0.0';
 
   const elapsed =
     progress?.completedAt != null && progress.startedAt != null
@@ -134,6 +136,11 @@ export function TrainingJobCard({
 
   const checkpointPositions = progress?.checkpointSteps ?? [];
   const savedCount = deriveSavedCount(progress);
+  const lrCurve = useLrScheduleCurve(config, progress?.totalSteps ?? 0);
+
+  // While running, the loss sits in the graph's header. A terminal card has no
+  // graph, so its final loss stays down in the stats row.
+  const showLossStat = !isRunning && progress?.loss != null;
 
   // Prefer the phase label the provider sends (survives rapid tqdm redraws);
   // fall back to scraping it out of the recent log lines (ai-toolkit, and
@@ -199,12 +206,18 @@ export function TrainingJobCard({
         </div>
       </div>
 
-      {/* Loss curve — live and more useful in-card than the LR schedule
-          (which moved into the enlarge modal as secondary info). */}
+      {/* Loss curve, over the LR schedule as a background layer. The current
+          loss rides in the header rather than the stats row below, so it sits
+          beside the curve it belongs to. */}
       {isRunning && (
         <div className="border-t border-dashed border-(--border-subtle) px-3 py-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-baseline justify-between">
             <span className="text-xs text-slate-400 uppercase">Loss</span>
+            {progress?.loss != null && (
+              <span className="text-xs font-medium text-(--foreground) tabular-nums">
+                {formatLoss(progress.loss)}
+              </span>
+            )}
           </div>
           <div className="mt-1 rounded border border-slate-300 bg-slate-200 p-1 dark:border-slate-600 dark:bg-slate-800">
             <LossChart
@@ -214,6 +227,7 @@ export function TrainingJobCard({
               totalEpochs={progress?.totalEpochs ?? 0}
               checkpointSteps={checkpointPositions}
               savedCheckpoints={progress?.savedCheckpoints ?? []}
+              lrCurve={lrCurve}
               variant="compact"
               width={264}
               height={40}
@@ -286,7 +300,7 @@ export function TrainingJobCard({
         ) : null}
 
         {progress &&
-          (progress.loss !== null ||
+          (showLossStat ||
             progress.speed !== null ||
             progress.trainingSeconds > 0 ||
             (progress.etaSeconds !== null && progress.etaSeconds > 0)) && (
@@ -299,11 +313,11 @@ export function TrainingJobCard({
                   </span>
                 </span>
               )}
-              {progress.loss !== null && (
+              {showLossStat && (
                 <span>
                   Loss{' '}
                   <span className="font-medium text-(--foreground)">
-                    {formatLoss(progress.loss)}
+                    {formatLoss(progress.loss!)}
                   </span>
                 </span>
               )}
