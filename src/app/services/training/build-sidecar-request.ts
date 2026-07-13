@@ -199,6 +199,7 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     cache_latents: config.cacheLatents,
     bucket_reso_steps: config.bucketResoSteps,
     bucket_no_upscale: config.bucketNoUpscale,
+    native_resolution: config.nativeResolution,
     seed: config.seed,
     guidance_scale: config.guidanceScale,
     sample_steps: config.sampleSteps,
@@ -218,7 +219,8 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     lokr_factor: config.lokrFactor,
     content_or_style: config.contentOrStyle,
     diff_output_preservation: config.diffOutputPreservation,
-    diff_output_preservation_multiplier: config.diffOutputPreservationMultiplier,
+    diff_output_preservation_multiplier:
+      config.diffOutputPreservationMultiplier,
     diff_output_preservation_class: config.diffOutputPreservationClass,
     layer_targeting: config.layerTargeting,
     low_vram: config.lowVram,

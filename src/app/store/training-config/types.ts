@@ -101,6 +101,8 @@ export type FormState = {
   bucketResoSteps: number;
   /** Kohya-only. Only meaningful when multi-resolution bucketing is on. */
   bucketNoUpscale: boolean;
+  /** Kohya-only. Exact `WxH` training size, e.g. `'1280x768'`. Empty = off. */
+  nativeResolution: string;
 
   samplingEnabled: boolean;
   samplePrompts: string[];

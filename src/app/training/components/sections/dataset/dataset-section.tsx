@@ -1,4 +1,10 @@
-import { FolderIcon, FolderOpenIcon, PlusIcon, XIcon } from 'lucide-react';
+import {
+  FolderIcon,
+  FolderOpenIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  XIcon,
+} from 'lucide-react';
 import Image from 'next/image';
 import { memo, useCallback, useMemo, useState } from 'react';
 
@@ -34,6 +40,8 @@ type DatasetSectionProps = {
     dimensionHistogram?: Record<string, number>,
   ) => void;
   onRemoveDataset: (index: number) => void;
+  /** Re-read image dimensions from disk for every attached dataset. */
+  onRescanDatasets: () => void;
   onSetFolderRepeats: (
     datasetIndex: number | null,
     folderName: string,
@@ -58,6 +66,7 @@ const DatasetSectionComponent = ({
   hiddenChangesCount,
   onAddDataset,
   onRemoveDataset,
+  onRescanDatasets,
   onSetFolderRepeats,
   onUpdateFolderAugment,
   onAddExtraFolder,
@@ -125,8 +134,28 @@ const DatasetSectionComponent = ({
         </>
       }
       headerActions={(expanded) =>
-        hasChanges && expanded ? (
-          <SectionResetButton onClick={() => onReset('dataset')} />
+        expanded ? (
+          <div className="flex items-center gap-1">
+            {/* Image dimensions are read from disk when a dataset is picked, so
+                editing the files afterwards leaves the size warnings stale. */}
+            {datasets.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRescanDatasets();
+                }}
+                title="Re-read image dimensions from disk"
+                aria-label="Rescan dataset image sizes"
+                className="cursor-pointer rounded p-1 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <RefreshCwIcon className="h-4 w-4" />
+              </button>
+            )}
+            {hasChanges && (
+              <SectionResetButton onClick={() => onReset('dataset')} />
+            )}
+          </div>
         ) : undefined
       }
     >

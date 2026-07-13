@@ -183,7 +183,7 @@ export const ProjectList = () => {
       <FolderClosedIcon className="mb-6 h-24 w-24 text-slate-500 dark:text-slate-400" />
 
       <h1 className="mb-8 text-2xl text-slate-700 dark:text-slate-200">
-        Select a Project
+        Select a Tagging Project
       </h1>
 
       <div className="w-full max-w-md">

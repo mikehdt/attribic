@@ -115,6 +115,17 @@ export type TrainingDefaults = {
   bucketResoSteps: number;
   /** Kohya-only: disallow upscaling small images to fit a bucket. */
   bucketNoUpscale: boolean;
+  /**
+   * Kohya-only: exact `WxH` training size, e.g. `'1280x768'`. Empty = off.
+   *
+   * When set it overrides `resolution` entirely: the dataset TOML gets
+   * `resolution = [W, H]` with bucketing disabled, so images sized exactly WxH
+   * reach the VAE untouched. Without it a single `resolution` entry means a
+   * *square* WxW (sd-scripts resizes to fit and centre-crops), and multiple
+   * entries bucket — both of which resample. That resampling is fatal for
+   * pixel art, where a non-integer rescale destroys the pixel grid.
+   */
+  nativeResolution: string;
   /** ai-toolkit-only: EMA decay rate, only used when `ema` is enabled. */
   emaDecay: number;
   // --- Expert tier ---
@@ -202,6 +213,7 @@ const BASE_DEFAULTS: TrainingDefaults = {
   noiseOffset: 0,
   bucketResoSteps: 64,
   bucketNoUpscale: false,
+  nativeResolution: '',
   emaDecay: 0.99,
   networkArgs: '',
   optimizerArgs: '',

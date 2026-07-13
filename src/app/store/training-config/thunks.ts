@@ -11,10 +11,16 @@ import type {
   TrainingProjectSummary,
   TrainingProjectVersion,
 } from '@/app/services/training-projects/disk-schema';
+import { getProjectDimensionHistogram } from '@/app/utils/project-actions';
 
 import type { AppThunk } from '../index';
 import { addToast } from '../toasts';
-import { clearLoadedProject, hydrateFromProject, stampSaved } from './index';
+import {
+  clearLoadedProject,
+  hydrateFromProject,
+  setDatasetHistogram,
+  stampSaved,
+} from './index';
 import type { FormState, LoadedProject } from './types';
 
 type ProjectResponse = {
@@ -43,6 +49,45 @@ async function parseOrThrow<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+// --- Dimension histograms (derived from disk, never persisted) ---
+
+/**
+ * Rescan every attached dataset's image dimensions from disk.
+ *
+ * Histograms are captured once when a dataset is picked and are stripped on
+ * save, so without this a config would render size information about a folder
+ * as it looked at some arbitrary point in the past. They drive the
+ * native-resolution mismatch warning, so a stale one can claim a dataset is
+ * correctly sized when it no longer is. Scans run in parallel and are
+ * header-only reads, so this is cheap enough to do on every load.
+ *
+ * A folder that fails to scan (deleted, renamed, permissions) is skipped
+ * rather than blanked — the rest of the datasets still refresh.
+ */
+export const refreshDatasetHistograms =
+  (): AppThunk => async (dispatch, getState) => {
+    const { datasets } = getState().trainingConfig.form;
+    if (datasets.length === 0) return;
+
+    await Promise.all(
+      datasets.map(async (ds) => {
+        try {
+          const dimensionHistogram = await getProjectDimensionHistogram(
+            ds.folderName,
+          );
+          dispatch(
+            setDatasetHistogram({
+              folderName: ds.folderName,
+              dimensionHistogram,
+            }),
+          );
+        } catch {
+          // Leave the existing histogram alone; a failed scan shouldn't wipe it.
+        }
+      }),
+    );
+  };
+
 // --- List (not a thunk — plain fetch for UI consumption) ---
 
 export async function fetchProjectList(): Promise<TrainingProjectSummary[]> {
@@ -70,6 +115,7 @@ export const loadProject =
           loadedProject: toLoadedProject(meta, v),
         }),
       );
+      void dispatch(refreshDatasetHistograms());
     } catch (error) {
       dispatch(
         addToast({
@@ -134,6 +180,7 @@ export const saveAsNewProject =
           loadedProject: toLoadedProject(meta, version),
         }),
       );
+      void dispatch(refreshDatasetHistograms());
       dispatch(addToast({ children: `Saved as new project “${meta.name}”` }));
     } catch (error) {
       dispatch(
@@ -166,6 +213,7 @@ export const saveAsNewVersion =
           loadedProject: toLoadedProject(meta, version),
         }),
       );
+      void dispatch(refreshDatasetHistograms());
       dispatch(
         addToast({
           children: `Saved as v${version.version} of “${meta.name}”`,
@@ -206,6 +254,7 @@ export const replaceExistingProject =
           loadedProject: toLoadedProject(meta, version),
         }),
       );
+      void dispatch(refreshDatasetHistograms());
       dispatch(addToast({ children: `Replaced project “${meta.name}”` }));
     } catch (error) {
       dispatch(

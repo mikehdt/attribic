@@ -1,10 +1,7 @@
 'use client';
 
-import { FolderOpenIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { getModelById } from '@/app/services/training/models';
-import { TRAINING_PROVIDER_SHORT_LABELS } from '@/app/services/training/types';
 import type {
   TrainingProjectSummary,
   TrainingProjectVersionSummary,
@@ -19,6 +16,12 @@ import {
   loadProject,
 } from '@/app/store/training-config/thunks';
 
+import { DatasetThumbs } from './dataset-thumbs';
+import {
+  MODEL_BADGE_CLASS,
+  ModelBackendBadges,
+  modelLabel,
+} from './model-backend-badges';
 import { RadioRow } from './radio-row';
 
 type LoadProjectModalProps = {
@@ -26,30 +29,18 @@ type LoadProjectModalProps = {
   onClose: () => void;
 };
 
-const MODEL_BADGE_CLASS =
-  'rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300';
-const BACKEND_BADGE_CLASS =
-  'rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500 dark:bg-slate-700/60 dark:text-slate-400';
 const COUNT_CHIP_CLASS =
   'cursor-pointer rounded bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-300 dark:hover:bg-slate-500';
 
-function modelLabel(modelId: string): string {
-  return getModelById(modelId)?.name ?? modelId;
-}
-
-/** Model + backend badges for a single saved version. */
-function ModelBackendBadges({
-  version,
-}: {
-  version: TrainingProjectVersionSummary;
-}) {
+/** Highest-numbered version — the one whose datasets represent the project. */
+function latestVersionOf(
+  project: TrainingProjectSummary,
+): TrainingProjectVersionSummary | null {
   return (
-    <span className="flex flex-wrap items-center gap-1">
-      <span className={MODEL_BADGE_CLASS}>{modelLabel(version.modelId)}</span>
-      <span className={BACKEND_BADGE_CLASS}>
-        {TRAINING_PROVIDER_SHORT_LABELS[version.selectedProvider]}
-      </span>
-    </span>
+    project.versions.reduce<TrainingProjectVersionSummary | null>(
+      (best, v) => (!best || v.version > best.version ? v : best),
+      null,
+    ) ?? null
   );
 }
 
@@ -82,7 +73,6 @@ function ProjectSummaryBadges({
 }) {
   const [expanded, setExpanded] = useState(false);
   const models = distinctByVersion(project, (v) => v.modelId);
-  const backends = distinctByVersion(project, (v) => v.selectedProvider);
   if (models.length === 0) return null;
 
   const shownModels = expanded ? models : models.slice(0, 1);
@@ -114,11 +104,6 @@ function ProjectSummaryBadges({
           {expanded ? '−' : `+${hidden}`}
         </button>
       )}
-      {backends.map((provider) => (
-        <span key={provider} className={BACKEND_BADGE_CLASS}>
-          {TRAINING_PROVIDER_SHORT_LABELS[provider]}
-        </span>
-      ))}
     </span>
   );
 }
@@ -198,11 +183,7 @@ export const LoadProjectModal = ({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      className="max-w-3xl min-w-[40rem]"
-    >
+    <Modal isOpen={isOpen} onClose={onClose} className="max-w-3xl min-w-160">
       <div className="flex flex-wrap gap-4">
         <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
           Load project
@@ -227,7 +208,7 @@ export const LoadProjectModal = ({
             <div className="flex w-full gap-3">
               {/* Project list */}
               <div
-                className="flex min-h-[20rem] flex-1 flex-col gap-1 overflow-auto rounded-md border border-slate-200 p-2 dark:border-slate-700"
+                className="flex min-h-80 flex-1 flex-col gap-1 overflow-auto rounded-md border border-slate-200 p-2 dark:border-slate-700"
                 role="radiogroup"
                 aria-label="Projects"
               >
@@ -237,9 +218,12 @@ export const LoadProjectModal = ({
                     name="load-project"
                     value={p.id}
                     checked={selectedId === p.id}
+                    align="start"
                     onChange={() => handleSelectProject(p.id)}
                   >
-                    <FolderOpenIcon className="mt-0.5 h-4 w-4 shrink-0 self-start text-slate-400" />
+                    <DatasetThumbs
+                      datasets={latestVersionOf(p)?.datasets ?? []}
+                    />
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="truncate">{p.name}</span>
                       <ProjectSummaryBadges project={p} />

@@ -49,6 +49,7 @@ const TrainingConfigFormComponent = ({
     resetSection,
     addDataset,
     removeDataset,
+    rescanDatasets,
     setFolderRepeats,
     updateFolderAugment,
     addExtraFolder,
@@ -250,6 +251,7 @@ const TrainingConfigFormComponent = ({
             hiddenChangesCount={hiddenChanges.dataset}
             onAddDataset={addDataset}
             onRemoveDataset={removeDataset}
+            onRescanDatasets={rescanDatasets}
             onSetFolderRepeats={setFolderRepeats}
             onUpdateFolderAugment={updateFolderAugment}
             onAddExtraFolder={addExtraFolder}
@@ -325,6 +327,8 @@ const TrainingConfigFormComponent = ({
             batchSize={state.batchSize}
             resolution={state.resolution}
             availableResolutions={currentModel.availableResolutions}
+            nativeResolution={state.nativeResolution}
+            viewMode={viewMode}
             provider={state.selectedProvider}
             mixedPrecision={state.mixedPrecision}
             transformerQuantization={state.transformerQuantization}
@@ -416,6 +420,7 @@ const TrainingConfigFormComponent = ({
             networkDim={state.networkDim}
             networkAlpha={state.networkAlpha}
             resolution={state.resolution}
+            nativeResolution={state.nativeResolution}
             saveEnabled={state.saveEnabled}
             saveMode={state.saveMode}
             saveEveryEpochs={state.saveEveryEpochs}

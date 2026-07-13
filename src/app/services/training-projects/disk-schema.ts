@@ -18,10 +18,17 @@ export type TrainingProjectVersion = {
   form: FormState;
 };
 
+/** The bits of a dataset the load UI needs to render its thumbnail. */
+export type TrainingProjectDatasetSummary = {
+  projectName: string;
+  thumbnail?: string;
+  thumbnailVersion?: number;
+};
+
 /**
  * A version's identity in a list summary. The full `form` is stripped, but the
- * model and backend are surfaced so the load UI can show what each project /
- * version trains without loading the whole form.
+ * model, backend and datasets are surfaced so the load UI can show what each
+ * project / version trains without loading the whole form.
  */
 export type TrainingProjectVersionSummary = Pick<
   TrainingProjectVersion,
@@ -29,6 +36,7 @@ export type TrainingProjectVersionSummary = Pick<
 > & {
   modelId: string;
   selectedProvider: TrainingProvider;
+  datasets: TrainingProjectDatasetSummary[];
 };
 
 /** Summary returned by list endpoints — meta plus available versions. */

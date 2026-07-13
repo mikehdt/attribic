@@ -233,6 +233,7 @@ const trainingConfigSlice = createSlice({
           form.cacheLatents = ref.cacheLatents;
           form.bucketResoSteps = ref.bucketResoSteps;
           form.bucketNoUpscale = ref.bucketNoUpscale;
+          form.nativeResolution = ref.nativeResolution;
           form.blocksToSwap = ref.blocksToSwap;
           form.lowVram = ref.lowVram;
           break;
@@ -325,6 +326,31 @@ const trainingConfigSlice = createSlice({
         dimensionHistogram: action.payload.dimensionHistogram,
         folders: action.payload.folders.map((f) => ({ ...f, ...baseAugment })),
       });
+    },
+
+    /**
+     * Refresh a dataset's dimension histogram from a fresh disk scan.
+     *
+     * The histogram is derived from the files on disk, not user config — it's
+     * deliberately not persisted (see `writeVersion`) and a rescan must never
+     * make a clean project look dirty. So the baseline snapshot is updated in
+     * lockstep with the form, keeping it out of the dirty comparison entirely.
+     *
+     * Keyed by folderName rather than index: the scan is async, and datasets
+     * can be added or removed while it's in flight.
+     */
+    setDatasetHistogram: (
+      state,
+      action: PayloadAction<{
+        folderName: string;
+        dimensionHistogram: Record<string, number>;
+      }>,
+    ) => {
+      const { folderName, dimensionHistogram } = action.payload;
+      for (const form of [state.form, state.baselineSnapshot]) {
+        const dataset = form?.datasets.find((d) => d.folderName === folderName);
+        if (dataset) dataset.dimensionHistogram = dimensionHistogram;
+      }
     },
 
     removeDataset: (state, action: PayloadAction<number>) => {
@@ -452,6 +478,7 @@ export const {
   removeSamplePrompt,
   setSamplePrompt,
   addDataset,
+  setDatasetHistogram,
   removeDataset,
   setFolderRepeats,
   updateFolderAugment,
@@ -623,6 +650,10 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
       form.lokrFactor !== ref.lokrFactor ||
       form.layerTargeting !== ref.layerTargeting,
     performance:
+      // resolution is an array, so it needs an element-wise compare rather
+      // than the `!==` used for the scalar fields below.
+      form.resolution.length !== ref.resolution.length ||
+      form.resolution.some((r, i) => r !== ref.resolution[i]) ||
       form.mixedPrecision !== ref.mixedPrecision ||
       form.transformerQuantization !== ref.transformerQuantization ||
       form.textEncoderQuantization !== ref.textEncoderQuantization ||
@@ -633,6 +664,7 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
       form.cacheLatents !== ref.cacheLatents ||
       form.bucketResoSteps !== ref.bucketResoSteps ||
       form.bucketNoUpscale !== ref.bucketNoUpscale ||
+      form.nativeResolution !== ref.nativeResolution ||
       form.blocksToSwap !== ref.blocksToSwap ||
       form.lowVram !== ref.lowVram,
     // Sampling and saving are opt-in for ephemeral configs (no "has changes"

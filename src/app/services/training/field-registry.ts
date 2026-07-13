@@ -297,6 +297,16 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
     group: 'performance',
     defaultKey: 'resolution',
   },
+  // Simple tier, but renders as read-only text in Simple mode (and only when
+  // set) — an exact size materially changes what trains, so hiding it outright
+  // would misrepresent the run. Interactive from Intermediate up. Same
+  // read-only-in-Simple pattern as optimizer/scheduler above.
+  nativeResolution: {
+    tier: 'simple',
+    group: 'performance',
+    defaultKey: 'nativeResolution',
+    providers: ['kohya'],
+  },
   gradientAccumulationSteps: {
     tier: 'advanced',
     group: 'performance',

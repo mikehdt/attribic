@@ -103,6 +103,27 @@ async function readVersion(
   }
 }
 
+/**
+ * Strip fields derived from the files on disk rather than chosen by the user.
+ *
+ * `dimensionHistogram` is a snapshot of the image sizes in a project folder.
+ * Persisting it means a config saved today keeps asserting yesterday's sizes
+ * after the folder changes, with nothing to invalidate it — and those sizes
+ * drive the native-resolution mismatch warning, so a stale copy can quietly
+ * claim a dataset is clean when it isn't. It's cheap to rescan (header-only
+ * reads), so it's re-derived on load instead of stored.
+ */
+function stripDerived(form: FormState): FormState {
+  return {
+    ...form,
+    datasets: form.datasets.map((dataset) => {
+      const stripped = { ...dataset };
+      delete stripped.dimensionHistogram;
+      return stripped;
+    }),
+  };
+}
+
 async function writeVersion(
   id: string,
   data: TrainingProjectVersion,
@@ -110,7 +131,7 @@ async function writeVersion(
   await ensureDir(projectDir(id));
   await fs.writeFile(
     versionPath(id, data.version),
-    JSON.stringify(data, null, 2),
+    JSON.stringify({ ...data, form: stripDerived(data.form) }, null, 2),
     'utf8',
   );
 }
@@ -153,6 +174,12 @@ export async function listProjects(): Promise<TrainingProjectSummary[]> {
           savedAt: v.savedAt,
           modelId: v.form.modelId,
           selectedProvider: v.form.selectedProvider,
+          // Older saves predate `datasets`; treat a missing list as empty.
+          datasets: (v.form.datasets ?? []).map((d) => ({
+            projectName: d.projectName,
+            thumbnail: d.thumbnail,
+            thumbnailVersion: d.thumbnailVersion,
+          })),
         });
       }
     }

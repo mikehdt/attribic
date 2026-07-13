@@ -282,15 +282,24 @@ class KohyaProvider(TrainingProvider):
         # a single resolution trains at that fixed size.
         enable_bucket = len(resolution) > 1
 
+        # An exact WxH size overrides the resolution list outright: bucketing
+        # off, no resize, no crop. Images already at WxH reach the VAE byte-for-
+        # byte, which is the only way to train pixel art without a resample
+        # smearing the pixel grid.
+        native = _parse_native_resolution(hp.get("native_resolution"))
+
         lines: list[str] = []
         lines.append("[general]")
         lines.append('caption_extension = ".txt"')
         lines.append("")
         lines.append("[[datasets]]")
-        lines.append(f"resolution = {max_res}")
+        if native:
+            lines.append(f"resolution = [{native[0]}, {native[1]}]")
+        else:
+            lines.append(f"resolution = {max_res}")
         lines.append(f"batch_size = {int(hp.get('batch_size', 1))}")
-        lines.append(f"enable_bucket = {_toml_bool(enable_bucket)}")
-        if enable_bucket:
+        lines.append(f"enable_bucket = {_toml_bool(enable_bucket and not native)}")
+        if enable_bucket and not native:
             bucket_no_upscale = bool(hp.get("bucket_no_upscale", False))
             bucket_reso_steps = int(hp.get("bucket_reso_steps", 64) or 64)
             lines.append(f"bucket_no_upscale = {_toml_bool(bucket_no_upscale)}")
@@ -548,6 +557,10 @@ class KohyaProvider(TrainingProvider):
             if not isinstance(resolution, list):
                 resolution = [int(resolution)]
             sample_res = max(resolution) if resolution else 1024
+            # Samples default to the training size, so an exact WxH run samples
+            # at WxH rather than a square crop of it.
+            native = _parse_native_resolution(hp.get("native_resolution"))
+            sample_w, sample_h = native if native else (sample_res, sample_res)
             sample_steps = int(
                 hp.get("sample_steps", defaults.get("sample_steps", 20))
             )
@@ -557,7 +570,7 @@ class KohyaProvider(TrainingProvider):
 
             prompt_lines = [
                 _add_missing_sample_flags(
-                    prompt, sample_res, sample_res, sample_steps, sample_guidance
+                    prompt, sample_w, sample_h, sample_steps, sample_guidance
                 )
                 for prompt in request.sample_prompts
             ]
@@ -962,6 +975,40 @@ def _parse_kv_args(raw) -> list[str]:
     if not raw:
         return []
     return [chunk for chunk in str(raw).split() if "=" in chunk]
+
+
+_NATIVE_RESO_RE = re.compile(r"^(\d+)\s*[x×,]\s*(\d+)$", re.IGNORECASE)
+
+
+def _parse_native_resolution(raw) -> Optional[tuple[int, int]]:
+    """Parse an exact `WxH` training size (e.g. "1280x768"). Empty/None = off.
+
+    sd-scripts' dataset `resolution` accepts a scalar or a [W, H] pair, but a
+    scalar means a *square* WxW — it resizes to fit and centre-crops. Emitting
+    the pair is the only way to train at a non-square size without resampling,
+    which is what pixel-art datasets need (any non-integer rescale destroys the
+    pixel grid before the VAE ever sees it).
+
+    Both dimensions must be divisible by 8: the VAE downsamples by 8x, and
+    sd-scripts silently rounds off-grid sizes, which would defeat the point of
+    asking for an exact size in the first place.
+    """
+    if not raw:
+        return None
+    match = _NATIVE_RESO_RE.match(str(raw).strip())
+    if not match:
+        raise ValueError(
+            f"Invalid native resolution {raw!r} — expected WxH, e.g. 1280x768"
+        )
+    width, height = int(match.group(1)), int(match.group(2))
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Native resolution {raw!r} must be positive")
+    if width % 8 or height % 8:
+        raise ValueError(
+            f"Native resolution {width}x{height} must be divisible by 8 "
+            "(the VAE downsamples by 8x)"
+        )
+    return width, height
 
 
 def _toml_bool(value: bool) -> str:

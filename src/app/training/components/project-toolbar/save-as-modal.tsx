@@ -9,7 +9,7 @@ import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { Modal } from '@/app/shared/modal';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
-import { selectForm } from '@/app/store/training-config';
+import { selectForm, selectLoadedProject } from '@/app/store/training-config';
 import {
   fetchProjectList,
   replaceExistingProject,
@@ -43,6 +43,7 @@ function formatRelative(iso: string): string {
 export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
   const dispatch = useAppDispatch();
   const form = useAppSelector(selectForm);
+  const loadedProject = useAppSelector(selectLoadedProject);
 
   const [projects, setProjects] = useState<TrainingProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,22 +60,40 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form reset and data fetch on modal open
     setIsLoading(true);
     fetchProjectList()
-      .then(setProjects)
+      .then((list) => {
+        setProjects(list);
+        // With a project loaded, the common intent is another version of it —
+        // preselect it. Guard against a project deleted since it was loaded.
+        setSelected(
+          loadedProject && list.some((p) => p.id === loadedProject.id)
+            ? loadedProject.id
+            : NEW_PROJECT,
+        );
+      })
       .finally(() => setIsLoading(false));
 
     // Reset form state on open
-    setSelected(NEW_PROJECT);
+    setSelected(loadedProject?.id ?? NEW_PROJECT);
     setTargetMode('newVersion');
     setName('');
     setLabel('');
     setConfirmReplace(false);
-  }, [isOpen]);
+  }, [isOpen, loadedProject]);
 
   const isNew = selected === NEW_PROJECT;
   const selectedProject = useMemo(
     () => (isNew ? null : (projects.find((p) => p.id === selected) ?? null)),
     [isNew, projects, selected],
   );
+
+  // The loaded project leads the list — it's the preselected destination, so it
+  // shouldn't start scrolled out of view.
+  const orderedProjects = useMemo(() => {
+    if (!loadedProject) return projects;
+    const current = projects.find((p) => p.id === loadedProject.id);
+    if (!current) return projects;
+    return [current, ...projects.filter((p) => p.id !== current.id)];
+  }, [loadedProject, projects]);
 
   const nameTaken = useMemo(
     () =>
@@ -131,8 +150,9 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
         </h2>
 
         <p className="w-full text-sm text-slate-500">
-          Save the current settings as a new project or a new version of an
-          existing project.
+          {loadedProject
+            ? `Save the current settings as a new version of “${loadedProject.name}”, another project, or a brand new one.`
+            : 'Save the current settings as a new project or a new version of an existing project.'}
         </p>
 
         <div className="w-full">
@@ -148,7 +168,7 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
               role="radiogroup"
               aria-label="Save destination"
             >
-              {projects.map((p) => (
+              {orderedProjects.map((p) => (
                 <RadioRow
                   key={p.id}
                   name="save-as-destination"
@@ -156,7 +176,13 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
                   checked={selected === p.id}
                   onChange={() => setSelected(p.id)}
                 >
-                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="truncate">{p.name}</span>
+                  {p.id === loadedProject?.id && (
+                    <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-xs text-slate-600 dark:bg-slate-600 dark:text-slate-300">
+                      Open
+                    </span>
+                  )}
+                  <span className="flex-1" />
                   <span className="text-xs text-slate-400 tabular-nums">
                     v{p.latestVersion} · {formatRelative(p.updatedAt)}
                   </span>
@@ -268,7 +294,7 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
                   className="mt-0.5"
                 />
                 <span>
-                  I understand all {selectedProject.versions.length} existing
+                  I understand the {selectedProject.versions.length} existing{' '}
                   {selectedProject.versions.length === 1
                     ? 'version'
                     : 'versions'}{' '}

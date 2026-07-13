@@ -1,11 +1,13 @@
 import { memo } from 'react';
 
 import type { TrainingDefaults } from '@/app/services/training/models';
+import { parseNativeResolution } from '@/app/services/training/native-resolution';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { Input } from '@/app/shared/input/input';
+import type { TrainingViewMode } from '@/app/store/preferences';
 
 import { FieldTitle } from '../field-title';
 import type {
@@ -19,6 +21,8 @@ type PerformanceSectionProps = {
   batchSize: number;
   resolution: number[];
   availableResolutions: number[];
+  nativeResolution: string;
+  viewMode: TrainingViewMode;
   provider: TrainingProvider;
   mixedPrecision: 'bf16' | 'fp16';
   transformerQuantization: 'none' | 'float8';
@@ -57,6 +61,8 @@ const PerformanceSectionComponent = ({
   batchSize,
   resolution,
   availableResolutions,
+  nativeResolution,
+  viewMode,
   provider,
   mixedPrecision,
   transformerQuantization,
@@ -81,6 +87,7 @@ const PerformanceSectionComponent = ({
 
   const hasVisibleFields =
     visibleFields.has('resolution') ||
+    visibleFields.has('nativeResolution') ||
     visibleFields.has('mixedPrecision') ||
     visibleFields.has('transformerQuantization') ||
     visibleFields.has('textEncoderQuantization') ||
@@ -95,6 +102,14 @@ const PerformanceSectionComponent = ({
     visibleFields.has('lowVram');
 
   if (!hasVisibleFields) return null;
+
+  // An exact WxH size takes precedence over the resolution list (see the
+  // sidecar's Kohya provider, which drops bucketing entirely when it's set).
+  // Validate here so a typo surfaces in the form rather than failing the job.
+  const isSimple = viewMode === 'simple';
+  const nativeActive = nativeResolution.trim().length > 0;
+  const { value: native, error: nativeError } =
+    parseNativeResolution(nativeResolution);
 
   // Multi-select on both backends. ai-toolkit trains each selected size;
   // Kohya trains at the largest and enables aspect bucketing across the
@@ -234,13 +249,18 @@ const PerformanceSectionComponent = ({
               defaults={defaults}
               onFieldChange={onFieldChange}
             />
-            <div className="flex flex-wrap gap-1.5">
+            <div
+              className={`flex flex-wrap gap-1.5 ${
+                nativeActive ? 'pointer-events-none opacity-40' : ''
+              }`}
+            >
               {availableResolutions.map((res) => {
                 const isActive = resolution.includes(res);
                 return (
                   <button
                     key={res}
                     type="button"
+                    disabled={nativeActive}
                     onClick={() => handleToggleResolution(res)}
                     className={`cursor-pointer rounded-sm border px-3 py-1 text-xs font-medium tabular-nums transition-colors ${
                       isActive
@@ -254,12 +274,68 @@ const PerformanceSectionComponent = ({
               })}
             </div>
             <p className="mt-1 text-sm text-slate-400">
-              {isKohya
-                ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
-                : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
+              {nativeActive
+                ? 'Overridden by the native resolution below'
+                : isKohya
+                  ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
+                  : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
             </p>
           </div>
         )}
+
+        {/* Native resolution (Kohya-only). Read-only text in Simple mode, and
+            hidden there entirely when unset — nothing worth saying about an
+            override that isn't in play. Interactive from Intermediate up. */}
+        {visibleFields.has('nativeResolution' satisfies keyof FormState) &&
+          !(isSimple && !nativeActive) && (
+            <div>
+              <FieldTitle
+                field="nativeResolution"
+                label="Native Resolution"
+                value={nativeResolution}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+              />
+              {isSimple ? (
+                <p className="text-sm font-medium tabular-nums">
+                  {native ? (
+                    <>
+                      {native.width}&times;{native.height}
+                      <span className="ml-2 font-normal text-slate-400">
+                        exact size, no bucketing
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-amber-500">
+                      {nativeResolution.trim()} &mdash; {nativeError}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                <>
+                  <Input
+                    type="text"
+                    value={nativeResolution}
+                    onChange={(e) =>
+                      onFieldChange('nativeResolution', e.target.value)
+                    }
+                    placeholder="e.g. 1280x768"
+                    className="w-32"
+                    aria-label="Native resolution"
+                    aria-invalid={nativeError !== null}
+                  />
+                  <p className="mt-1 text-sm text-slate-400">
+                    Trains at this exact size with no bucketing, resizing or
+                    cropping. Images must already be this size. Leave blank to
+                    use the resolutions above.
+                  </p>
+                  {nativeError && (
+                    <p className="mt-1 text-sm text-amber-500">{nativeError}</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
         {/* Gradient Accumulation + Bucket Resolution Steps */}
         {(visibleFields.has(

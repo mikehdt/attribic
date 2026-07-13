@@ -71,6 +71,7 @@ export function defaultsToFormState(
     cacheLatents: defaults.cacheLatents,
     bucketResoSteps: defaults.bucketResoSteps,
     bucketNoUpscale: defaults.bucketNoUpscale,
+    nativeResolution: defaults.nativeResolution,
     samplingEnabled: false,
     samplePrompts: [''],
     sampleMode: 'steps',

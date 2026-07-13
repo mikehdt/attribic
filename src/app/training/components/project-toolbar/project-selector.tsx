@@ -4,6 +4,7 @@ import {
   ChevronDownIcon,
   CircleIcon,
   FolderOpenIcon,
+  FolderPlusIcon,
   PencilIcon,
   SaveIcon,
   Trash2Icon,
@@ -27,6 +28,8 @@ import {
   setVersionLabel,
 } from '@/app/store/training-config/thunks';
 import type { LoadedProject } from '@/app/store/training-config/types';
+
+import { ModelBackendBadges } from './model-backend-badges';
 
 type ProjectSelectorProps = {
   onRequestLoad: () => void;
@@ -288,16 +291,23 @@ const PopupContent = ({
                         <button
                           type="button"
                           onClick={() => handleSwitchVersion(v.version)}
-                          className="flex flex-1 cursor-pointer items-baseline gap-2 text-left"
+                          className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 text-left"
                         >
-                          <span className="text-sm font-medium tabular-nums">
-                            v{v.version}
-                          </span>
-                          {v.label && (
-                            <span className="text-xs text-slate-500">
-                              {v.label}
+                          {/* With a label the badges drop to their own line;
+                              without one they sit beside the version number. */}
+                          <span className="flex items-center gap-2">
+                            <span className="text-sm font-medium tabular-nums">
+                              v{v.version}
                             </span>
-                          )}
+                            {v.label ? (
+                              <span className="truncate text-xs text-slate-500">
+                                {v.label}
+                              </span>
+                            ) : (
+                              <ModelBackendBadges version={v} />
+                            )}
+                          </span>
+                          {v.label && <ModelBackendBadges version={v} />}
                         </button>
                         <button
                           type="button"
@@ -353,7 +363,8 @@ const PopupContent = ({
               onClick={handleGoEphemeral}
               className="flex cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
             >
-              Close project (reset to defaults)
+              <FolderPlusIcon className="h-4 w-4" />
+              New Project
             </button>
           </>
         )}

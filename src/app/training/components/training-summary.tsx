@@ -11,9 +11,11 @@ import {
   OPTIMIZER_OPTIONS,
   SCHEDULER_OPTIONS,
 } from '@/app/services/training/models';
+import { parseNativeResolution } from '@/app/services/training/native-resolution';
 import type { TrainingProvider } from '@/app/services/training/types';
 
 import { KohyaBucketPreview } from './kohya-bucket-preview';
+import { NativeResolutionPreview } from './native-resolution-preview';
 import type { DatasetSource } from './training-config-form/use-training-config-form';
 
 type TrainingSummaryProps = {
@@ -38,6 +40,7 @@ type TrainingSummaryProps = {
   networkDim: number;
   networkAlpha: number;
   resolution: number[];
+  nativeResolution: string;
   saveEnabled: boolean;
   saveMode: 'epochs' | 'steps';
   saveEveryEpochs: number;
@@ -121,6 +124,7 @@ const TrainingSummaryComponent = ({
   networkDim,
   networkAlpha,
   resolution,
+  nativeResolution,
   saveEnabled,
   saveMode,
   saveEveryEpochs,
@@ -172,10 +176,17 @@ const TrainingSummaryComponent = ({
     );
   }, [scheduler]);
 
+  // An exact WxH size disables bucketing, so the bucket preview would show
+  // sizes the run will never use — swap it for the native-size panel instead.
+  const native = useMemo(
+    () => parseNativeResolution(nativeResolution).value,
+    [nativeResolution],
+  );
+
+  const isKohya = selectedProvider === 'kohya';
+  const showNative = isKohya && native !== null && datasets.length > 0;
   const showBuckets =
-    selectedProvider === 'kohya' &&
-    resolution.length > 0 &&
-    datasets.length > 0;
+    isKohya && !native && resolution.length > 0 && datasets.length > 0;
 
   return (
     <div className="flex flex-wrap gap-4 lg:flex-col">
@@ -186,7 +197,11 @@ const TrainingSummaryComponent = ({
         </span>
         <div className="space-y-1">
           <SummaryRow label="Model">{currentModel.name}</SummaryRow>
-          <SummaryRow label="Resolution">{resolution.join(', ')}</SummaryRow>
+          <SummaryRow label="Resolution">
+            {native
+              ? `${native.width}×${native.height} (native)`
+              : resolution.join(', ')}
+          </SummaryRow>
           {hasDataset && (
             <>
               <SummaryRow label="Images">
@@ -229,6 +244,20 @@ const TrainingSummaryComponent = ({
           </span>
           <KohyaBucketPreview
             baseResolution={resolution[0]}
+            datasets={datasets}
+          />
+        </div>
+      )}
+
+      {/* Exact WxH size (Kohya only) — replaces the bucket panel */}
+      {showNative && native && (
+        <div className="w-1/2 rounded-lg border border-slate-200 bg-(--surface)/30 p-3 md:w-1/3 lg:w-full dark:border-slate-700">
+          <span className="mb-2 block text-xs font-medium text-(--foreground)/70">
+            Native Resolution
+          </span>
+          <NativeResolutionPreview
+            width={native.width}
+            height={native.height}
             datasets={datasets}
           />
         </div>

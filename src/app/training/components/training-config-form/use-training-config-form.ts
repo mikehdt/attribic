@@ -36,6 +36,7 @@ import {
   updateFolderAugment as updateFolderAugmentAction,
 } from '@/app/store/training-config';
 import { defaultFolderAugmentation } from '@/app/store/training-config/defaults';
+import { refreshDatasetHistograms } from '@/app/store/training-config/thunks';
 import type {
   AppModelDefaults,
   DatasetFolder,
@@ -189,6 +190,10 @@ export function useTrainingConfigForm() {
     [dispatch],
   );
 
+  const rescanDatasets = useCallback(() => {
+    void dispatch(refreshDatasetHistograms());
+  }, [dispatch]);
+
   const setFolderRepeats = useCallback(
     (
       datasetIndex: number | null,
@@ -270,6 +275,7 @@ export function useTrainingConfigForm() {
     resetAll,
     addDataset,
     removeDataset,
+    rescanDatasets,
     setFolderRepeats,
     updateFolderAugment,
     addExtraFolder,

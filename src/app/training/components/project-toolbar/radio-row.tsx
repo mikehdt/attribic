@@ -5,6 +5,8 @@ type RadioRowProps = {
   value: string;
   checked: boolean;
   disabled?: boolean;
+  /** `start` nudges the radio down to sit level with a leading 32px thumbnail. */
+  align?: 'center' | 'start';
   onChange: () => void;
   children: ReactNode;
 };
@@ -18,12 +20,16 @@ export const RadioRow = ({
   value,
   checked,
   disabled,
+  align = 'center',
   onChange,
   children,
 }: RadioRowProps) => {
+  const isStart = align === 'start';
   return (
     <label
-      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+      className={`flex cursor-pointer gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+        isStart ? 'items-start' : 'items-center'
+      } ${
         disabled
           ? 'cursor-not-allowed opacity-40'
           : checked
@@ -33,6 +39,8 @@ export const RadioRow = ({
     >
       <div
         className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-all ${
+          isStart ? 'mt-2' : ''
+        } ${
           disabled
             ? 'border-slate-300 bg-slate-50'
             : checked
@@ -53,7 +61,11 @@ export const RadioRow = ({
         onChange={onChange}
         className="sr-only"
       />
-      <div className="flex flex-1 items-center gap-2">{children}</div>
+      <div
+        className={`flex min-w-0 flex-1 gap-2 ${isStart ? 'items-start' : 'items-center'}`}
+      >
+        {children}
+      </div>
     </label>
   );
 };

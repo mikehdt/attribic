@@ -105,8 +105,8 @@ export const DeleteProjectModal = ({
               <div className="flex flex-col">
                 <span>Whole project</span>
                 <span className="text-xs text-slate-500">
-                  Deletes all {versions.length}
-                  {versions.length === 1 ? 'version' : 'versions'}.
+                  Deletes all {versions.length}{' '}
+                  {versions.length === 1 ? 'version' : 'versions'}
                 </span>
               </div>
             </RadioRow>
