@@ -191,12 +191,9 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
           label="Loss"
           value={progress.loss !== null ? formatLoss(progress.loss) : '—'}
         />
-        <Stat
-          label="Learning rate"
-          value={
-            progress.learningRate !== null ? String(progress.learningRate) : '—'
-          }
-        />
+        {progress.learningRate !== null ? (
+          <Stat label="Learning rate" value={String(progress.learningRate)} />
+        ) : null}
         <Stat
           label="ETA"
           value={
