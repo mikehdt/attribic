@@ -188,6 +188,16 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
           }
         />
         <Stat
+          label="Checkpoints"
+          value={
+            expectedCheckpoints > 0
+              ? `${savedCount > 0 ? savedCount : '—'} / ${expectedCheckpoints}`
+              : savedCount > 0
+                ? String(savedCount)
+                : '—'
+          }
+        />
+        <Stat
           label="Loss"
           value={progress.loss !== null ? formatLoss(progress.loss) : '—'}
         />
@@ -202,7 +212,6 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
               : '—'
           }
         />
-        <Stat label="Speed" value={progress.speed ?? '—'} />
         <Stat
           label="Train time"
           value={
@@ -211,19 +220,10 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
               : '—'
           }
         />
+        <Stat label="Speed" value={progress.speed ?? '—'} />
         <Stat
           label="Phase"
           value={progress.phase ?? (isRunning ? 'Training' : '—')}
-        />
-        <Stat
-          label="Checkpoints"
-          value={
-            expectedCheckpoints > 0
-              ? `${savedCount > 0 ? savedCount : '—'} / ${expectedCheckpoints}`
-              : savedCount > 0
-                ? String(savedCount)
-                : '—'
-          }
         />
       </div>
 
