@@ -182,6 +182,16 @@ const LossChartComponent = ({
         </>
       )}
 
+      {/* Y axis: closes the left edge of the plot at step 0. */}
+      <line
+        x1={padding.left}
+        x2={padding.left}
+        y1={lineTop}
+        y2={lineBottom}
+        strokeWidth={1}
+        className="stroke-slate-200 dark:stroke-slate-700"
+      />
+
       {isDetail && (
         <>
           {/* Y gridlines + ticks (domain min / mid / max) */}
