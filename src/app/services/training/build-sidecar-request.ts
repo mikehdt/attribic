@@ -162,6 +162,11 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     saveEnabled && saveMode === 'steps' ? saveEverySteps : 0;
 
   const hyperparameters: Record<string, unknown> = {
+    // `steps` is authoritative in steps-mode; in epochs-mode it's a converted
+    // estimate and `epochs` is authoritative. Providers that can count epochs
+    // natively (Kohya) read duration_mode and drive off `epochs`; step-only
+    // backends (ai-toolkit) use the converted `steps` regardless.
+    duration_mode: (config.durationMode as string) ?? 'steps',
     steps: config.steps,
     epochs: config.epochs,
     lr: config.learningRate,

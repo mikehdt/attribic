@@ -81,7 +81,11 @@ def _parse_sec_per_it(speed: Optional[str]) -> Optional[float]:
     return 1.0 / value if unit == "it/s" else value
 
 
-def predict_checkpoint_steps(hyperparameters: dict) -> list[int]:
+def predict_checkpoint_steps(
+    hyperparameters: dict,
+    total_steps: int | None = None,
+    total_epochs: int | None = None,
+) -> list[int]:
     """Predict the step positions at which checkpoints will be written.
 
     Mirrors the client-side `deriveCheckpointSteps` (see
@@ -91,10 +95,19 @@ def predict_checkpoint_steps(hyperparameters: dict) -> list[int]:
     step-based saving, `save_every_n_epochs` for epoch-based (0/0 = disabled) —
     with steps taking precedence, matching what the providers pass to their
     backends.
+
+    Epoch-based saves land on the trainer's own epoch rhythm: whole epochs of
+    `steps_per_epoch` counted from step 0, with the last epoch cut short by a
+    max-steps cap. `total_steps` / `total_epochs` override the configured
+    values so a running job can re-derive that rhythm from what the trainer
+    actually reports — the configured pair can imply a different (wrong)
+    steps-per-epoch when a step cap truncates the run.
     """
     hp = hyperparameters or {}
-    total_steps = int(hp.get("steps", 0) or 0)
-    epochs = int(hp.get("epochs", 0) or 0)
+    if total_steps is None:
+        total_steps = int(hp.get("steps", 0) or 0)
+    if total_epochs is None:
+        total_epochs = int(hp.get("epochs", 0) or 0)
     if total_steps <= 0:
         return []
 
@@ -103,13 +116,13 @@ def predict_checkpoint_steps(hyperparameters: dict) -> list[int]:
         return list(range(save_every_steps, total_steps + 1, save_every_steps))
 
     save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
-    if save_every_epochs <= 0 or epochs <= 0:
+    if save_every_epochs <= 0 or total_epochs <= 0:
         return []
 
-    steps_per_epoch = max(1, math.ceil(total_steps / epochs))
+    steps_per_epoch = max(1, math.ceil(total_steps / total_epochs))
     out: list[int] = []
     epoch = save_every_epochs
-    while epoch <= epochs:
+    while epoch <= total_epochs:
         out.append(min(epoch * steps_per_epoch, total_steps))
         epoch += save_every_epochs
     return out
@@ -442,6 +455,23 @@ class JobManager:
         # save and the final save at the same step).
         for step in progress.saved_checkpoints:
             acc["saved"].add(int(step))
+
+        # Re-derive the predicted save positions from the trainer's own totals
+        # once it reports them. The configured steps/epochs pair is only an
+        # estimate of the real rhythm: a max-steps cap cuts the final epoch
+        # short, so the trainer runs fewer epochs than configured (e.g. 1600
+        # steps at 21 steps/epoch is 77 epochs, not the 80 asked for) and the
+        # configured pair implies the wrong steps-per-epoch. Predicting from
+        # what the trainer reports keeps upcoming checkpoints on the same beat
+        # as the confirmed ones.
+        if progress.total_steps > 0 and progress.total_epochs > 0:
+            refined = predict_checkpoint_steps(
+                (job.config or {}).get("hyperparameters", {}),
+                total_steps=progress.total_steps,
+                total_epochs=progress.total_epochs,
+            )
+            if refined:
+                acc["checkpoint_steps"] = refined
 
         # Append a loss point only when actively training, the loss is
         # numeric, and the step advanced — so between-step activity events

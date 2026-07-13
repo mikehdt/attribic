@@ -146,6 +146,12 @@ const TrainingConfigFormComponent = ({
       provider: state.selectedProvider,
       outputName: state.outputName,
       datasets: state.datasets,
+      // Which of steps/epochs the user actually asked for. Our epochs→steps
+      // conversion is only an estimate (it can't know how the trainer's
+      // aspect-ratio buckets round their partial batches), so a backend that
+      // can count epochs itself should be told to do that rather than trust
+      // the converted step total.
+      durationMode: state.durationMode,
       steps: effectiveSteps,
       epochs: effectiveEpochs,
       learningRate: state.learningRate,

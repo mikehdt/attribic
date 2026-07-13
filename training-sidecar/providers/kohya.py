@@ -40,6 +40,48 @@ RATE_PATTERN = re.compile(r"([\d.]+)\s*(it/s|s/it)")
 # sd-scripts prints "epoch 1/10" between epochs.
 EPOCH_PATTERN = re.compile(r"epoch\s+(\d+)\s*/\s*(\d+)")
 
+# Leading "2026-07-13 21:20:00 " on sd-scripts' rich-formatted log lines. Only
+# stripped for repeat comparison — the line itself keeps its timestamp.
+LOG_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+")
+
+# Longest run of lines treated as one repeatable block by `_append_log_line`.
+MAX_REPEAT_BLOCK = 4
+
+
+def _log_key(line: str) -> str:
+    """Comparison key for repeat detection: the line minus timestamp/padding."""
+    return LOG_TIMESTAMP_PATTERN.sub("", line).strip()
+
+
+def _append_log_line(log_lines: list[str], line: str) -> None:
+    """Append `line`, collapsing an immediately-repeated run of lines.
+
+    sd-scripts emits some output once per DataLoader worker, and it isn't
+    always a single line — an epoch rollover arrives as a two-line block:
+
+        ... INFO  epoch is incremented.   dataset.py:464
+        current_epoch: 76, epoch: 77
+        ... INFO  epoch is incremented.   dataset.py:464
+        current_epoch: 76, epoch: 77
+
+    The lines alternate, so a "same as the previous line" check never fires.
+    Instead, once a line lands, drop it (with its preceding k-1 lines) if the
+    trailing k lines just repeat the k before them. Comparison ignores the
+    timestamp so a repeat straddling a second boundary still collapses.
+    """
+    if log_lines and _log_key(log_lines[-1]) == _log_key(line):
+        return
+
+    log_lines.append(line)
+
+    for k in range(2, MAX_REPEAT_BLOCK + 1):
+        if len(log_lines) < 2 * k:
+            break
+        tail = [_log_key(entry) for entry in log_lines[-k:]]
+        if tail == [_log_key(entry) for entry in log_lines[-2 * k : -k]]:
+            del log_lines[-k:]
+            return
+
 
 # --- Model definitions ---
 #
@@ -374,6 +416,23 @@ class KohyaProvider(TrainingProvider):
             str(hp.get("optimizer", "adamw8bit")).lower(), "AdamW8bit"
         )
 
+        # Duration: let sd-scripts count epochs itself when that's the unit the
+        # user chose. The client can only *estimate* the step equivalent of an
+        # epoch — it assumes ceil(images / batch), but sd-scripts batches within
+        # aspect-ratio buckets, so each bucket rounds its own partial batch up
+        # and the real steps-per-epoch is higher. Passing that short estimate as
+        # --max_train_steps silently truncates the run mid-epoch (80 requested
+        # epochs finishing as 77). --max_train_epochs makes sd-scripts derive
+        # the step total from its own dataloader, which is the only place the
+        # true bucket layout is known.
+        epochs = int(hp.get("epochs", 0) or 0)
+        if str(hp.get("duration_mode", "steps")) == "epochs" and epochs > 0:
+            duration_arg = f"--max_train_epochs={epochs}"
+        else:
+            duration_arg = (
+                f"--max_train_steps={int(hp.get('steps', defaults.get('steps', 2000)))}"
+            )
+
         args: list[str] = [
             *component_args,
             f"--dataset_config={dataset_config}",
@@ -386,7 +445,7 @@ class KohyaProvider(TrainingProvider):
             f"--learning_rate={_num(hp.get('lr', defaults.get('lr', 1e-4)))}",
             f"--optimizer_type={optimizer}",
             f"--lr_scheduler={hp.get('scheduler', 'constant')}",
-            f"--max_train_steps={int(hp.get('steps', defaults.get('steps', 2000)))}",
+            duration_arg,
             f"--train_batch_size={int(hp.get('batch_size', 1))}",
             f"--gradient_accumulation_steps={int(hp.get('gradient_accumulation_steps', 1))}",
             f"--mixed_precision={hp.get('mixed_precision', defaults.get('dtype', 'bf16'))}",
@@ -773,11 +832,9 @@ class KohyaProvider(TrainingProvider):
                     phase=None,
                 )
             else:
-                # Collapse consecutive identical lines — sd-scripts repeats
-                # some (e.g. "epoch is incremented", one per DataLoader worker)
-                # which would otherwise flood the log panel.
-                if not log_lines or log_lines[-1] != line:
-                    log_lines.append(line)
+                # Collapse repeats — sd-scripts prints some output once per
+                # DataLoader worker, which would otherwise flood the log panel.
+                _append_log_line(log_lines, line)
 
                 lower = line.lower()
                 if "saved sample" in lower or (
