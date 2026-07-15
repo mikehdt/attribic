@@ -82,6 +82,26 @@ export const Tag = ({
     [onDelete, tagName, isNonInteractive],
   );
 
+  const handleEditKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === ' ') e.preventDefault();
+        handleEdit(e);
+      }
+    },
+    [handleEdit],
+  );
+
+  const handleDeleteKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === ' ') e.preventDefault();
+        handleDelete(e);
+      }
+    },
+    [handleDelete],
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (isNonInteractive) return;
@@ -153,7 +173,7 @@ export const Tag = ({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       role="button"
-      tabIndex={isNonInteractive ? -1 : isDoubleClickMode ? 0 : undefined}
+      tabIndex={isNonInteractive ? -1 : 0}
       title={isDoubleClickMode && canEdit ? 'Double-click to edit' : undefined}
     >
       <span
@@ -174,6 +194,8 @@ export const Tag = ({
               : 'text-slate-500 hover:bg-blue-500 hover:text-white dark:text-slate-400'
           }`}
           onClick={handleEdit}
+          onKeyDown={handleEditKeyDown}
+          role="button"
           title={
             isMarkedForDeletion
               ? "Can't edit a tag marked for deletion"
@@ -193,6 +215,8 @@ export const Tag = ({
             : `hover:bg-pink-500 hover:text-white ${isMarkedForDeletion ? 'text-pink-500 dark:text-pink-400' : ''}`
         }`}
         onClick={handleDelete}
+        onKeyDown={handleDeleteKeyDown}
+        role="button"
         title={
           isMarkedForDeletion
             ? 'Unmark tag for deletion'

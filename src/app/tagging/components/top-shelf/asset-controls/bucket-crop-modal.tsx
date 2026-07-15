@@ -310,9 +310,17 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
   }, []);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-lg"
+      labelledById="bucket-crop-modal-title"
+    >
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-200">
+        <h2
+          id="bucket-crop-modal-title"
+          className="text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Bucket Crop Visualisation
         </h2>
 

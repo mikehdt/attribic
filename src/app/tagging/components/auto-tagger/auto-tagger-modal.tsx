@@ -59,9 +59,17 @@ export function AutoTaggerModal({
   const title = isVlm ? 'Caption Images' : 'Auto-Tag Images';
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      className="max-w-xl"
+      labelledById="auto-tagger-modal-title"
+    >
       <div className="flex flex-col gap-4">
-        <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="auto-tagger-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           {title}
         </h2>
 

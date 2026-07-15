@@ -31,6 +31,8 @@ const GlobalMenuComponent = () => {
         onClick={toggle}
         title="Menu"
         aria-label="Menu"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
         className={`flex cursor-pointer items-center rounded-sm px-1 py-0.5 transition-colors ${
           isOpen ? 'bg-(--surface)' : 'hover:bg-(--surface)/50'
         }`}

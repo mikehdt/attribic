@@ -143,9 +143,13 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
       onClose={onClose}
       className="max-w-lg min-w-[28rem]"
       preventClose={isSaving}
+      labelledById="save-as-modal-title"
     >
       <div className="flex flex-wrap gap-4">
-        <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="save-as-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Save As
         </h2>
 

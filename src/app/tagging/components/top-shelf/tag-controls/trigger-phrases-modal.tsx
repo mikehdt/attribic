@@ -102,8 +102,16 @@ export const TriggerPhrasesModal = ({
     phrases.some((p, i) => p !== triggerPhrases[i]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
-      <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-md"
+      labelledById="trigger-phrases-modal-title"
+    >
+      <h2
+        id="trigger-phrases-modal-title"
+        className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+      >
         Trigger Phrases
       </h2>
       <p className="my-3 text-xs text-slate-500 dark:text-slate-400">
@@ -120,6 +128,7 @@ export const TriggerPhrasesModal = ({
               onChange={(e) => handleEditPhrase(index, e.target.value)}
               onKeyDown={(e) => handleEditKeyDown(e, index)}
               className={inputStyles}
+              aria-label={`Trigger phrase ${index + 1}`}
             />
             <Button
               onClick={() => handleRemovePhrase(index)}
@@ -149,6 +158,7 @@ export const TriggerPhrasesModal = ({
             placeholder="Add trigger phrase..."
             className={inputStyles}
             autoFocus
+            aria-label="Add trigger phrase"
           />
           <Button
             onClick={handleAddPhrase}
@@ -161,17 +171,25 @@ export const TriggerPhrasesModal = ({
         </div>
       </div>
 
-      <div className="mt-4 flex justify-end gap-2">
-        <Button size="md" width="lg" onClick={onClose}>
+      <div className="flex w-full justify-end gap-2 pt-2">
+        <Button
+          type="button"
+          size="md"
+          width="lg"
+          color="slate"
+          onClick={onClose}
+        >
           Cancel
         </Button>
 
         <Button
+          type="button"
           size="md"
           width="lg"
           color="teal"
           onClick={handleSave}
           disabled={!hasChanges}
+          neutralDisabled
         >
           Save
         </Button>

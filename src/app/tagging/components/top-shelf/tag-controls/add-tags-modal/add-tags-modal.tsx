@@ -68,10 +68,18 @@ export const AddTagsModal = ({
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg min-w-[24rem]">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-lg min-w-[24rem]"
+      labelledById="add-tags-modal-title"
+    >
       <div className="flex flex-col gap-4">
         {/* Title */}
-        <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="add-tags-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Add Tags
         </h2>
 
@@ -93,11 +101,11 @@ export const AddTagsModal = ({
         {/* Summary of how many assets will be affected */}
         {!hasInvalidConstraints &&
           (hasNoAffectedAssets ? (
-            <p className="text-xs text-rose-600">
+            <p className="text-sm text-rose-600">
               No assets match the current selection and filter combination.
             </p>
           ) : (
-            <p className="text-xs text-slate-500">{getSummaryMessage()}</p>
+            <p className="text-sm text-slate-500">{getSummaryMessage()}</p>
           ))}
 
         {/* Tag input form */}
@@ -112,7 +120,7 @@ export const AddTagsModal = ({
           />
 
           {tags.length === 0 ? (
-            <p className="text-xs text-slate-500">
+            <p className="text-sm text-slate-500">
               Tags to add to selected assets. Press Enter, Tab, or use commas to
               add new tags.
             </p>
@@ -132,7 +140,7 @@ export const AddTagsModal = ({
               }}
             />
           ) : (
-            <p className="text-xs text-slate-500">
+            <p className="text-sm text-slate-500">
               Tags will be added to all selected assets that don&apos;t already
               have them.
             </p>

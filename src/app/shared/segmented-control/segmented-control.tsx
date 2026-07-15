@@ -91,6 +91,7 @@ export function SegmentedControl<T extends string>({
             key={option.value}
             type="button"
             disabled={disabled}
+            aria-pressed={isSelected}
             onClick={() => onChange(option.value)}
             title={option.label}
             className={`flex flex-auto cursor-pointer items-center justify-center gap-1 transition-colors ${sizes.button} ${roundedClasses} ${

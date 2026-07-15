@@ -45,35 +45,38 @@ export const CategoryList = ({
               index === 0 || categoriesWithPageInfo[index - 1].page !== page;
 
             return (
-              <li
-                key={`${category}-${page}`} // Use both category and page for unique keys
-                onClick={() => onCategoryClick(page, anchorId)}
-                className={`flex cursor-pointer items-center justify-between px-3 py-2 transition-colors hover:bg-blue-50 dark:hover:bg-slate-700 ${
-                  isCurrentPage
-                    ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/50 dark:text-sky-300'
-                    : 'text-slate-700 dark:text-slate-300'
-                }`}
-              >
-                <span className="truncate">
-                  {category}
+              <li key={`${category}-${page}`}>
+                {/* Use both category and page for unique keys */}
+                <button
+                  type="button"
+                  onClick={() => onCategoryClick(page, anchorId)}
+                  className={`flex w-full cursor-pointer items-center justify-between px-3 py-2 text-left transition-colors hover:bg-blue-50 dark:hover:bg-slate-700 ${
+                    isCurrentPage
+                      ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-900/50 dark:text-sky-300'
+                      : 'text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <span className="truncate">
+                    {category}
 
-                  {!isFirstOccurrence && (
-                    <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
-                      (continued)
+                    {!isFirstOccurrence && (
+                      <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+                        (continued)
+                      </span>
+                    )}
+                  </span>
+                  {showPageNumber && (
+                    <span
+                      className={`text-xs ${
+                        isCurrentPage
+                          ? 'text-sky-600 dark:text-sky-400'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      Page {page}
                     </span>
                   )}
-                </span>
-                {showPageNumber && (
-                  <span
-                    className={`text-xs ${
-                      isCurrentPage
-                        ? 'text-sky-600 dark:text-sky-400'
-                        : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                  >
-                    Page {page}
-                  </span>
-                )}
+                </button>
               </li>
             );
           },

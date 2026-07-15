@@ -75,9 +75,13 @@ export const DeleteProjectModal = ({
       onClose={onClose}
       className="max-w-md min-w-[24rem]"
       preventClose={isDeleting}
+      labelledById="delete-project-modal-title"
     >
       <div className="flex flex-wrap gap-4">
-        <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="delete-project-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Delete
         </h2>
 

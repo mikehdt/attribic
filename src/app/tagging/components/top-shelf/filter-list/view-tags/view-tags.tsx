@@ -34,6 +34,7 @@ export const TagsView = () => {
           onKeyDown={handleKeyDown}
           autoFocus
           placeholder="Search tags..."
+          aria-label="Search tags"
           className="w-full rounded-full border border-slate-300 bg-white py-1 ps-4 pe-8 inset-shadow-sm inset-shadow-slate-200 transition-all dark:border-slate-600 dark:bg-slate-700 dark:inset-shadow-slate-800"
         />
         <button
@@ -45,6 +46,7 @@ export const TagsView = () => {
           onClick={
             searchTerm.trim() !== '' ? () => setSearchTerm('') : undefined
           }
+          aria-label="Clear search"
         >
           <XIcon className="h-4 w-4" />
         </button>

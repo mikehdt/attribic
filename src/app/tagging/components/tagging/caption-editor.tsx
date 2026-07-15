@@ -131,7 +131,7 @@ const CaptionEditorComponent = ({
         {/* Backdrop: renders highlighted text, always visible */}
         <div
           data-caption-backdrop
-          className={`rounded-md border bg-white px-2 py-1 transition-colors hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-800 ${textStyles} ${
+          className={`rounded-md border bg-white px-2 py-1 transition-colors hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 ${textStyles} ${
             isFocused
               ? 'border-sky-300 ring-1 ring-sky-300 dark:border-sky-600 dark:ring-sky-600'
               : isActive

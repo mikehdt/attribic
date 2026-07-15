@@ -24,7 +24,12 @@ export function TrainingDetailModal({
   const isOpen = jobId !== null && job !== null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="w-full max-w-3xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="w-full max-w-3xl"
+      ariaLabel="Training details"
+    >
       <TrainingDetailContent job={job} />
     </Modal>
   );

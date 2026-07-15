@@ -19,6 +19,10 @@ type ModalProps = {
   animationDuration?: never;
   /** Prevent closing via backdrop click, ESC key, or X button */
   preventClose?: boolean;
+  /** ID of the element that labels the dialog (rendered as aria-labelledby) */
+  labelledById?: string;
+  /** Accessible name for dialogs without a visible heading (rendered as aria-label) */
+  ariaLabel?: string;
 };
 
 // Elements that can receive keyboard focus, for the focus trap.
@@ -45,6 +49,8 @@ export const Modal = ({
   children,
   className = '',
   preventClose = false,
+  labelledById,
+  ariaLabel,
 }: ModalProps) => {
   // State to control the visibility of the modal for animation purposes
   const [isVisible, setIsVisible] = useState(false);
@@ -214,6 +220,8 @@ export const Modal = ({
           }`}
           aria-modal="true"
           role="dialog"
+          aria-labelledby={labelledById}
+          aria-label={ariaLabel}
         >
           {/* Backdrop overlay - clickable to close (unless preventClose) */}
           <div
@@ -238,7 +246,7 @@ export const Modal = ({
             {/* Close button (hidden when preventClose is true) */}
             {!preventClose && (
               <button
-                className="absolute top-3 right-3 z-1 cursor-pointer rounded-full border border-slate-300/0 bg-white p-1 text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 focus:outline-none dark:border-slate-600/0 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                className="absolute top-3 right-3 z-1 cursor-pointer rounded-full border border-slate-300/0 bg-white p-1 text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:outline-none dark:border-slate-600/0 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                 onClick={onClose}
                 aria-label="Close modal"
               >

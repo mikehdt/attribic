@@ -77,10 +77,18 @@ export function ModelDefaultsModal({
   }, [draft, onClose, onSaved]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-xl">
-      <div className="flex flex-col gap-5">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-xl"
+      labelledById="model-defaults-modal-title"
+    >
+      <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-300">
+          <h2
+            id="model-defaults-modal-title"
+            className="text-2xl font-semibold text-slate-700 dark:text-slate-200"
+          >
             Default Model Paths
           </h2>
           <p className="mt-1 text-sm text-slate-500">
@@ -140,7 +148,7 @@ export function ModelDefaultsModal({
           ))}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-(--border-subtle) pt-3">
+        <div className="flex w-full justify-end gap-2 pt-2">
           <Button onClick={onClose} color="slate" size="md" width="lg">
             Cancel
           </Button>
@@ -150,6 +158,7 @@ export function ModelDefaultsModal({
             size="md"
             width="lg"
             disabled={saving}
+            neutralDisabled
           >
             {saving ? 'Saving…' : 'Save Defaults'}
           </Button>

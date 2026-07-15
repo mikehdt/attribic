@@ -145,7 +145,13 @@ export function TrainingHistoryModal() {
   }, [dispatch]);
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} className="w-full max-w-3xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      className="w-full max-w-3xl"
+      labelledById={selected ? undefined : 'training-history-modal-title'}
+      ariaLabel={selected ? 'Training history' : undefined}
+    >
       {selected ? (
         <div className="flex flex-col gap-3">
           <button
@@ -161,8 +167,11 @@ export function TrainingHistoryModal() {
       ) : (
         <div className="flex flex-col">
           <div className="mb-2 flex items-center gap-2">
-            <HistoryIcon className="h-5 w-5 text-(--unselected-text)" />
-            <h2 className="text-base font-medium text-(--foreground)">
+            <HistoryIcon className="h-6 w-6 text-(--unselected-text)" />
+            <h2
+              id="training-history-modal-title"
+              className="text-2xl font-semibold text-slate-700 dark:text-slate-200"
+            >
               Run history
             </h2>
           </div>

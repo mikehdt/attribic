@@ -58,6 +58,7 @@ html.light {
   --surface-alt: var(--color-slate-50);
   --surface-elevated: var(--color-slate-100);
   --surface-muted: var(--color-slate-300);
+  --surface-hover: var(--color-slate-200);
 
   /* Translucent surfaces for overlays/shelves */
   --surface-glass: rgb(255 255 255 / 0.8);
@@ -91,6 +92,7 @@ html.dark {
   --surface-alt: var(--color-slate-900);
   --surface-elevated: var(--color-slate-700);
   --surface-muted: var(--color-slate-600);
+  --surface-hover: var(--color-slate-700);
 
   /* Translucent surfaces for overlays/shelves - dark mode */
   --surface-glass: rgb(30 41 59 / 0.85);

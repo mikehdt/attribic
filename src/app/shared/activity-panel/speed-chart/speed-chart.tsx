@@ -33,10 +33,7 @@ const SpeedChartComponent = ({
   height,
   className = '',
 }: SpeedChartProps) => {
-  const visible = useMemo(
-    () => trimSettleSteps(speedHistory),
-    [speedHistory],
-  );
+  const visible = useMemo(() => trimSettleSteps(speedHistory), [speedHistory]);
 
   const scale = useMemo(() => {
     const innerWidth = Math.max(1, width - PADDING.left - PADDING.right);

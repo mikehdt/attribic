@@ -183,9 +183,17 @@ export const LoadProjectModal = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-3xl min-w-160">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-3xl min-w-[40rem]"
+      labelledById="load-project-modal-title"
+    >
       <div className="flex flex-wrap gap-4">
-        <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="load-project-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Load project
         </h2>
 

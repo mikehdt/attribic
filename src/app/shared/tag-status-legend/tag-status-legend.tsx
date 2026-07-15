@@ -36,21 +36,21 @@ export const TagStatusLegend = ({
     <div className={`flex flex-wrap gap-2 text-xs text-slate-500 ${className}`}>
       {all?.show && (
         <p className="flex w-full">
-          <span className="mt-0.5 mr-2 h-3 min-w-3 rounded-full border border-rose-400 bg-rose-100"></span>
+          <span className="mt-0.5 mr-2 h-3 min-w-3 rounded-full border border-rose-300 bg-rose-100 dark:border-rose-600 dark:bg-rose-800"></span>
           {all.message}
         </p>
       )}
 
       {some?.show && (
         <p className="flex w-full">
-          <span className="mt-0.5 mr-2 h-3 min-w-3 rounded-full border border-amber-400 bg-amber-50"></span>
+          <span className="mt-0.5 mr-2 h-3 min-w-3 rounded-full border border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-800"></span>
           {some.message}
         </p>
       )}
 
       {duplicate?.show && (
         <p className="flex w-full">
-          <span className="mt-0.5 mr-2 h-3 min-w-3 rounded-full border border-purple-400 bg-purple-100"></span>
+          <span className="mt-0.5 mr-2 h-3 min-w-3 rounded-full border border-purple-300 bg-purple-100 dark:border-purple-600 dark:bg-purple-800"></span>
           {duplicate.message}
         </p>
       )}

@@ -49,6 +49,8 @@ const FilterListButtonComponent = () => {
         width="lg"
         isPressed={isOpen}
         onClick={handleToggle}
+        ariaHasPopup
+        ariaExpanded={isOpen}
         title="Show filters"
       >
         <ListTodoIcon />

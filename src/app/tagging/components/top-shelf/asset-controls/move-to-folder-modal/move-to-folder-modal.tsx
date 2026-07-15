@@ -69,10 +69,14 @@ export const MoveToFolderModal = ({
       onClose={onClose}
       className="max-w-md min-w-[24rem]"
       preventClose={isMoving}
+      labelledById="move-to-folder-modal-title"
     >
       <div className="flex flex-wrap gap-4">
         {/* Title */}
-        <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="move-to-folder-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Move Assets to Folder
         </h2>
 
@@ -93,7 +97,7 @@ export const MoveToFolderModal = ({
 
         {/* Summary */}
         {!hasInvalidConstraints && (
-          <p className="w-full text-xs text-slate-500">{getSummaryMessage()}</p>
+          <p className="w-full text-sm text-slate-500">{getSummaryMessage()}</p>
         )}
 
         {/* Destination picker */}

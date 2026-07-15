@@ -44,10 +44,18 @@ export const EditTagsModal = ({
   } = useEditTagsModal(isOpen, onClose, filterTags);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg min-w-[24rem]">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-lg min-w-[24rem]"
+      labelledById="edit-tags-modal-title"
+    >
       <div className="flex flex-col gap-4">
         {/* Title */}
-        <h2 className="text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="edit-tags-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Edit Tags
         </h2>
 
@@ -155,6 +163,7 @@ export const EditTagsModal = ({
                       className={`w-full rounded-full border px-4 py-1 inset-shadow-sm focus:outline ${inputStyles[status] || inputStyles.none}`}
                       placeholder="New tag name"
                       title={tooltipText}
+                      aria-label={`Rename tag ${tag}`}
                     />
                   </div>
                 </div>

@@ -174,6 +174,29 @@ const InputTagComponent = ({
     [onCancel],
   );
 
+  const handleSubmitKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === ' ') e.preventDefault();
+        e.stopPropagation();
+        if (value.trim() && !isDuplicate) {
+          onSubmit(e.shiftKey);
+        }
+      }
+    },
+    [value, isDuplicate, onSubmit],
+  );
+
+  const handleCancelKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === ' ') e.preventDefault();
+        handleCancelClick(e);
+      }
+    },
+    [handleCancelClick],
+  );
+
   const handleFocus = useCallback(() => setIsFocused(true), []);
   const handleBlur = useCallback(() => {
     if (mode === 'add') {
@@ -218,7 +241,7 @@ const InputTagComponent = ({
         placeholder={placeholder}
         disabled={disabled}
         tabIndex={disabled ? -1 : 0}
-        className={`${inputWidth} rounded-full border py-1 ps-4 pe-14 transition-all ${borderColor} ${disabled ? 'pointer-events-none opacity-50' : 'bg-white dark:bg-slate-800'} ${isFocused ? `inset-shadow-sm ${shadowColor} ring-2 ring-blue-500` : ''}`}
+        className={`${inputWidth} rounded-2xl border py-1 ps-4 pe-14 transition-all ${borderColor} ${disabled ? 'pointer-events-none opacity-50' : 'bg-white dark:bg-slate-800'} ${isFocused ? `inset-shadow-sm ${shadowColor} ring-2 ring-sky-500` : ''}`}
       />
 
       {/* Submit button */}
@@ -229,6 +252,8 @@ const InputTagComponent = ({
             : 'pointer-events-none text-slate-300 dark:text-slate-600'
         }`}
         onClick={canSubmit ? handleSubmitClick : undefined}
+        onKeyDown={handleSubmitKeyDown}
+        role="button"
         tabIndex={canSubmit ? 0 : -1}
         title={mode === 'add' ? 'Add tag' : 'Save tag'}
       >
@@ -247,6 +272,8 @@ const InputTagComponent = ({
             : 'pointer-events-none text-slate-300 dark:text-slate-600'
         }`}
         onClick={value.trim() !== '' ? handleCancelClick : undefined}
+        onKeyDown={handleCancelKeyDown}
+        role="button"
         tabIndex={value.trim() !== '' && !disabled ? 0 : -1}
         title="Cancel"
       >

@@ -49,13 +49,13 @@ export const FileView = () => {
           onKeyDown={handleCombinedKeyDown}
           autoFocus
           placeholder="Search file and folder names..."
-          className="w-full rounded border border-slate-300 bg-white py-1.5 ps-2 pe-8 text-sm placeholder-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:placeholder-slate-400 dark:focus:border-blue-400"
+          className="w-full rounded border border-slate-300 bg-white py-1.5 ps-2 pe-8 text-sm placeholder-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:placeholder-slate-400 dark:focus:border-sky-400"
         />
         <button
           type="button"
           onClick={handleAddPattern}
           disabled={!patternInput.trim()}
-          className={`absolute top-3.5 right-4 h-5 w-5 rounded-full p-0.5 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:outline-none ${
+          className={`absolute top-3.5 right-4 h-5 w-5 rounded-full p-0.5 transition-colors focus:ring-2 focus:ring-sky-500 focus:ring-offset-1 focus:outline-none ${
             patternInput.trim()
               ? 'cursor-pointer text-slate-600 hover:bg-blue-500 hover:text-white dark:text-slate-300 dark:hover:bg-blue-400'
               : 'pointer-events-none text-slate-300 dark:text-slate-600'

@@ -47,7 +47,7 @@ export function AutoTaggerProgress({
           </p>
           <div className="flex flex-col gap-2">
             <ProgressBar color="indigo" indeterminate />
-            <p className="truncate text-xs text-slate-500">
+            <p className="truncate text-sm text-slate-500">
               Queued behind other work — position {queued.position} in line. It
               will start automatically.
             </p>
@@ -60,7 +60,7 @@ export function AutoTaggerProgress({
           </p>
           <div className="flex flex-col gap-2">
             <ProgressBar color="indigo" indeterminate />
-            <p className="truncate text-xs text-slate-500">Preparing model</p>
+            <p className="truncate text-sm text-slate-500">Preparing model</p>
           </div>
         </>
       ) : isLoading ? (
@@ -75,7 +75,7 @@ export function AutoTaggerProgress({
               color="indigo"
               indeterminate={loading.total === 0}
             />
-            <p className="truncate text-xs text-slate-500">
+            <p className="truncate text-sm text-slate-500">
               {loading.message}
               {loading.total > 0 && ` (${loading.current}/${loading.total})`}
             </p>
@@ -93,7 +93,7 @@ export function AutoTaggerProgress({
               color="indigo"
               indeterminate={!progress}
             />
-            <p className="truncate text-xs text-slate-500">
+            <p className="truncate text-sm text-slate-500">
               {progress?.currentFileId || 'Processing...'}
             </p>
           </div>

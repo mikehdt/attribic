@@ -11,9 +11,17 @@ export function ModelManagerModal() {
   const { isOpen, activeTab, setActiveTab, handleClose } = useModelManager();
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-2xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      className="max-w-2xl"
+      labelledById="model-manager-modal-title"
+    >
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-300">
+        <h2
+          id="model-manager-modal-title"
+          className="text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Model Manager
         </h2>
 

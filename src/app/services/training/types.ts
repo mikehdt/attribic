@@ -12,12 +12,13 @@ export const TRAINING_PROVIDER_LABELS: Record<TrainingProvider, string> = {
 };
 
 /** Compact backend names for tight UI (badges, list rows). */
-export const TRAINING_PROVIDER_SHORT_LABELS: Record<TrainingProvider, string> = {
-  'ai-toolkit': 'AI Toolkit',
-  kohya: 'Kohya',
-  musubi: 'Musubi',
-  mock: 'Mock',
-};
+export const TRAINING_PROVIDER_SHORT_LABELS: Record<TrainingProvider, string> =
+  {
+    'ai-toolkit': 'AI Toolkit',
+    kohya: 'Kohya',
+    musubi: 'Musubi',
+    mock: 'Mock',
+  };
 
 // --- Job Lifecycle ---
 

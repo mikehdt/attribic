@@ -105,6 +105,8 @@ const CategoryNavigationComponent = ({
         width="lg"
         title="Jump to category"
         isPressed={isOpen}
+        ariaHasPopup
+        ariaExpanded={isOpen}
         disabled={categoriesWithPageInfo.length <= 1}
       >
         <ListOrderedIcon />

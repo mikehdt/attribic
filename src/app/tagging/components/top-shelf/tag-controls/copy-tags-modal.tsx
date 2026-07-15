@@ -36,7 +36,7 @@ const VideoOrImageThumb = ({
 
   if (isVideo && errored) {
     return (
-      <div className="flex h-20 w-20 items-center justify-center bg-slate-800 text-slate-400">
+      <div className="flex h-20 w-20 items-center justify-center bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
         <FilmIcon className="h-8 w-8" />
       </div>
     );
@@ -215,10 +215,18 @@ export const CopyTagsModal = ({ isOpen, onClose }: CopyTagsModalProps) => {
   const hasNoCopyableTags = copyableTags.length === 0 && donorAsset;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg min-w-md">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-lg min-w-[28rem]"
+      labelledById="copy-tags-modal-title"
+    >
       <div className="flex flex-wrap gap-4">
         {/* Title */}
-        <h2 className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="copy-tags-modal-title"
+          className="w-full text-2xl font-semibold text-slate-700 dark:text-slate-200"
+        >
           Copy Tags
         </h2>
 
@@ -258,8 +266,8 @@ export const CopyTagsModal = ({ isOpen, onClose }: CopyTagsModalProps) => {
                   onClick={() => handleDonorChange(asset.fileId)}
                   className={`relative overflow-hidden rounded-md border-2 transition-all ${
                     isSelected
-                      ? 'border-teal-500 bg-teal-950 shadow-md shadow-teal-200 dark:shadow-teal-800'
-                      : 'border-slate-200 bg-slate-900 hover:border-slate-400 dark:border-slate-600 dark:hover:border-slate-400'
+                      ? 'border-teal-500 bg-teal-100 shadow-md shadow-teal-200 dark:bg-teal-950 dark:shadow-teal-800'
+                      : 'border-slate-200 bg-slate-200 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-900 dark:hover:border-slate-400'
                   }`}
                   title={asset.fileId}
                 >
@@ -331,7 +339,7 @@ export const CopyTagsModal = ({ isOpen, onClose }: CopyTagsModalProps) => {
         {/* Common tags (informational) */}
         {commonTags.length > 0 && (
           <div className="w-full">
-            <h3 className="mb-1 text-xs font-medium text-slate-400 uppercase dark:text-slate-500">
+            <h3 className="mb-1 text-sm font-medium text-slate-400 uppercase dark:text-slate-500">
               Common to all
             </h3>
             <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -356,7 +364,7 @@ export const CopyTagsModal = ({ isOpen, onClose }: CopyTagsModalProps) => {
             onClick={onClose}
             color="slate"
             size="md"
-            width="xl"
+            width="lg"
           >
             Cancel
           </Button>
@@ -368,7 +376,7 @@ export const CopyTagsModal = ({ isOpen, onClose }: CopyTagsModalProps) => {
             neutralDisabled
             color="teal"
             size="md"
-            width="xl"
+            width="lg"
           >
             <CopyIcon className="mr-1 h-4 w-4" />
             Copy Tags

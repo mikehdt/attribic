@@ -148,6 +148,8 @@ export const MenuButton = ({
         onBlur={handleButtonBlur}
         disabled={disabled}
         isPressed={isOpen}
+        ariaHasPopup="menu"
+        ariaExpanded={isOpen}
         title={title}
       >
         {icon}

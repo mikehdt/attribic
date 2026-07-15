@@ -40,6 +40,10 @@ interface ButtonProps {
   // Toggle state (only used with toggle variants)
   isPressed?: boolean;
 
+  // Accessibility passthrough for menu/popup triggers
+  ariaHasPopup?: boolean | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
+  ariaExpanded?: boolean;
+
   // Ghost disabled removes all styling when disabled
   ghostDisabled?: boolean;
   neutralDisabled?: boolean;
@@ -212,6 +216,8 @@ export const Button = ({
   width: widthProp,
   variant = 'default',
   isPressed = false,
+  ariaHasPopup,
+  ariaExpanded,
   ghostDisabled = false,
   neutralDisabled = false,
   inert = false,
@@ -334,6 +340,13 @@ export const Button = ({
       onBlur={onBlur}
       disabled={disabled ? true : undefined}
       aria-disabled={disabled ? true : undefined}
+      aria-pressed={
+        variant === 'toggle' || variant === 'deep-toggle'
+          ? isPressed
+          : undefined
+      }
+      aria-haspopup={ariaHasPopup}
+      aria-expanded={ariaExpanded}
       tabIndex={disabled ? -1 : undefined}
       className={allClasses}
       title={title}

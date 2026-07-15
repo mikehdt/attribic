@@ -45,6 +45,7 @@ export const Pagination = ({
             ? 'pointer-events-none text-slate-300 dark:text-slate-600'
             : 'text-slate-500 hover:bg-sky-100 dark:text-slate-400 dark:hover:bg-slate-700'
         }`}
+        aria-label="Previous page"
         aria-disabled={currentPage <= 1}
       >
         <ChevronLeftIcon className="h-5 w-5" />
@@ -68,6 +69,7 @@ export const Pagination = ({
           href={`${resolvedBasePath}/1`}
           prefetch={true}
           scroll={true}
+          aria-current={currentPage === 1 ? 'page' : undefined}
           className={`mx-1 rounded px-2 py-0.5 ${
             currentPage === 1
               ? 'bg-sky-500 text-white dark:bg-sky-700 dark:text-sky-300'
@@ -96,6 +98,7 @@ export const Pagination = ({
             href={`${resolvedBasePath}/2`}
             prefetch={true}
             scroll={true}
+            aria-current={currentPage === 2 ? 'page' : undefined}
             className={`mx-1 rounded px-2 py-0.5 ${
               currentPage === 2
                 ? 'bg-sky-500 text-white dark:bg-sky-700 dark:text-sky-300'
@@ -116,6 +119,7 @@ export const Pagination = ({
           href={`${resolvedBasePath}/${i}`}
           prefetch={true}
           scroll={true}
+          aria-current={currentPage === i ? 'page' : undefined}
           className={`mx-1 rounded px-2 py-0.5 ${
             currentPage === i
               ? 'bg-sky-500 text-white dark:bg-sky-700 dark:text-sky-300'
@@ -147,6 +151,7 @@ export const Pagination = ({
             href={`${resolvedBasePath}/${totalPages - 1}`}
             prefetch={true}
             scroll={true}
+            aria-current={currentPage === totalPages - 1 ? 'page' : undefined}
             className={`mx-1 rounded px-2 py-0.5 ${
               currentPage === totalPages - 1
                 ? 'bg-sky-500 text-white dark:bg-sky-700 dark:text-sky-300'
@@ -164,6 +169,7 @@ export const Pagination = ({
           href={`${resolvedBasePath}/${totalPages}`}
           prefetch={true}
           scroll={true}
+          aria-current={currentPage === totalPages ? 'page' : undefined}
           className={`mx-1 rounded px-2 py-0.5 ${
             currentPage === totalPages
               ? 'bg-sky-500 text-white dark:bg-sky-700 dark:text-sky-300'
@@ -188,6 +194,7 @@ export const Pagination = ({
             ? 'pointer-events-none text-slate-300 dark:text-slate-600'
             : 'text-slate-500 hover:bg-sky-100 dark:text-slate-400 dark:hover:bg-slate-700'
         }`}
+        aria-label="Next page"
         aria-disabled={currentPage >= totalPages}
       >
         <ChevronRightIcon className="h-5 w-5" />
