@@ -14,7 +14,11 @@ export function useTrainingDetailView(job: TrainingJob | null) {
   const progress = job?.progress ?? null;
   const config = job?.config ?? null;
 
-  const totalSteps = progress?.totalSteps ?? 0;
+  // During preparing, currentStep/totalSteps carry the setup phase's own item
+  // count (e.g. latents cached), not training steps — so there's no step total
+  // to plot an LR schedule against yet.
+  const isPreparing = job?.status === 'preparing';
+  const totalSteps = isPreparing ? 0 : (progress?.totalSteps ?? 0);
   const lrCurve = useLrScheduleCurve(config, totalSteps);
 
   // Auto-scroll the log panel to the bottom while training runs, unless the
@@ -36,5 +40,5 @@ export function useTrainingDetailView(job: TrainingJob | null) {
     el.scrollTop = el.scrollHeight;
   }, [progress?.logLines]);
 
-  return { progress, config, lrCurve, logRef, handleLogScroll };
+  return { progress, config, lrCurve, isPreparing, logRef, handleLogScroll };
 }

@@ -22,7 +22,7 @@ import { useTrainingDetailView } from './use-training-detail-view';
  * (archived snapshot). Reads nothing from Redux — the job is passed in.
  */
 export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
-  const { progress, config, lrCurve, logRef, handleLogScroll } =
+  const { progress, config, lrCurve, isPreparing, logRef, handleLogScroll } =
     useTrainingDetailView(job);
 
   if (!job || !progress) return null;
@@ -30,8 +30,14 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const isRunning = job.status === 'running' || job.status === 'preparing';
   const isCompleted = job.status === 'completed';
 
-  const currentStep = progress.currentStep ?? 0;
-  const totalSteps = progress.totalSteps ?? 0;
+  // During preparing, currentStep/totalSteps carry the setup phase's own item
+  // count (e.g. latents cached), not training steps — keep the two apart so
+  // caching doesn't render as "Step 12 / 40" or skew the loss chart's x-axis.
+  const prepStep = progress.currentStep ?? 0;
+  const prepTotal = isPreparing ? (progress.totalSteps ?? 0) : 0;
+  const hasStepInfo = !isPreparing && (progress.totalSteps ?? 0) > 0;
+  const currentStep = hasStepInfo ? (progress.currentStep ?? 0) : 0;
+  const totalSteps = hasStepInfo ? (progress.totalSteps ?? 0) : 0;
   const stepPct = formatPct(currentStep, totalSteps);
   const savedCheckpoints = progress.savedCheckpoints ?? [];
   const checkpointSteps = progress.checkpointSteps ?? [];
@@ -146,8 +152,12 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
           }
           size={isCompleted ? 'sm' : 'md'}
         />
+      ) : prepTotal > 0 ? (
+        // A setup phase with a countable bar (caching latents / text
+        // embeddings) — show its own progress rather than an idle spinner.
+        <ProgressBar value={prepStep} max={prepTotal} color="sky" size="md" />
       ) : isRunning ? (
-        <ProgressBar value={0} max={1} color="sky" indeterminate size="sm" />
+        <ProgressBar value={0} max={1} color="sky" indeterminate size="md" />
       ) : null}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -210,7 +220,10 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         <Stat label="Speed" value={progress.speed ?? '—'} />
         <Stat
           label="Phase"
-          value={progress.phase ?? (isRunning ? 'Training' : '—')}
+          value={
+            progress.phase ??
+            (isPreparing ? 'Preparing' : isRunning ? 'Training' : '—')
+          }
         />
       </div>
 

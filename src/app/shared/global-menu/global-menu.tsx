@@ -1,6 +1,11 @@
 'use client';
 
-import { ArrowLeftCircleIcon, BoxesIcon, MenuIcon } from 'lucide-react';
+import {
+  ActivityIcon,
+  ArrowLeftCircleIcon,
+  BoxesIcon,
+  MenuIcon,
+} from 'lucide-react';
 import { memo } from 'react';
 
 import { MenuItem } from '@/app/shared/menu-item';
@@ -19,6 +24,7 @@ const GlobalMenuComponent = () => {
     toggle,
     handleSetTheme,
     handleOpenModelManager,
+    handleToggleActivityPanel,
     handleBackToProjects,
     showBackToProjects,
   } = useGlobalMenu();
@@ -53,6 +59,12 @@ const GlobalMenuComponent = () => {
             icon={<BoxesIcon className="h-5 w-5" />}
             label="Model Manager"
             onClick={handleOpenModelManager}
+          />
+
+          <MenuItem
+            icon={<ActivityIcon className="h-5 w-5" />}
+            label="Activity Panel"
+            onClick={handleToggleActivityPanel}
           />
 
           <SidecarControls enabled={isOpen} />

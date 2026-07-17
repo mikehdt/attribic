@@ -1,13 +1,12 @@
 'use client';
 
-import { ListIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
+import { RotateCcwIcon, SaveIcon } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
 
 import { Button } from '@/app/shared/button';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
-import { selectPanelOpen, togglePanel } from '@/app/store/jobs';
 import {
   setTrainingViewMode,
   type TrainingViewMode,
@@ -46,13 +45,11 @@ const TrainingToolbarComponent = () => {
   // setAppModelDefaults/applyAppDefaults) can hydrate and mutate the store
   // before this component's hydration render. Pin every store-derived prop
   // to its SSR value until hydration completes — see useHydrated.
-  const panelOpenValue = useAppSelector(selectPanelOpen);
   const loadedProjectValue = useAppSelector(selectLoadedProject);
   const isDirtyValue = useAppSelector(selectIsDirty);
   const canResetValue = useAppSelector(selectCanReset);
   const form = useAppSelector(selectForm);
 
-  const panelOpen = hydrated && panelOpenValue;
   const loadedProject = hydrated ? loadedProjectValue : null;
   const isDirty = hydrated && isDirtyValue;
   const canReset = hydrated && canResetValue;
@@ -131,20 +128,7 @@ const TrainingToolbarComponent = () => {
       {/* Spacer */}
       <div className="mr-auto!" />
 
-      {/* Right: queue button + view mode toggle */}
-      <Button
-        size="sm"
-        variant="ghost"
-        isPressed={panelOpen}
-        onClick={() => dispatch(togglePanel())}
-        className="relative"
-      >
-        <ListIcon className="mr-1 h-3.5 w-3.5" />
-        Queue
-      </Button>
-
-      <ToolbarDivider />
-
+      {/* Right: view mode toggle */}
       <SegmentedControl
         options={VIEW_MODE_OPTIONS}
         value={viewMode}

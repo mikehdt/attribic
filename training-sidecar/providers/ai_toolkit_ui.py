@@ -6,10 +6,17 @@ future Kohya / Musubi providers), this provider talks to ai-toolkit's
 own web server. Benefits:
 
   * structured progress (step / status / info / speed_string) via
-    `GET /api/jobs?id=...` — no tqdm regex
+    `GET /api/jobs?id=...` for the training loop itself
   * graceful cancel via `GET /api/jobs/<id>/stop`
   * loss / log / sample-image history surfaced by ai-toolkit's API
   * insulated from their SQLite schema — the HTTP API is the contract
+
+The one gap is setup: bucketing and latent / text-embedding caching can run for
+minutes while the job row sits on a single coarse `info` label, because those
+loops only ever draw a tqdm bar to the worker's stdout. So for the pre-training
+window — and only that window — we tail their `/api/jobs/<id>/log` route and
+parse the bars, which is what gives the UI a real phase and a determinate
+progress count instead of an indeterminate "Preparing…".
 
 Requires the ai-toolkit UI server to be running, managed by
 `ai_toolkit_server.AiToolkitServer`.
@@ -20,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+import re
 import sqlite3
 import sys
 import uuid
@@ -43,6 +51,34 @@ from providers.base import TrainingProvider
 
 POLL_INTERVAL_SECONDS = 1.0
 TERMINAL_STATUSES = {"completed", "stopped", "error"}
+
+# ai-toolkit's cron worker writes this to the job row immediately before it
+# spawns run.py detached, and nothing revisits it until the Python process gets
+# far enough to construct UITrainer. So this one label also covers interpreter
+# boot and the torch/diffusers imports — tens of seconds of apparent silence.
+AITK_STARTING_INFO = "Starting job..."
+
+# A tqdm bar as ai-toolkit renders it, e.g.
+#   Caching latents to disk:  25%|██▌       | 3/12 [00:01<00:03,  2.50it/s]
+# The desc prefix is optional — some bars are drawn without one.
+TQDM_BAR_RE = re.compile(
+    r"(?:(?P<desc>[^|\r\n]{0,80}?)\s*:\s*)?"
+    r"\d{1,3}%\|[^|]*\|\s*(?P<current>\d+)/(?P<total>\d+)"
+)
+
+# tqdm descs we want to show under a friendlier name. Sourced from
+# toolkit/dataloader_mixins.py; anything else falls back to the raw desc.
+PREP_PHASE_BY_DESC = (
+    ("caching latents", "Caching latents"),
+    ("caching text embeddings", "Caching text embeddings"),
+    ("caching clip vision", "Caching CLIP vision"),
+    ("generating controls", "Generating controls"),
+)
+
+# How many consecutive non-bar log lines retire the last-seen setup bar. A live
+# tqdm bar redraws constantly, so a run of plain lines means its phase is over
+# and we should fall back to the row's own `info` label.
+BAR_STALE_AFTER_LINES = 8
 
 # After ai-toolkit flips a job to a terminal status, we wait for its
 # subprocess PID to actually exit before releasing the GPU back to the
@@ -217,6 +253,53 @@ def _read_loss_metrics(db_path: Path) -> Optional[dict]:
         return None
     finally:
         con.close()
+
+
+def _prep_phase_for_desc(desc: str) -> Optional[str]:
+    """Friendly phase label for a tqdm desc, or the raw desc if unrecognised."""
+    lowered = desc.lower()
+    for needle, label in PREP_PHASE_BY_DESC:
+        if needle in lowered:
+            return label
+    return desc or None
+
+
+def _split_log_chunk(chunk: str) -> list[str]:
+    """Split a raw log chunk into lines.
+
+    tqdm redraws with carriage returns rather than newlines, so splitting on
+    `\\n` alone would glue an entire bar's worth of updates into one enormous
+    line. Treat `\\r` as a break too, exactly as the Kohya provider does.
+    """
+    return [line.strip() for line in re.split(r"[\r\n]+", chunk) if line.strip()]
+
+
+async def _fetch_log_delta(
+    client: httpx.AsyncClient, aitk_id: str, offset: Optional[int]
+) -> tuple[list[str], Optional[int]]:
+    """Pull newly-appended lines from ai-toolkit's per-job `log.txt`.
+
+    Uses their `/api/jobs/<id>/log` route rather than reading the file: it
+    resolves the job folder from the DB row's own name under ai-toolkit's
+    training folder, which is where the log actually lives — not under our
+    `output_path` (the same mismatch `_loss_log_path` documents). It also does
+    byte-offset tailing, so each poll transfers only what's new.
+
+    Returns (lines, new_offset). Best-effort — any failure yields no lines and
+    leaves the offset untouched so a transient blip never breaks the poll loop.
+    A new_offset of 0 means the worker hasn't written anything yet.
+    """
+    try:
+        params = {} if offset is None else {"offset": offset}
+        res = await client.get(f"/api/jobs/{aitk_id}/log", params=params)
+        if res.status_code != 200:
+            return [], offset
+        body = res.json()
+    except (httpx.HTTPError, ValueError):
+        return [], offset
+    # On `reset` the route ignores our offset and returns a fresh tail, which
+    # is what we want anyway — either way `offset` is the new high-water mark.
+    return _split_log_chunk(body.get("log") or ""), body.get("offset", offset)
 
 
 def _extract_worker_error(log_path: Optional[Path], max_lines: int = 40) -> str:
@@ -421,6 +504,14 @@ class AiToolkitUiProvider(TrainingProvider):
             sample_paths: list[str] = []
             last_step = -1
             last_status_label = ""
+            # Setup-phase state, recovered by tailing the worker's log.txt.
+            # ai-toolkit's bucketing / latent / text-embedding caching only ever
+            # emits a tqdm bar to stdout — the job row we poll stays pinned on a
+            # single coarse `info` ("Loading dataset") for the minutes it runs.
+            log_offset: Optional[int] = None
+            prep_log: list[str] = []
+            prep_bar: Optional[tuple[Optional[str], int, int]] = None
+            lines_since_bar = 0
             # Confirmed-save detection via output-dir watching (the jobs API
             # exposes no save events). Seed with whatever's already on disk so
             # a resumed run doesn't count pre-existing files as fresh saves.
@@ -460,8 +551,9 @@ class AiToolkitUiProvider(TrainingProvider):
                     last_status_label = info
 
                 # ai-toolkit's `info` is a coarse phase label: "Loading model",
-                # "Loading dataset" (covers bucketing + latent caching — those
-                # only print a tqdm bar to log.txt, never to the row), "Saving
+                # "Loading dataset" (one label covering bucketing + latent and
+                # text-embedding caching, which can run for minutes — the setup
+                # branch below refines it from the worker's tqdm bars), "Saving
                 # model", "Generating images - x/y", or "Training" while steps
                 # advance. Surface everything but the plain "Training" as the
                 # structured `phase` so the UI shows a phase label the same way
@@ -470,76 +562,114 @@ class AiToolkitUiProvider(TrainingProvider):
                     None if info in ("", "Training") else info
                 )
 
-                if aitk_status in ("queued", "starting"):
+                # ai-toolkit's `step` only starts moving once the training loop
+                # proper is underway, so a "running" row with no step is still
+                # setup (model load, quantize, bucketing, caching).
+                in_setup = aitk_status in ("queued", "starting") or (
+                    aitk_status == "running" and step <= 0
+                )
+
+                if in_setup:
+                    new_lines, log_offset = await _fetch_log_delta(
+                        client, aitk_id, log_offset
+                    )
+                    for line in new_lines:
+                        bar = TQDM_BAR_RE.search(line)
+                        if bar is None:
+                            prep_log.append(line)
+                            lines_since_bar += 1
+                            if lines_since_bar > BAR_STALE_AFTER_LINES:
+                                prep_bar = None
+                            continue
+                        desc = (bar.group("desc") or "").strip()
+                        if desc and desc == request.output_name:
+                            # The training loop's own bar — setup is over; let
+                            # the row's step drive the UI from here.
+                            # BaseSDTrainProcess passes desc=self.job.name, and
+                            # the trainer reads its name from the *config* we
+                            # send (output_name), not the DB row's unique_name.
+                            prep_bar = None
+                            continue
+                        prep_bar = (
+                            _prep_phase_for_desc(desc),
+                            int(bar.group("current")),
+                            int(bar.group("total")),
+                        )
+                        lines_since_bar = 0
+                    del prep_log[:-50]
+
+                    bar_phase, bar_current, bar_total = prep_bar or (None, 0, 0)
+                    # A live caching bar is more specific than the row's coarse
+                    # label, so it wins when we have one.
+                    prep_phase = bar_phase or phase_label
+                    if prep_phase == AITK_STARTING_INFO:
+                        # Still on the label ai-toolkit wrote before spawning
+                        # means the worker hasn't reached UITrainer (which
+                        # overwrites it with "Starting"), so it's necessarily
+                        # still booting Python. Say that instead of parroting a
+                        # label that is stale by construction.
+                        prep_phase = "Starting Python worker"
+
                     yield JobProgress(
                         job_id=local_job_id,
                         status=JobStatus.PREPARING,
-                        phase=phase_label,
-                        log_lines=log_tail[-50:],
+                        current_step=bar_current,
+                        total_steps=bar_total,
+                        phase=prep_phase,
+                        log_lines=(log_tail + prep_log)[-50:],
                     )
                 elif aitk_status == "running":
                     # Watch the output dir for newly-written checkpoints. Any
                     # new file since the last poll is a confirmed save at the
                     # current step; the manager dedupes by step.
                     newly_saved: list[int] = []
-                    if step > 0:
-                        current_files = _scan_checkpoints(
-                            request.output_path, request.output_name
+                    current_files = _scan_checkpoints(
+                        request.output_path, request.output_name
+                    )
+                    new_files = current_files - seen_checkpoints
+                    if new_files:
+                        # Attribute each new file to the step parsed from
+                        # its own name — poll lag means `step` may have
+                        # moved past the step the file was actually saved
+                        # at, and several files can appear in one window.
+                        newly_saved = _steps_for_new_checkpoints(
+                            new_files, request.output_name, step
                         )
-                        new_files = current_files - seen_checkpoints
-                        if new_files:
-                            # Attribute each new file to the step parsed from
-                            # its own name — poll lag means `step` may have
-                            # moved past the step the file was actually saved
-                            # at, and several files can appear in one window.
-                            newly_saved = _steps_for_new_checkpoints(
-                                new_files, request.output_name, step
-                            )
-                            seen_checkpoints = current_files
+                        seen_checkpoints = current_files
 
                     if step != last_step or info != last_status_label or newly_saved:
                         last_step = step
-                        # ai-toolkit's `step` updates only after training
-                        # has begun. Until then, keep emitting PREPARING.
-                        if step <= 0:
-                            yield JobProgress(
-                                job_id=local_job_id,
-                                status=JobStatus.PREPARING,
-                                phase=phase_label,
-                                log_lines=log_tail,
-                            )
-                        else:
-                            # Prefer ai-toolkit's structured metrics DB; fall
-                            # back to the (usually empty for ui_trainer)
-                            # speed_string parse if it isn't readable yet.
-                            loss, lr, eta, rate = _parse_speed_string(speed)
-                            metrics = _read_loss_metrics(loss_db_path)
-                            if metrics is not None:
-                                loss = metrics.get("loss", loss)
-                                lr = metrics.get("learning_rate", lr)
-                                sec_per_it = metrics.get("sec_per_it")
-                                if sec_per_it is not None:
-                                    rate = f"{sec_per_it:.2f}s/it"
-                                    if total_steps > 0:
-                                        eta = int(sec_per_it * (total_steps - step))
-                            yield JobProgress(
-                                job_id=local_job_id,
-                                status=JobStatus.TRAINING,
-                                current_step=step,
-                                total_steps=total_steps,
-                                current_epoch=_derive_epoch(
-                                    step, total_steps, total_epochs
-                                ),
-                                total_epochs=total_epochs,
-                                loss=loss,
-                                learning_rate=lr,
-                                eta_seconds=eta,
-                                speed=rate,
-                                phase=phase_label,
-                                saved_checkpoints=newly_saved,
-                                sample_image_paths=sample_paths,
-                                log_lines=log_tail,
-                            )
+                        # Prefer ai-toolkit's structured metrics DB; fall
+                        # back to the (usually empty for ui_trainer)
+                        # speed_string parse if it isn't readable yet.
+                        loss, lr, eta, rate = _parse_speed_string(speed)
+                        metrics = _read_loss_metrics(loss_db_path)
+                        if metrics is not None:
+                            loss = metrics.get("loss", loss)
+                            lr = metrics.get("learning_rate", lr)
+                            sec_per_it = metrics.get("sec_per_it")
+                            if sec_per_it is not None:
+                                rate = f"{sec_per_it:.2f}s/it"
+                                if total_steps > 0:
+                                    eta = int(sec_per_it * (total_steps - step))
+                        yield JobProgress(
+                            job_id=local_job_id,
+                            status=JobStatus.TRAINING,
+                            current_step=step,
+                            total_steps=total_steps,
+                            current_epoch=_derive_epoch(
+                                step, total_steps, total_epochs
+                            ),
+                            total_epochs=total_epochs,
+                            loss=loss,
+                            learning_rate=lr,
+                            eta_seconds=eta,
+                            speed=rate,
+                            phase=phase_label,
+                            saved_checkpoints=newly_saved,
+                            sample_image_paths=sample_paths,
+                            log_lines=(log_tail + prep_log)[-50:],
+                        )
                 elif aitk_status in TERMINAL_STATUSES:
                     final_status = (
                         JobStatus.COMPLETED
@@ -569,7 +699,7 @@ class AiToolkitUiProvider(TrainingProvider):
                                 step, total_steps, total_epochs
                             ),
                             total_epochs=total_epochs,
-                            log_lines=log_tail,
+                            log_lines=(log_tail + prep_log)[-50:],
                         )
                         exited = await _wait_for_pid_exit(int(pid))
                         if not exited:
@@ -624,7 +754,7 @@ class AiToolkitUiProvider(TrainingProvider):
                         total_epochs=total_epochs,
                         saved_checkpoints=final_saved,
                         error=error_text,
-                        log_lines=log_tail,
+                        log_lines=(log_tail + prep_log)[-50:],
                     )
                     break
 

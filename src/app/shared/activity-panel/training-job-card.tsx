@@ -229,13 +229,19 @@ export function TrainingJobCard({
 
             {/* Activity line — names what the trainer is doing right now, so a
                 frozen step bar (mid checkpoint save) doesn't look hung. */}
-            {isRunning && (
-              <div className="mt-1 text-xs">
+            <div className="mt-1 flex w-full text-xs">
+              {isRunning && (
                 <span className="truncate text-sky-600 dark:text-sky-400">
                   {progress!.phase ?? 'Training'}
                 </span>
-              </div>
-            )}
+              )}
+              {savedCount > 0 && (
+                <span className="ml-auto text-slate-600 dark:text-slate-400">
+                  {savedCount} {savedCount !== 1 ? 'checkpoints' : 'checkpoint'}{' '}
+                  saved
+                </span>
+              )}
+            </div>
           </>
         ) : isRunning && hasPrepCount ? (
           <>
@@ -298,12 +304,6 @@ export function TrainingJobCard({
                   <span className="font-medium text-(--foreground)">
                     {formatEta(progress.etaSeconds)}
                   </span>
-                </span>
-              )}
-              {savedCount > 0 && (
-                <span className="w-full">
-                  {savedCount} {savedCount !== 1 ? 'checkpoints' : 'checkpoint'}{' '}
-                  saved
                 </span>
               )}
             </div>

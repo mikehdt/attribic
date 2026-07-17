@@ -5,12 +5,13 @@ import { useCallback, useId, useRef } from 'react';
 
 import { usePopup } from '@/app/shared/popup';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { togglePanel } from '@/app/store/jobs';
 import { openModelManagerModal } from '@/app/store/model-manager';
 import { selectTheme, setTheme, type ThemeMode } from '@/app/store/preferences';
 
 /**
  * State and handlers for the shared global menu (theme, model manager,
- * back-to-projects). The sidecar section owns its own state via
+ * activity panel, back-to-projects). The sidecar section owns its own state via
  * {@link useSidecarStatus}.
  */
 export const useGlobalMenu = () => {
@@ -44,6 +45,11 @@ export const useGlobalMenu = () => {
     dispatch(openModelManagerModal(undefined));
   }, [closePopup, popupId, dispatch]);
 
+  const handleToggleActivityPanel = useCallback(() => {
+    closePopup(popupId);
+    dispatch(togglePanel());
+  }, [closePopup, popupId, dispatch]);
+
   const handleBackToProjects = useCallback(() => {
     closePopup(popupId);
     router.push('/');
@@ -57,6 +63,7 @@ export const useGlobalMenu = () => {
     toggle,
     handleSetTheme,
     handleOpenModelManager,
+    handleToggleActivityPanel,
     handleBackToProjects,
     showBackToProjects: pathname !== '/',
   };

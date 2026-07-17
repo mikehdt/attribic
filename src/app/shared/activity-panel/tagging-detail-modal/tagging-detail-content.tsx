@@ -159,7 +159,7 @@ export function TaggingDetailContent({
         <ProgressBar
           value={bar.value}
           max={bar.max}
-          size="sm"
+          size={isCompleted ? 'sm' : 'md'}
           color={
             hasPartialErrors
               ? 'amber'
