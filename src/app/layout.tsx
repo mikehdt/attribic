@@ -24,8 +24,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: 'Alembia Studio',
-  description: 'Tag images with text to identify things',
+  title: 'Attribic',
+  description: 'Image tagger and LoRA training UI',
   icons: {
     icon: [
       { url: '/favicon-16.png', sizes: '16x16', type: 'image/png' },

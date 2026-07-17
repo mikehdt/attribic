@@ -1,4 +1,4 @@
-# Alembia Studio
+# Attribic - Image tagger and LoRA training UI
 
 A local, browser-based workbench for organising and tagging image (and video) collections — primarily aimed at preparing training datasets for image generation models, but useful for any bulk tagging workflow.
 
@@ -15,9 +15,10 @@ Point it at a folder of folders containing images you want to tag. Each subfolde
 
 ### Tagging view
 
-- **Two caption modes** you can switch between for any given project:
+- **Three caption modes** you can switch between for any given project:
   - **Tag mode** — comma-separated imageboard-style tags, with drag-and-drop reordering.
   - **Caption mode** — natural-language prose for models that prefer sentences.
+  - **Hybrid mode** — comma-separated imageboard-style tags and natural language prose, together for models that mix the two styles
 - **Bulk editing** — select multiple images (shift-click for ranges, shift-hover to preview the range before committing), then add, remove, or rewrite tags across the whole selection. Copy/paste tags between assets.
 - **Rich filtering** — filter by tag (match-any / match-all / exclude), dimensions, file type, subfolder, tagged/untagged state, and unsaved-changes state.
 - **Video assets** — (new) `.mp4` files are treated as first-class assets alongside images. A poster frame is generated for the gallery thumbnail and for ONNX auto-tagging, for VLM tagging with a capable model, the video itself is passed for temporal descriptions.
@@ -55,7 +56,7 @@ Batch runs stream progress over a streaming setup, can be cancelled mid-run, and
 
 ## Installing
 
-The app is a Next.js project. The auto-tagger ONNX engine is pure JS and works out of the box. The Python sidecar (for VLM captioning) is optional and only needed if you want natural-language captions.
+The app is a Next.js project. The auto-tagger ONNX engine is pure JS and works out of the box. The Python sidecar (for VLM captioning) is optional and only needed if you want natural-language captions or training.
 
 ### 1. Prerequisites
 
