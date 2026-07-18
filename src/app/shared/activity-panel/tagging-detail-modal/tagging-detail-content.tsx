@@ -74,14 +74,16 @@ function LastResult({ job }: { job: TaggingJob }) {
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="truncate text-sm text-slate-400">{result.fileId}</span>
-        <p className="max-h-28 overflow-y-auto text-sm text-(--foreground)">
+        <p className="max-h-48 overflow-y-auto text-sm text-(--foreground)">
           {text || (
             <span className="text-slate-400">
               No text returned for this image
             </span>
           )}
         </p>
+        <span className="truncate text-sm text-slate-400">
+          Caption for {result.fileId}
+        </span>
       </div>
     </div>
   );
@@ -224,16 +226,6 @@ export function TaggingDetailContent({
         <pre className="max-h-40 overflow-auto font-mono text-[11px] whitespace-pre-wrap text-rose-500">
           {job.error}
         </pre>
-      )}
-
-      {isRunning && onCancel && (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-sm text-slate-500">
-            Safe to close — {captioning ? 'captioning' : 'tagging'} continues in
-            the background and finished {captioning ? 'captions' : 'tags'} are
-            applied automatically.
-          </p>
-        </div>
       )}
     </div>
   );

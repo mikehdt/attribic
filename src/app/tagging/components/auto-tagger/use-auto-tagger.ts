@@ -771,6 +771,15 @@ export function useAutoTagger({
     setError(null);
     imageErrorsRef.current = [];
 
+    // Whether the batch reached a terminal state on the sidecar (finished,
+    // was cancelled, or genuinely errored) — as opposed to this client merely
+    // detaching from a batch that keeps running server-side (refresh, tab
+    // close, navigation). Only a true terminal state may release the model:
+    // unloading on a detach pulls the weights out from under a still-running
+    // batch, forcing the sidecar to reload them for the next image — which is
+    // exactly what surfaces as "Loading model" when the next page reattaches.
+    let batchTerminatedServerSide = false;
+
     try {
       const response = await fetch('/api/auto-tagger/batch', {
         method: 'POST',
@@ -975,6 +984,7 @@ export function useAutoTagger({
             throw new Error(event.error);
           } else if (event.type === 'complete') {
             receivedComplete = true;
+            batchTerminatedServerSide = true;
             // 350ms pause between the final progress event and the
             // summary view so the progress bar visibly hits 100%.
             // Awaited (not fire-and-forget) so the outer try/finally
@@ -1013,6 +1023,7 @@ export function useAutoTagger({
             // keep whatever results already landed. The job status update
             // is dispatched here because no local abort handler ran.
             receivedComplete = true;
+            batchTerminatedServerSide = true;
             dispatch(cancelTagging(jobId));
             await flushAndFinalise(projectFolderName, jobId, true);
           }
@@ -1050,9 +1061,14 @@ export function useAutoTagger({
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        // Flush any partial results that made it to localStorage
+        // The client detached (cancel, tab close, refresh, navigation). The
+        // sidecar batch keeps running and is reattached to later, so this is
+        // NOT a terminal state — leave the model loaded.
         flushAndFinalise(projectFolderName, jobId, true);
       } else {
+        // A genuine batch-level error from the sidecar — the run is over, so
+        // the model can be released.
+        batchTerminatedServerSide = true;
         const message = err instanceof Error ? err.message : 'Tagging failed';
         setError(message);
         dispatch(failTagging({ id: jobId, error: message }));
@@ -1062,10 +1078,14 @@ export function useAutoTagger({
       removeTaggingController(jobId);
       currentJobIdRef.current = null;
 
-      // Auto-release the model from GPU/CPU memory if the preference says to.
+      // Auto-release the model from GPU/CPU memory if the preference says to,
+      // but ONLY once the batch has genuinely finished server-side. Detaching
+      // (refresh/navigation) leaves the batch running on the sidecar, so
+      // unloading here would evict the model mid-run and force a reload —
+      // surfacing as a spurious "Loading model" the moment the page reattaches.
       // Best-effort fire-and-forget — an unload failure shouldn't surface as
       // a user-visible error, and the next batch reloads automatically.
-      if (!keepModelInMemory) {
+      if (!keepModelInMemory && batchTerminatedServerSide) {
         fetch('/api/auto-tagger/unload', { method: 'POST' }).catch(() => {
           /* best-effort */
         });

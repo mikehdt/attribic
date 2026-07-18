@@ -159,10 +159,16 @@ export const Modal = ({
     };
   }, [isOpen, ANIMATION_DURATION]);
 
-  // Track this modal in the global open-modal count
+  // Track this modal in the global open-modal count. The cleanup is what makes
+  // this unmount-safe: without it, a modal that unmounts while still open (Fast
+  // Refresh remounting its subtree, or a parent dropping it) never runs
+  // `registerModal(false)`, so its +1 leaks into `openCount` forever. That
+  // stuck count keeps `useIsAnyModalOpen()` true, which permanently gates off
+  // the activity panel — the bubble/panel never reappears after a hot reload.
   const registerModal = useModalRegister();
   useEffect(() => {
     registerModal(isOpen);
+    return () => registerModal(false);
   }, [isOpen, registerModal]);
 
   // Lock body scroll while the modal is open.
