@@ -568,10 +568,12 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Rank 32 is the community standard for Anima — unlike SDXL, dim 16 tends to underfit',
       'Lower epochs are generally better; too many and it starts over-fitting the style',
       'Batch 2+ trains more reliably than batch 1 (bump the LR if you raise it to 4)',
-      'The Qwen3 text encoder (LLM adapter) stays frozen; leave text-encoder training off',
     ],
     availableResolutions: [512, 768, 1024, 1536],
     hiddenFields: [
+      // The Qwen3 text encoder (LLM adapter) stays frozen for Anima, so there's
+      // no text-encoder training path to expose.
+      'trainTextEncoder',
       'timestepBias',
       'transformerQuantization',
       'textEncoderQuantization',
