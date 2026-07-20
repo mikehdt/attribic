@@ -165,7 +165,7 @@ export function useTrainingConfigForm() {
       folderName: string,
       displayName: string,
       folders: Omit<DatasetFolder, keyof FolderAugmentation>[],
-      thumbnail?: string,
+      thumbnail?: boolean,
       thumbnailVersion?: number,
       dimensionHistogram?: Record<string, number>,
     ) => {

@@ -19,7 +19,7 @@ export function useProjectPicker({
     folderName: string,
     displayName: string,
     folders: PickedFolder[],
-    thumbnail?: string,
+    thumbnail?: boolean,
     thumbnailVersion?: number,
     dimensionHistogram?: Record<string, number>,
   ) => void;

@@ -1,8 +1,11 @@
 import { memo, useMemo } from 'react';
 
-import type { LossPoint } from '@/app/services/training/types';
+import type {
+  LossPoint,
+  TrainingProvider,
+} from '@/app/services/training/types';
 
-import { formatLoss, trimSettleSteps } from '../helpers';
+import { formatLoss, splitPrunedCheckpoints, trimSettleSteps } from '../helpers';
 import { useLossChartScale } from './use-loss-chart-scale';
 
 type LossChartVariant = 'compact' | 'detail';
@@ -17,6 +20,13 @@ type LossChartProps = {
   checkpointSteps?: number[];
   /** Steps confirmed written by the trainer. */
   savedCheckpoints?: number[];
+  /**
+   * Rolling checkpoint window from the run's config. When > 0 the trainer
+   * keeps only the last N saves, so earlier ones are drawn as pruned.
+   */
+  maxSavesToKeep?: number;
+  /** Backend that ran the job — its save cadence decides which files survive. */
+  provider?: TrainingProvider;
   /**
    * Normalised (0–1) LR schedule curve drawn as a background area across
    * the full step range.
@@ -36,7 +46,8 @@ const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
 // Series colours are fixed (not currentColor) — validated for CVD separation
 // and contrast against the chart surfaces in both light and dark mode:
 // loss emerald-600, smoothed trend amber-600, LR schedule sky-600,
-// saved checkpoints violet, epoch boundaries light slate.
+// saved checkpoints violet (slate once pruned by the rolling save window),
+// epoch boundaries light slate.
 
 const LossChartComponent = ({
   lossHistory,
@@ -45,6 +56,8 @@ const LossChartComponent = ({
   totalEpochs = 0,
   checkpointSteps = [],
   savedCheckpoints = [],
+  maxSavesToKeep = 0,
+  provider,
   lrCurve = null,
   variant = 'compact',
   width,
@@ -122,6 +135,15 @@ const LossChartComponent = ({
   const upcomingCheckpoints = checkpointSteps.filter(
     (step) => step > currentStep && !savedCheckpoints.includes(step),
   );
+
+  const { pruned: prunedCheckpoints, live: liveCheckpoints } =
+    splitPrunedCheckpoints({
+      savedCheckpoints,
+      maxSavesToKeep,
+      provider,
+      totalSteps,
+      currentStep,
+    });
 
   // Epoch boundaries as light gridlines, at the trainer's actual per-epoch
   // step (same ceil-based math as deriveCheckpointSteps), excluding the run's
@@ -266,8 +288,22 @@ const LossChartComponent = ({
         />
       ))}
 
-      {/* Confirmed checkpoint saves: solid */}
-      {savedCheckpoints.map((step) => (
+      {/* Pruned by the rolling save window — no longer on disk, so they drop
+          back to solid slate rather than the live-checkpoint violet. */}
+      {prunedCheckpoints.map((step) => (
+        <line
+          key={`pruned-${step}`}
+          x1={xScale(step)}
+          x2={xScale(step)}
+          y1={lineTop}
+          y2={lineBottom}
+          strokeWidth={1}
+          className="stroke-slate-400/70 dark:stroke-slate-500/70"
+        />
+      ))}
+
+      {/* Confirmed checkpoint saves still on disk: solid */}
+      {liveCheckpoints.map((step) => (
         <line
           key={`saved-${step}`}
           x1={xScale(step)}

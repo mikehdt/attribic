@@ -19,18 +19,18 @@ const HybridManagerComponent = ({ assetId }: HybridManagerProps) => {
     <div className="flex h-full w-full flex-col gap-3">
       <section className="flex flex-col gap-1">
         <span className="px-1 text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
-          Caption
+          Tags
         </span>
-        <CaptionManager assetId={assetId} />
+        <TaggingManager assetId={assetId} />
       </section>
 
       <hr className="border-slate-200 dark:border-slate-700" />
 
       <section className="flex flex-col gap-1">
         <span className="px-1 text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
-          Tags
+          Caption
         </span>
-        <TaggingManager assetId={assetId} />
+        <CaptionManager assetId={assetId} />
       </section>
     </div>
   );

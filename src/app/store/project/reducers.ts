@@ -19,13 +19,15 @@ export const coreReducers = {
       name: string;
       path: string;
       folderName: string;
-      thumbnail?: string;
+      thumbnail?: boolean;
+      thumbnailVersion?: number;
     }>,
   ) => {
     state.info.projectName = payload.name;
     state.info.projectPath = payload.path;
     state.info.projectFolderName = payload.folderName;
-    state.info.projectThumbnail = payload.thumbnail;
+    state.info.projectHasThumbnail = payload.thumbnail;
+    state.info.projectThumbnailVersion = payload.thumbnailVersion;
   },
 
   // Reset project to initial state (useful when switching projects)
@@ -33,7 +35,8 @@ export const coreReducers = {
     state.info.projectName = undefined;
     state.info.projectPath = undefined;
     state.info.projectFolderName = undefined;
-    state.info.projectThumbnail = undefined;
+    state.info.projectHasThumbnail = undefined;
+    state.info.projectThumbnailVersion = undefined;
     // Reset config to defaults when switching projects
     state.config.showCropVisualization = false;
     state.config.tagSortType = TagSortType.SORTABLE;

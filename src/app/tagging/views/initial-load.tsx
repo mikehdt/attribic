@@ -6,17 +6,26 @@ import Image from 'next/image';
 import { ProgressBar } from '@/app/shared/progress-bar/progress-bar';
 import { selectLoadProgress } from '@/app/store/assets';
 import { useAppSelector } from '@/app/store/hooks';
-import { selectProjectName, selectProjectThumbnail } from '@/app/store/project';
+import {
+  selectProjectFolderName,
+  selectProjectHasThumbnail,
+  selectProjectName,
+  selectProjectThumbnailVersion,
+} from '@/app/store/project';
+import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 export const InitialLoad = () => {
   const loadProgress = useAppSelector(selectLoadProgress);
   const projectName = useAppSelector(selectProjectName);
-  const projectThumbnail = useAppSelector(selectProjectThumbnail);
+  const projectFolderName = useAppSelector(selectProjectFolderName);
+  const hasThumbnail = useAppSelector(selectProjectHasThumbnail);
+  const thumbnailVersion = useAppSelector(selectProjectThumbnailVersion);
 
   // Build thumbnail src
-  const thumbnailSrc = projectThumbnail
-    ? `/tagging-projects/${encodeURIComponent(projectThumbnail)}`
-    : null;
+  const thumbnailSrc =
+    hasThumbnail && projectFolderName
+      ? projectThumbnailSrc(projectFolderName, thumbnailVersion)
+      : null;
 
   // Calculate progress percentage safely
   const progressPercentage =

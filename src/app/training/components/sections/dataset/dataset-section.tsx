@@ -11,6 +11,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
+import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 import { ProjectPicker } from '../../project-picker/project-picker';
 import type {
@@ -35,7 +36,7 @@ type DatasetSectionProps = {
     folderName: string,
     displayName: string,
     folders: Omit<DatasetFolder, keyof FolderAugmentation>[],
-    thumbnail?: string,
+    thumbnail?: boolean,
     thumbnailVersion?: number,
     dimensionHistogram?: Record<string, number>,
   ) => void;
@@ -198,14 +199,17 @@ const DatasetSectionComponent = ({
             {datasets.map((ds, dsIndex) => (
               <div
                 key={ds.folderName}
-                className="rounded border border-(--border-subtle) bg-(--surface)/30 p-3"
+                className="rounded-md border border-(--surface-hover) bg-white p-3 dark:bg-slate-800"
               >
                 <div className="mb-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {ds.thumbnail ? (
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 dark:bg-slate-600">
                         <Image
-                          src={`/tagging-projects/${ds.thumbnail}${ds.thumbnailVersion ? `?v=${ds.thumbnailVersion}` : ''}`}
+                          src={projectThumbnailSrc(
+                            ds.folderName,
+                            ds.thumbnailVersion,
+                          )}
                           alt={ds.projectName}
                           width={24}
                           height={24}

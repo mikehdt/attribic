@@ -47,7 +47,7 @@ export function FormTitle({
   className,
 }: FormTitleProps) {
   const textClasses = VARIANT_CLASSES[variant][size];
-  const layoutClasses = className ?? 'mb-1 block';
+  const layoutClasses = className ?? 'mb-1 block w-full';
   const Element = as;
 
   return (

@@ -3,6 +3,8 @@ import {
   ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
+  FlipHorizontal2Icon,
+  FlipVertical2Icon,
   FolderOpenIcon,
   HomeIcon,
   XIcon,
@@ -77,7 +79,9 @@ export function FolderRow({
             variant="ghost"
             size="sm"
             width="xs"
-            title={isExpanded ? 'Hide folder settings' : 'Folder settings'}
+            title={
+              isExpanded ? 'Hide advanced settings' : 'Show advanced settings'
+            }
           >
             {isExpanded ? (
               <ChevronDownIcon className="h-3 w-3" />
@@ -159,7 +163,89 @@ export function FolderRow({
 
       {isExpanded && (
         <div className="mb-2 ml-8 grid grid-cols-1 gap-3 rounded border border-(--border-subtle) bg-(--surface)/30 p-3 md:grid-cols-2">
-          <div className="flex items-center gap-2 md:col-span-2">
+          <div className="flex flex-wrap content-start gap-2">
+            <FormTitle>Horizontal Augmentation</FormTitle>
+
+            <Checkbox
+              isSelected={augmentation.flipAugment}
+              onChange={() =>
+                onUpdateAugment(datasetIndex, folderName, {
+                  flipAugment: !augmentation.flipAugment,
+                })
+              }
+              label="Allow horizontal flipping"
+            />
+            <p className="mt-0.5 text-slate-500">
+              <FlipHorizontal2Icon className="h-4.5 w-4.5" />
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-600">
+              Allow images to be flipped horizontally to increase training
+              variety
+            </p>
+          </div>
+
+          {supportsVerticalFlip && (
+            <div className="flex flex-wrap content-start gap-2">
+              <FormTitle>Vertical Augmentation</FormTitle>
+
+              <Checkbox
+                isSelected={augmentation.flipVAugment}
+                onChange={() =>
+                  onUpdateAugment(datasetIndex, folderName, {
+                    flipVAugment: !augmentation.flipVAugment,
+                  })
+                }
+                label="Allow vertical flipping"
+              />
+              <p className="mt-0.5 text-slate-500">
+                <FlipVertical2Icon className="h-4.5 w-4.5" />
+              </p>
+              <p className="text-xs text-slate-400 dark:text-slate-600">
+                Allow images to be flipped vertically to increase training
+                variety (unusual)
+              </p>
+            </div>
+          )}
+
+          <div>
+            <FormTitle>LoRA Weight</FormTitle>
+            <Input
+              type="text"
+              value={augmentation.loraWeight}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val) && val >= 0) {
+                  onUpdateAugment(datasetIndex, folderName, {
+                    loraWeight: val,
+                  });
+                }
+              }}
+              className="w-20 tabular-nums"
+              size="sm"
+            />
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-600">
+              Scales this folder&apos;s contribution (1 = standard)
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <FormTitle>Regularisation Set</FormTitle>
+            <Checkbox
+              isSelected={augmentation.isRegularization}
+              onChange={() =>
+                onUpdateAugment(datasetIndex, folderName, {
+                  isRegularization: !augmentation.isRegularization,
+                })
+              }
+              label="Images are a regularisation set"
+            />
+            <span className="w-full text-xs text-slate-400">
+              Mark these images as class/regularisation data, not training data
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+            <FormTitle>Captions</FormTitle>
             <Checkbox
               isSelected={augmentation.captionShuffling}
               onChange={() =>
@@ -168,10 +254,10 @@ export function FolderRow({
                 })
               }
               label="Shuffle captions"
-              size="sm"
             />
-            <span className="text-xs text-slate-400">
-              Randomise tag order during training
+            <span className="w-full text-xs text-slate-400">
+              Randomise tag order during training if tag order is not important
+              (Do not use if using natural language!)
             </span>
           </div>
 
@@ -217,71 +303,6 @@ export function FolderRow({
             <p className="mt-0.5 text-xs text-slate-400">
               Probability of dropping captions (0 = disabled)
             </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Checkbox
-              isSelected={augmentation.flipAugment}
-              onChange={() =>
-                onUpdateAugment(datasetIndex, folderName, {
-                  flipAugment: !augmentation.flipAugment,
-                })
-              }
-              label="Flip horizontally"
-              size="sm"
-            />
-          </div>
-
-          {supportsVerticalFlip && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                isSelected={augmentation.flipVAugment}
-                onChange={() =>
-                  onUpdateAugment(datasetIndex, folderName, {
-                    flipVAugment: !augmentation.flipVAugment,
-                  })
-                }
-                label="Flip vertically"
-                size="sm"
-              />
-            </div>
-          )}
-
-          <div>
-            <FormTitle>LoRA Weight</FormTitle>
-            <Input
-              type="text"
-              value={augmentation.loraWeight}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0) {
-                  onUpdateAugment(datasetIndex, folderName, {
-                    loraWeight: val,
-                  });
-                }
-              }}
-              className="w-20 tabular-nums"
-              size="sm"
-            />
-            <p className="mt-0.5 text-xs text-slate-400">
-              Scales this folder&apos;s contribution (1 = standard)
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Checkbox
-              isSelected={augmentation.isRegularization}
-              onChange={() =>
-                onUpdateAugment(datasetIndex, folderName, {
-                  isRegularization: !augmentation.isRegularization,
-                })
-              }
-              label="Regularisation set"
-              size="sm"
-            />
-            <span className="text-xs text-slate-400">
-              Treat as class/regularisation data, not training data
-            </span>
           </div>
         </div>
       )}

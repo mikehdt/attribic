@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 
+import type { ProjectConfig } from '@/app/services/tagging-projects/fs';
 import {
   createProjectThumbnail,
-  type ProjectConfig,
   removeProjectThumbnail,
   updateProject,
 } from '@/app/utils/project-actions';
@@ -123,7 +123,7 @@ export const useEditProject = (
             project.name === projectName
               ? {
                   ...project,
-                  thumbnail: result.thumbnail,
+                  thumbnail: true,
                   thumbnailVersion: result.thumbnailVersion,
                 }
               : project,

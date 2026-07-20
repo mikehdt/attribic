@@ -41,6 +41,8 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const stepPct = formatPct(currentStep, totalSteps);
   const savedCheckpoints = progress.savedCheckpoints ?? [];
   const checkpointSteps = progress.checkpointSteps ?? [];
+  const maxSavesToKeep =
+    Number(config?.hyperparameters?.extra?.maxSavesToKeep ?? 0) || 0;
   // While caching (latents / text-encoder outputs) show that phase's live
   // rate; it hands over to the real training speed curve once steps start.
   const speedSeries = isPreparing
@@ -87,6 +89,8 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             totalEpochs={progress.totalEpochs}
             checkpointSteps={checkpointSteps}
             savedCheckpoints={savedCheckpoints}
+            maxSavesToKeep={maxSavesToKeep}
+            provider={config?.provider}
             lrCurve={lrCurve}
             variant="detail"
             width={640}
@@ -241,11 +245,14 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         <div
           ref={logRef}
           onScroll={handleLogScroll}
-          className="mt-1 max-h-48 overflow-y-auto rounded border border-slate-300 bg-slate-100 p-2 font-mono text-[11px] text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300"
+          className="mt-1 max-h-48 overflow-auto rounded border border-slate-300 bg-slate-100 p-2 font-mono text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300"
         >
           {progress.logLines && progress.logLines.length > 0 ? (
             progress.logLines.map((line, i) => (
-              <div key={i} className="whitespace-pre-wrap">
+              // w-max + whitespace-pre: long lines scroll horizontally rather
+              // than soft-wrapping into a ragged block, and runs of spaces in
+              // tqdm bars survive instead of collapsing.
+              <div key={i} className="w-max whitespace-pre">
                 {line}
               </div>
             ))

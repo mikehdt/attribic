@@ -309,7 +309,7 @@ const trainingConfigSlice = createSlice({
       action: PayloadAction<{
         folderName: string;
         displayName: string;
-        thumbnail?: string;
+        thumbnail?: boolean;
         thumbnailVersion?: number;
         dimensionHistogram?: Record<string, number>;
         folders: Omit<DatasetFolder, keyof FolderAugmentation>[];

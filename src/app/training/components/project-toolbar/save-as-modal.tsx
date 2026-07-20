@@ -16,6 +16,7 @@ import {
   saveAsNewProject,
   saveAsNewVersion,
 } from '@/app/store/training-config/thunks';
+import { slugify } from '@/app/utils/slug';
 
 import { RadioRow } from './radio-row';
 
@@ -95,17 +96,26 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
     return [current, ...projects.filter((p) => p.id !== current.id)];
   }, [loadedProject, projects]);
 
+  // The name has to survive being turned into a URL segment, so both checks
+  // run on the slug rather than the raw string: "Arcadia Style" and
+  // "arcadia-style" are distinct names but would claim the same URL, and a
+  // name of pure punctuation yields no segment at all. The server enforces
+  // this too — this is just the inline version.
+  const nameSlug = useMemo(() => slugify(name), [name]);
+  const hasName = name.trim().length > 0;
+
   const nameTaken = useMemo(
     () =>
       isNew &&
-      name.trim().length > 0 &&
-      projects.some((p) => p.name.toLowerCase() === name.trim().toLowerCase()),
-    [isNew, name, projects],
+      nameSlug.length > 0 &&
+      projects.some((p) => slugify(p.name) === nameSlug),
+    [isNew, nameSlug, projects],
   );
+  const nameUnsluggable = isNew && hasName && nameSlug.length === 0;
 
   const canSubmit = (() => {
     if (isSaving) return false;
-    if (isNew) return name.trim().length > 0 && !nameTaken;
+    if (isNew) return hasName && !nameTaken && !nameUnsluggable;
     if (!selectedProject) return false;
     if (targetMode === 'replace') return confirmReplace;
     return true;
@@ -219,9 +229,17 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
                 placeholder="e.g. arcadia style"
               />
               {nameTaken && (
-                <p className="text-xs text-rose-600">
-                  A project with that name already exists.
+                <p className="text-sm text-rose-600">
+                  A project is already using the URL “{nameSlug}”.
                 </p>
+              )}
+              {nameUnsluggable && (
+                <p className="text-sm text-rose-600">
+                  Include at least one letter or number.
+                </p>
+              )}
+              {!nameTaken && !nameUnsluggable && nameSlug && (
+                <p className="text-sm text-slate-400">/training/{nameSlug}</p>
               )}
             </div>
             <div className="flex flex-col gap-1">

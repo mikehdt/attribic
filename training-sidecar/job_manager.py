@@ -143,6 +143,57 @@ def _lifecycle_from_training(status: JobStatus) -> LifecycleStatus:
     return LifecycleStatus.RUNNING
 
 
+def _new_accumulator(
+    *,
+    checkpoint_steps: list[int],
+    training_seconds: float,
+    provider: str,
+    output_path: str,
+    output_name: str,
+    history: Optional[list] = None,
+    speed_history: Optional[list] = None,
+    last_step: int = 0,
+    raw_count: int = 0,
+    saved: Optional[set[int]] = None,
+) -> dict:
+    """Build a per-job progress accumulator.
+
+    Single source of truth for the accumulator's shape — both the eager
+    creation at submit time and the lazy seed from persisted progress go
+    through here, so a new field can't be added to one and missed by the
+    other (which surfaces as a KeyError mid-run).
+    """
+    return {
+        "history": history if history is not None else [],
+        "speed_history": speed_history if speed_history is not None else [],
+        "last_step": last_step,
+        "stride": 1,
+        "raw_count": raw_count,
+        "checkpoint_steps": checkpoint_steps,
+        "saved": saved if saved is not None else set(),
+        # Active-training time accounting. `training_seconds` carries the
+        # running total (seeded from any resume marker); `last_tick` is the
+        # monotonic timestamp of the previous TRAINING update, or None
+        # whenever we're not mid-training so a non-training stretch isn't
+        # counted. The output_* / provider fields let the terminal and
+        # per-save marker writes find the trainer's state dirs.
+        "training_seconds": training_seconds,
+        "last_tick": None,
+        "provider": provider,
+        "output_path": output_path,
+        "output_name": output_name,
+        # step -> training_seconds at the moment that step's checkpoint was
+        # saved, so a state dir gets the time for the step it belongs to
+        # rather than the time we happened to notice the dir on disk.
+        "save_seconds_by_step": {},
+        # Transient per-caching-phase speed series (not persisted past prep).
+        # `prep_phase` tracks which phase it belongs to so a new caching bar
+        # starts a fresh curve.
+        "prep_speed": [],
+        "prep_phase": None,
+    }
+
+
 class JobManager:
     """Manages training job lifecycle, state persistence, and progress broadcasting.
 
@@ -257,30 +308,13 @@ class JobManager:
             checkpoint_steps=checkpoint_steps,
             training_seconds=carryforward,
         )
-        self._accumulators[job_id] = {
-            "history": [],
-            "speed_history": [],
-            "last_step": 0,
-            "stride": 1,
-            "raw_count": 0,
-            "checkpoint_steps": checkpoint_steps,
-            "saved": set(),
-            # Active-training time accounting. `training_seconds` carries the
-            # running total (seeded from any resume marker above); `last_tick`
-            # is the monotonic timestamp of the previous TRAINING update, or
-            # None whenever we're not mid-training so a non-training stretch
-            # isn't counted. The output_* / provider fields let the terminal
-            # and per-save marker writes find the trainer's state dirs.
-            "training_seconds": carryforward,
-            "last_tick": None,
-            "provider": request.provider.value,
-            "output_path": request.output_path,
-            "output_name": request.output_name,
-            # step -> training_seconds at the moment that step's checkpoint was
-            # saved, so a state dir gets the time for the step it belongs to
-            # rather than the time we happened to notice the dir on disk.
-            "save_seconds_by_step": {},
-        }
+        self._accumulators[job_id] = _new_accumulator(
+            checkpoint_steps=checkpoint_steps,
+            training_seconds=carryforward,
+            provider=request.provider.value,
+            output_path=request.output_path,
+            output_name=request.output_name,
+        )
 
         self._jobs[job_id] = JobState(
             job_id=job_id,
@@ -415,26 +449,18 @@ class JobManager:
             # from the persisted config (snake_case request dump) so a marker
             # write on this path can still locate the state dirs.
             cfg = job.config or {}
-            acc = {
-                "history": list(job.progress.loss_history),
-                "speed_history": list(job.progress.speed_history),
-                "last_step": job.progress.current_step,
-                "stride": 1,
-                "raw_count": len(job.progress.loss_history),
-                "checkpoint_steps": list(job.progress.checkpoint_steps),
-                "saved": {int(s) for s in job.progress.saved_checkpoints},
-                "training_seconds": float(job.progress.training_seconds or 0.0),
-                "last_tick": None,
-                "provider": cfg.get("provider") or job.provider.value,
-                "output_path": cfg.get("output_path", ""),
-                "output_name": cfg.get("output_name", ""),
-                "save_seconds_by_step": {},
-                # Transient per-caching-phase speed series (not persisted past
-                # prep). `prep_phase` tracks which phase it belongs to so a new
-                # caching bar starts a fresh curve.
-                "prep_speed": [],
-                "prep_phase": None,
-            }
+            acc = _new_accumulator(
+                history=list(job.progress.loss_history),
+                speed_history=list(job.progress.speed_history),
+                last_step=job.progress.current_step,
+                raw_count=len(job.progress.loss_history),
+                checkpoint_steps=list(job.progress.checkpoint_steps),
+                saved={int(s) for s in job.progress.saved_checkpoints},
+                training_seconds=float(job.progress.training_seconds or 0.0),
+                provider=cfg.get("provider") or job.provider.value,
+                output_path=cfg.get("output_path", ""),
+                output_name=cfg.get("output_name", ""),
+            )
             self._accumulators[progress.job_id] = acc
 
         # Accumulate active-training wall-time. Every TRAINING update (step ticks

@@ -5,7 +5,6 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 
 import { imageDimensionsFromStream } from 'image-dimensions';
-import sharp from 'sharp';
 
 import {
   isSupportedAssetExtension,
@@ -22,6 +21,7 @@ import { splitHybrid } from '../store/assets/hybrid-caption';
 import type { CaptionMode } from '../store/project/types';
 import { calculateKohyaBucket, KOHYA_CONFIGS } from './image-utils';
 import { getProjectCaptionMode } from './project-actions';
+import { sharp } from './sharp';
 import { isValidRepeatFolder } from './subfolder-utils';
 
 /**

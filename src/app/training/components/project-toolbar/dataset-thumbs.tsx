@@ -4,6 +4,7 @@ import { FolderOpenIcon } from 'lucide-react';
 import Image from 'next/image';
 
 import type { TrainingProjectDatasetSummary } from '@/app/services/training-projects/disk-schema';
+import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 /** Thumbs beyond this are dropped — the stack stops reading as a stack. */
 const MAX_THUMBS = 3;
@@ -22,7 +23,13 @@ export const DatasetThumbs = ({
 }: {
   datasets: TrainingProjectDatasetSummary[];
 }) => {
-  const withThumbs = datasets.filter((d) => d.thumbnail);
+  // `folderName` is what the thumbnail URL is built from — `projectName` is a
+  // display title the user may have changed. Saves predating it can't resolve
+  // a thumbnail, so they fall through to the folder icon.
+  const withThumbs = datasets.filter(
+    (d): d is TrainingProjectDatasetSummary & { folderName: string } =>
+      Boolean(d.thumbnail && d.folderName),
+  );
 
   if (withThumbs.length === 0) {
     return (
@@ -47,7 +54,7 @@ export const DatasetThumbs = ({
           }}
         >
           <Image
-            src={`/tagging-projects/${d.thumbnail}${d.thumbnailVersion ? `?v=${d.thumbnailVersion}` : ''}`}
+            src={projectThumbnailSrc(d.folderName, d.thumbnailVersion)}
             alt={d.projectName}
             width={32}
             height={32}

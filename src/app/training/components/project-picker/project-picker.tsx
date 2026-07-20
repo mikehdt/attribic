@@ -7,6 +7,7 @@ import React, { memo, useMemo, useState } from 'react';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox/checkbox';
 import { Popup } from '@/app/shared/popup';
+import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 import type {
   DatasetFolder,
@@ -22,7 +23,7 @@ type ProjectPickerProps = {
     folderName: string,
     displayName: string,
     folders: PickedFolder[],
-    thumbnail?: string,
+    thumbnail?: boolean,
     thumbnailVersion?: number,
     dimensionHistogram?: Record<string, number>,
   ) => void;
@@ -73,7 +74,7 @@ const ProjectPickerComponent = ({
     // main tagging project list, unless already dimmed by another state.
     const isHiddenDimmed = project.hidden && !isExcluded && !isSelecting;
     const thumbnailSrc = project.thumbnail
-      ? `/tagging-projects/${project.thumbnail}${project.thumbnailVersion ? `?v=${project.thumbnailVersion}` : ''}`
+      ? projectThumbnailSrc(project.name, project.thumbnailVersion)
       : null;
 
     return (

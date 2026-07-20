@@ -20,8 +20,11 @@ export type TrainingProjectVersion = {
 
 /** The bits of a dataset the load UI needs to render its thumbnail. */
 export type TrainingProjectDatasetSummary = {
+  /** Display name, which the user may have retitled — not a path. */
   projectName: string;
-  thumbnail?: string;
+  /** The on-disk folder, which is what the thumbnail path is built from. */
+  folderName?: string;
+  thumbnail?: boolean;
   thumbnailVersion?: number;
 };
 

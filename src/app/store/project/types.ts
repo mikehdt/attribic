@@ -2,7 +2,9 @@ type ProjectInfo = {
   projectName?: string;
   projectPath?: string;
   projectFolderName?: string;
-  projectThumbnail?: string;
+  projectHasThumbnail?: boolean;
+  /** Cache-buster for the thumbnail URL, which is otherwise cached hard. */
+  projectThumbnailVersion?: number;
 };
 
 export type CaptionMode = 'tags' | 'sentences' | 'caption' | 'hybrid';

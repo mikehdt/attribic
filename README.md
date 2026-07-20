@@ -54,6 +54,16 @@ Batch runs stream progress over a streaming setup, can be cancelled mid-run, and
 - Supported video: `.mp4`
 - Tags: comma-separated, one line, in a `.txt` file with the same stem as the asset.
 
+## Exclude Project Folders
+
+Sub-folders inside your main tagging/training folder can also have a `/.tagging/project.json` with a key set to completely ignore that folder as a project. Use this to exclude folders that might have images but are unrelated to being a project. The key to set in the `project.json` is:
+
+```json
+{
+  "private": true
+}
+```
+
 ## Installing
 
 The app is a Next.js project. The auto-tagger ONNX engine is pure JS and works out of the box. The Python sidecar (for VLM captioning) is optional and only needed if you want natural-language captions or training.

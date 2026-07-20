@@ -1,4 +1,4 @@
-import { FolderOpenIcon } from 'lucide-react';
+import { FolderOpenIcon, InfoIcon } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
 import type { TrainingDefaults } from '@/app/services/training/models';
@@ -208,12 +208,13 @@ const SavingSectionComponent = ({
                   </div>
                 ) : (
                   <div className="flex items-center">
+                    <InfoIcon className="mr-1 h-4 w-4 text-slate-600 dark:text-slate-400" />
                     <p className="text-xs text-slate-400">
                       {maxSavesToKeep === 0
                         ? 'Keeps every checkpoint'
                         : maxSavesToKeep === 1
-                          ? 'Keeps only the latest checkpoint (older ones deleted)'
-                          : `Keeps the last ${maxSavesToKeep} checkpoints (older ones deleted)`}
+                          ? 'Keeps only the latest checkpoint (earlier ones deleted)'
+                          : `Keeps the last ${maxSavesToKeep} checkpoints (earlier ones deleted)`}
                     </p>
                   </div>
                 )}

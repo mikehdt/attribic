@@ -1,4 +1,7 @@
-import type { TrainingProgress } from '@/app/services/training/types';
+import type {
+  TrainingProgress,
+  TrainingProvider,
+} from '@/app/services/training/types';
 import type { TaggingJob } from '@/app/store/jobs';
 
 /**
@@ -78,14 +81,14 @@ export function deriveTaggingStatusLabel(job: TaggingJob): string {
 
   const phase = getTaggingPreloadPhase(job);
   if (phase === 'queued') {
-    return `Queued for the GPU — position ${progress?.queued?.position ?? 1}`;
+    return `Queued for when GPU is free`;
   }
   if (phase === 'loading' && progress?.loading) {
     const { message, current, total } = progress.loading;
     return total > 0 ? `${message} (${current}/${total})` : message;
   }
   if (phase === 'starting') {
-    return isCaptionJob(job) ? 'Starting captioner…' : 'Starting auto-tagger…';
+    return isCaptionJob(job) ? 'Loading captioner…' : 'Loading auto-tagger…';
   }
   if (job.status === 'running' || job.status === 'preparing') {
     return progress?.currentFileId || 'Processing...';
@@ -159,6 +162,70 @@ export function formatSecPerIt(secPerIt: number): string {
   if (secPerIt >= 100) return secPerIt.toFixed(0);
   if (secPerIt >= 10) return secPerIt.toFixed(1);
   return secPerIt.toFixed(2);
+}
+
+/**
+ * Split confirmed saves into those the trainer has since deleted and those
+ * still on disk, given the run's rolling-save window (`maxSavesToKeep`, 0 =
+ * keep all). Neither backend reports deletions, so this mirrors their pruning
+ * rules — verified against both sources:
+ *
+ * Both write the end-of-run save WITHOUT the numeric suffix their pruner
+ * matches on (sd-scripts `get_last_ckpt_name`; ai-toolkit's `{job_name}_*`
+ * glob), so it is never swept and a keep-4 run ends with 5 files.
+ *
+ * Where they differ is the last step:
+ * - sd-scripts skips the final epoch's numbered save outright
+ *   (`train_network.py`: `... and (epoch + 1) < num_train_epochs`), so the
+ *   last step carries the final save ALONE. It sits outside the window, and
+ *   the window applies to the numbered saves before it.
+ * - ai-toolkit has no such guard, so when the interval divides the run evenly
+ *   the last step carries a numbered save AND the final save. That numbered
+ *   save counts toward the window, and both files share one step — so the
+ *   window applies to the whole set.
+ *
+ * Steps are the only granularity we have, so co-located files collapse to a
+ * single entry. That's faithful: the line marks a step that still has a
+ * checkpoint.
+ */
+export function splitPrunedCheckpoints({
+  savedCheckpoints,
+  maxSavesToKeep,
+  provider,
+  totalSteps,
+  currentStep,
+}: {
+  savedCheckpoints: number[];
+  maxSavesToKeep: number;
+  provider?: TrainingProvider;
+  totalSteps: number;
+  currentStep: number;
+}): { pruned: number[]; live: number[] } {
+  if (maxSavesToKeep <= 0 || savedCheckpoints.length === 0) {
+    return { pruned: [], live: savedCheckpoints };
+  }
+
+  // Only a finished run has written its exempt final save.
+  const finalSaveWritten =
+    totalSteps > 0 &&
+    currentStep >= totalSteps &&
+    savedCheckpoints[savedCheckpoints.length - 1] >= totalSteps;
+  // ...and only sd-scripts leaves it alone at that step (see above). Unknown
+  // providers take the plain last-N reading rather than inventing an exemption.
+  const finalIsExempt = finalSaveWritten && provider === 'kohya';
+
+  const windowed = finalIsExempt
+    ? savedCheckpoints.slice(0, -1)
+    : savedCheckpoints;
+  const keptFrom = Math.max(0, windowed.length - maxSavesToKeep);
+
+  return {
+    pruned: windowed.slice(0, keptFrom),
+    live: [
+      ...windowed.slice(keptFrom),
+      ...(finalIsExempt ? savedCheckpoints.slice(-1) : []),
+    ],
+  };
 }
 
 /**

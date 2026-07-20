@@ -42,7 +42,14 @@ EPOCH_PATTERN = re.compile(r"epoch\s+(\d+)\s*/\s*(\d+)")
 
 # Leading "2026-07-13 21:20:00 " on sd-scripts' rich-formatted log lines. Only
 # stripped for repeat comparison — the line itself keeps its timestamp.
+# We pass --console_log_simple so sd-scripts' own logger no longer emits these,
+# but accelerate and other libraries configure their own handlers, so keep it.
 LOG_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+")
+
+# CSI escapes (colour, cursor moves) from tqdm and any library that still
+# writes styled output. Stripped at read time so they never reach the UI, which
+# renders lines as plain text, and never defeat repeat comparison.
+ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
 
 # Longest run of lines treated as one repeatable block by `_append_log_line`.
 MAX_REPEAT_BLOCK = 4
@@ -453,6 +460,19 @@ class KohyaProvider(TrainingProvider):
             f"--max_grad_norm={_num(hp.get('max_grad_norm', 1.0))}",
         ]
 
+        # Plain-text logging instead of rich. sd-scripts' default RichHandler
+        # renders each record as separate column writes (timestamp, level,
+        # message, right-aligned "dataset.py:464" gutter). Several DataLoader
+        # workers share one stderr fd, so those partial writes interleave in the
+        # pipe and reach us spliced together mid-line — unparseable, and immune
+        # to `_append_log_line`'s repeat collapsing because no two shredded
+        # lines compare equal. --console_log_simple swaps in a StreamHandler
+        # with fmt="%(message)s": one write per line, no decoration, so worker
+        # repeats become byte-identical and collapse as intended. Side effect:
+        # library logging moves from stderr to stdout (both are read here), and
+        # lines lose their wall-clock timestamp.
+        args.append("--console_log_simple")
+
         # Flow-matching controls (Anima). SDXL is DDPM and its train script
         # does not accept these flags, so they're gated on the model entry.
         if model_def.get("flow_matching"):
@@ -725,7 +745,7 @@ class KohyaProvider(TrainingProvider):
                     for sep in ["\n", "\r"]:
                         if sep in buffer:
                             line, buffer = buffer.split(sep, 1)
-                            line = line.strip()
+                            line = ANSI_PATTERN.sub("", line).strip()
                             if line:
                                 yield line
                             break

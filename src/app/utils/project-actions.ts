@@ -3,46 +3,33 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import sharp from 'sharp';
-
 import {
   isSupportedAssetExtension,
   isSupportedImageExtension,
 } from '@/app/constants';
 import type { AutoTaggerSettings } from '@/app/services/auto-tagger';
 import { getProjectsFolder } from '@/app/services/config/server-config';
+import type { ProjectConfig } from '@/app/services/tagging-projects/fs';
+import {
+  deleteThumbnail,
+  hasThumbnail,
+  readConfig,
+  writeConfig,
+  writeThumbnail,
+} from '@/app/services/tagging-projects/fs';
 import type { CaptionMode } from '@/app/store/project/types';
 
+import { sharp } from './sharp';
 import { isValidRepeatFolder, parseSubfolder } from './subfolder-utils';
 
 const getServerConfig = () => ({
   projectsFolder: getProjectsFolder() || 'public/assets',
 });
 
-export type ProjectConfig = {
-  title?: string;
-  color?: 'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
-  thumbnail?: boolean;
-  thumbnailVersion?: number;
-  hidden?: boolean;
-  featured?: boolean;
-  autoTagger?: AutoTaggerSettings;
-  captionMode?: CaptionMode;
-  triggerPhrases?: string[];
-  /**
-   * The project's canonical natural-language captioning prompt. Absent means
-   * "never authored" — captioning runs fall back to the built-in default.
-   * Only the project menu's prompt modal writes this; a run's per-batch edits
-   * are deliberately not persisted here.
-   */
-  captionPrompt?: string;
-};
-
-type CentralizedProjectInfo = ProjectConfig;
-
-type LocalProjectInfo = {
-  private?: boolean;
-};
+// `ProjectConfig` is deliberately not re-exported here: the 'use server'
+// transform turns even a type-only re-export into a runtime export, which
+// throws `ProjectConfig is not defined` on the first server action. Import it
+// from the service instead.
 
 export type Project = {
   name: string;
@@ -50,7 +37,8 @@ export type Project = {
   imageCount?: number;
   title?: string;
   color?: 'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
-  thumbnail?: string;
+  /** Whether a thumbnail exists; its path is derived from the project name. */
+  thumbnail?: boolean;
   thumbnailVersion?: number;
   hidden?: boolean;
   private?: boolean;
@@ -58,97 +46,6 @@ export type Project = {
   captionMode?: CaptionMode;
   triggerPhrases?: string[];
   captionPrompt?: string;
-};
-
-/**
- * Resolve a project's canonical caption prompt.
- *
- * Before the prompt was project-level, every completed captioning run wrote its
- * prompt into `autoTagger.prompt`. Projects tagged under that scheme adopt that
- * value as their canonical prompt rather than silently reverting to the
- * built-in default.
- */
-const resolveCaptionPrompt = (
-  config: CentralizedProjectInfo | null,
-): string | undefined => config?.captionPrompt ?? config?.autoTagger?.prompt;
-
-/**
- * Find thumbnail file for a project based on project name
- * Looks for [project-name].[ext] in /public/tagging-projects/ folder
- */
-const findThumbnailFile = (projectName: string): string | undefined => {
-  try {
-    const projectsDir = path.join(process.cwd(), 'public', 'tagging-projects');
-    const supportedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
-
-    for (const ext of supportedExtensions) {
-      const thumbnailPath = path.join(projectsDir, `${projectName}${ext}`);
-      if (fs.existsSync(thumbnailPath)) {
-        return `${projectName}${ext}`;
-      }
-    }
-
-    return undefined;
-  } catch (error) {
-    console.warn(`Error finding thumbnail for ${projectName}:`, error);
-    return undefined;
-  }
-};
-
-/**
- * Read centralized project info from /public/tagging-projects/[project-name].json
- */
-const readCentralizedProjectInfo = (
-  projectName: string,
-): CentralizedProjectInfo | null => {
-  try {
-    const centralConfigPath = path.join(
-      process.cwd(),
-      'public',
-      'tagging-projects',
-      `${projectName}.json`,
-    );
-
-    if (!fs.existsSync(centralConfigPath)) {
-      return null;
-    }
-
-    const configContent = fs.readFileSync(centralConfigPath, 'utf-8');
-    const config = JSON.parse(configContent) as CentralizedProjectInfo;
-
-    return config;
-  } catch (error) {
-    console.warn(
-      `Error reading centralized project info for ${projectName}:`,
-      error,
-    );
-    return null;
-  }
-};
-
-/**
- * Read local project info from [project-folder]/_project.json
- * Only supports private flag
- */
-const readLocalProjectInfo = (projectPath: string): LocalProjectInfo | null => {
-  try {
-    const localConfigPath = path.join(projectPath, '_project.json');
-
-    if (!fs.existsSync(localConfigPath)) {
-      return null;
-    }
-
-    const configContent = fs.readFileSync(localConfigPath, 'utf-8');
-    const config = JSON.parse(configContent) as LocalProjectInfo;
-
-    // Only return private flag - ignore any other properties
-    return {
-      private: config.private || false,
-    };
-  } catch (error) {
-    console.warn(`Error reading local project info for ${projectPath}:`, error);
-    return null;
-  }
 };
 
 /**
@@ -167,7 +64,7 @@ export const getProjectCaptionMode = async (
 ): Promise<CaptionMode> => {
   if (!projectPath) return 'tags';
   const folderName = path.basename(projectPath);
-  return readCentralizedProjectInfo(folderName)?.captionMode ?? 'tags';
+  return readConfig(folderName)?.captionMode ?? 'tags';
 };
 
 /**
@@ -178,35 +75,22 @@ export const getProjectInfo = async (
   folderName: string,
 ): Promise<{
   title: string;
-  thumbnail?: string;
+  thumbnail?: boolean;
+  thumbnailVersion?: number;
   captionMode?: CaptionMode;
   triggerPhrases?: string[];
   captionPrompt?: string;
 } | null> => {
   try {
-    const centralInfo = readCentralizedProjectInfo(folderName);
-    const thumbnail = findThumbnailFile(folderName);
-    const captionPrompt = resolveCaptionPrompt(centralInfo);
-
-    // One-time migration of a legacy run-persisted prompt to the project-level
-    // field. Opening the project is the natural point for it: without this the
-    // next completed run rewrites the `autoTagger` blob without `prompt` and
-    // the project would silently revert to the built-in default.
-    if (centralInfo?.captionPrompt === undefined && captionPrompt) {
-      const autoTagger = { ...centralInfo?.autoTagger };
-      delete autoTagger.prompt;
-      await updateProject(folderName, {
-        captionPrompt,
-        autoTagger: Object.keys(autoTagger).length > 0 ? autoTagger : undefined,
-      });
-    }
+    const config = readConfig(folderName);
 
     return {
-      title: centralInfo?.title || folderName,
-      thumbnail: thumbnail || undefined,
-      captionMode: centralInfo?.captionMode,
-      triggerPhrases: centralInfo?.triggerPhrases,
-      captionPrompt,
+      title: config?.title || folderName,
+      thumbnail: hasThumbnail(folderName),
+      thumbnailVersion: config?.thumbnailVersion,
+      captionMode: config?.captionMode,
+      triggerPhrases: config?.triggerPhrases,
+      captionPrompt: config?.captionPrompt,
     };
   } catch {
     return null;
@@ -292,35 +176,25 @@ export const getProjectList = async (): Promise<Project[]> => {
           // Continue with imageCount = 0
         }
 
-        // Read centralized project info first (takes precedence)
-        const centralizedInfo = readCentralizedProjectInfo(folder.name);
+        const config = readConfig(folder.name);
 
-        // Read local project info for privacy setting
-        const localInfo = readLocalProjectInfo(projectPath);
-
-        // Combine configuration with centralized taking precedence
-        const isPrivate = localInfo?.private || false;
-        const isHidden = centralizedInfo?.hidden || isPrivate;
-
-        // Find thumbnail file if thumbnail is enabled
-        const thumbnailFile = centralizedInfo?.thumbnail
-          ? findThumbnailFile(folder.name)
-          : undefined;
+        const isPrivate = config?.private || false;
+        const isHidden = config?.hidden || isPrivate;
 
         return {
           name: folder.name,
           path: projectPath,
           imageCount,
-          title: centralizedInfo?.title,
-          color: centralizedInfo?.color,
-          thumbnail: thumbnailFile,
-          thumbnailVersion: centralizedInfo?.thumbnailVersion,
+          title: config?.title,
+          color: config?.color,
+          thumbnail: config?.thumbnail ? hasThumbnail(folder.name) : false,
+          thumbnailVersion: config?.thumbnailVersion,
           hidden: isHidden,
           private: isPrivate,
-          featured: centralizedInfo?.featured || false,
-          captionMode: centralizedInfo?.captionMode,
-          triggerPhrases: centralizedInfo?.triggerPhrases,
-          captionPrompt: resolveCaptionPrompt(centralizedInfo),
+          featured: config?.featured || false,
+          captionMode: config?.captionMode,
+          triggerPhrases: config?.triggerPhrases,
+          captionPrompt: config?.captionPrompt,
         };
       }),
     );
@@ -374,33 +248,9 @@ export const updateProject = async (
       }
     }
 
-    const projectsDir = path.join(process.cwd(), 'public', 'tagging-projects');
-    const configPath = path.join(projectsDir, `${projectName}.json`);
-
-    // Ensure the projects directory exists
-    if (!fs.existsSync(projectsDir)) {
-      fs.mkdirSync(projectsDir, { recursive: true });
-    }
-
-    let config: ProjectConfig = {};
-
-    // Read existing config if it exists
-    if (fs.existsSync(configPath)) {
-      try {
-        const configContent = fs.readFileSync(configPath, 'utf-8');
-        config = JSON.parse(configContent);
-      } catch (error) {
-        console.error(
-          `Error reading existing config for ${projectName}:`,
-          error,
-        );
-        // Continue with empty config if parsing fails
-      }
-    }
-
     // Update the config with new values
     const updatedConfig = {
-      ...config,
+      ...(readConfig(projectName) ?? {}),
       ...updates,
     };
 
@@ -415,15 +265,7 @@ export const updateProject = async (
       }
     });
 
-    // If config is empty, remove the file
-    if (Object.keys(updatedConfig).length === 0) {
-      if (fs.existsSync(configPath)) {
-        fs.unlinkSync(configPath);
-      }
-    } else {
-      // Write the updated config
-      fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
-    }
+    writeConfig(projectName, updatedConfig);
 
     return { success: true, config: updatedConfig };
   } catch (error) {
@@ -443,26 +285,9 @@ export const createProjectThumbnail = async (
   imageData: ArrayBuffer,
 ): Promise<{
   success: boolean;
-  thumbnail: string;
   thumbnailVersion: number;
 }> => {
   try {
-    const projectsDir = path.join(process.cwd(), 'public', 'tagging-projects');
-
-    // Ensure the projects directory exists
-    if (!fs.existsSync(projectsDir)) {
-      fs.mkdirSync(projectsDir, { recursive: true });
-    }
-
-    // Remove any existing thumbnail files for this project
-    const supportedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
-    for (const ext of supportedExtensions) {
-      const existingPath = path.join(projectsDir, `${projectName}${ext}`);
-      if (fs.existsSync(existingPath)) {
-        fs.unlinkSync(existingPath);
-      }
-    }
-
     // Process the image with sharp - center crop to square, resize to 80x80
     const buffer = Buffer.from(imageData);
     const image = sharp(buffer);
@@ -477,21 +302,19 @@ export const createProjectThumbnail = async (
     const left = Math.floor((metadata.width - size) / 2);
     const top = Math.floor((metadata.height - size) / 2);
 
-    // Output as PNG for consistent quality
-    const thumbnailFilename = `${projectName}.png`;
-    const thumbnailPath = path.join(projectsDir, thumbnailFilename);
-
-    await image
-      .extract({ left, top, width: size, height: size })
-      .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE)
-      .png()
-      .toFile(thumbnailPath);
+    await writeThumbnail(projectName, (destination) =>
+      image
+        .extract({ left, top, width: size, height: size })
+        .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE)
+        .png()
+        .toFile(destination),
+    );
 
     // Update the project config to enable thumbnail with version for cache-busting
     const thumbnailVersion = Date.now();
     await updateProject(projectName, { thumbnail: true, thumbnailVersion });
 
-    return { success: true, thumbnail: thumbnailFilename, thumbnailVersion };
+    return { success: true, thumbnailVersion };
   } catch (error) {
     console.error('Error creating project thumbnail:', error);
     throw error;
@@ -505,16 +328,7 @@ export const removeProjectThumbnail = async (
   projectName: string,
 ): Promise<{ success: boolean }> => {
   try {
-    const projectsDir = path.join(process.cwd(), 'public', 'tagging-projects');
-
-    // Remove any existing thumbnail files for this project
-    const supportedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
-    for (const ext of supportedExtensions) {
-      const existingPath = path.join(projectsDir, `${projectName}${ext}`);
-      if (fs.existsSync(existingPath)) {
-        fs.unlinkSync(existingPath);
-      }
-    }
+    deleteThumbnail(projectName);
 
     // Update the project config to disable thumbnail and clear version
     await updateProject(projectName, {
@@ -536,8 +350,7 @@ export const getAutoTaggerSettings = async (
   projectName: string,
 ): Promise<AutoTaggerSettings | null> => {
   try {
-    const config = readCentralizedProjectInfo(projectName);
-    return config?.autoTagger || null;
+    return readConfig(projectName)?.autoTagger || null;
   } catch (error) {
     console.error('Error reading auto-tagger settings:', error);
     return null;

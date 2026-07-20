@@ -6,6 +6,8 @@ import {
   renameProject,
 } from '@/app/services/training-projects/fs';
 
+import { nameErrorResponse } from '../name-errors';
+
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, { params }: Params) {
@@ -44,6 +46,8 @@ export async function PATCH(request: Request, { params }: Params) {
     }
     return NextResponse.json({ meta });
   } catch (error) {
+    const named = nameErrorResponse(error);
+    if (named) return named;
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }

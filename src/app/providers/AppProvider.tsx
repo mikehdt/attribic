@@ -100,6 +100,7 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
           path: urlProject,
           folderName: urlProject,
           thumbnail: info?.thumbnail,
+          thumbnailVersion: info?.thumbnailVersion,
         }),
       );
     });

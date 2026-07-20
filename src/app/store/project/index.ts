@@ -9,7 +9,8 @@ const initialState: ProjectState = {
     projectName: undefined,
     projectPath: undefined,
     projectFolderName: undefined,
-    projectThumbnail: undefined,
+    projectHasThumbnail: undefined,
+    projectThumbnailVersion: undefined,
   },
   config: {
     showCropVisualization: false,
@@ -29,7 +30,9 @@ const projectSlice = createSlice({
     // Project info selectors
     selectProjectName: (state) => state.info.projectName,
     selectProjectFolderName: (state) => state.info.projectFolderName,
-    selectProjectThumbnail: (state) => state.info.projectThumbnail,
+    selectProjectHasThumbnail: (state) => state.info.projectHasThumbnail,
+    selectProjectThumbnailVersion: (state) =>
+      state.info.projectThumbnailVersion,
     selectProjectInfo: (state) => state.info,
 
     // Project config selectors
@@ -60,7 +63,8 @@ export const {
 export const {
   selectProjectName,
   selectProjectFolderName,
-  selectProjectThumbnail,
+  selectProjectHasThumbnail,
+  selectProjectThumbnailVersion,
   selectProjectInfo,
   selectShowCropVisualization,
   selectTagSortType,

@@ -2,6 +2,8 @@ import { FolderIcon, ImageIcon, StarIcon, XIcon } from 'lucide-react';
 import Image from 'next/image';
 import { memo, useRef, useState } from 'react';
 
+import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
+
 import type { Project } from './types';
 
 type ProjectIconProps = {
@@ -24,7 +26,7 @@ const ProjectIconComponent = ({
 
   // Build thumbnail src with cache-busting version
   const thumbnailSrc = project.thumbnail
-    ? `/tagging-projects/${project.thumbnail}${project.thumbnailVersion ? `?v=${project.thumbnailVersion}` : ''}`
+    ? projectThumbnailSrc(project.name, project.thumbnailVersion)
     : null;
 
   const handleStarClick = (e: React.MouseEvent) => {

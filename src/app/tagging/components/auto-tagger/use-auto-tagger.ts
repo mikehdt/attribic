@@ -305,7 +305,7 @@ export function useAutoTagger({
       if (captionItems.length === 0) return tagItems;
 
       return [
-        { groupLabel: 'Tags', items: tagItems },
+        { groupLabel: 'Booru-style Tagging', items: tagItems },
         { groupLabel: 'Natural Language', items: captionItems },
       ];
     }, [modeFilteredReadyModels, captionMode]);

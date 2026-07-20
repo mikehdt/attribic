@@ -6,6 +6,8 @@ import {
 } from '@/app/services/training-projects/fs';
 import type { FormState } from '@/app/store/training-config/types';
 
+import { nameErrorResponse } from './name-errors';
+
 export async function GET() {
   try {
     const projects = await listProjects();
@@ -38,6 +40,8 @@ export async function POST(request: Request) {
     );
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    const named = nameErrorResponse(error);
+    if (named) return named;
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }

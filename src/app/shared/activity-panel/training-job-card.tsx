@@ -113,6 +113,8 @@ export function TrainingJobCard({
   const checkpointPositions = progress?.checkpointSteps ?? [];
   const savedCount = deriveSavedCount(progress);
   const lrCurve = useLrScheduleCurve(config, progress?.totalSteps ?? 0);
+  const maxSavesToKeep =
+    Number(config?.hyperparameters?.extra?.maxSavesToKeep ?? 0) || 0;
 
   // Prefer the phase label the provider sends (survives rapid tqdm redraws);
   // fall back to scraping it out of the recent log lines (ai-toolkit, and
@@ -199,6 +201,8 @@ export function TrainingJobCard({
               totalEpochs={progress?.totalEpochs ?? 0}
               checkpointSteps={checkpointPositions}
               savedCheckpoints={progress?.savedCheckpoints ?? []}
+              maxSavesToKeep={maxSavesToKeep}
+              provider={config?.provider}
               lrCurve={lrCurve}
               variant="compact"
               width={264}
@@ -230,9 +234,17 @@ export function TrainingJobCard({
             {/* Activity line — names what the trainer is doing right now, so a
                 frozen step bar (mid checkpoint save) doesn't look hung. */}
             <div className="mt-1 flex w-full text-xs">
-              {isRunning && (
+              {isRunning ? (
                 <span className="truncate text-sky-600 dark:text-sky-400">
                   {progress!.phase ?? 'Training'}
+                </span>
+              ) : isFailed ? (
+                <span className="truncate text-rose-600 dark:text-rose-400">
+                  Failed
+                </span>
+              ) : (
+                <span className="truncate text-slate-600 dark:text-slate-400">
+                  Cancelled
                 </span>
               )}
               {savedCount > 0 && (

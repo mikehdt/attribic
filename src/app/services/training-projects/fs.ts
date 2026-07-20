@@ -15,6 +15,7 @@ import path from 'path';
 
 import { getProjectsFolder } from '@/app/services/config/server-config';
 import type { FormState } from '@/app/store/training-config/types';
+import { slugify } from '@/app/utils/slug';
 
 import type {
   TrainingProjectMeta,
@@ -150,6 +151,86 @@ async function listVersionNumbers(id: string): Promise<number[]> {
   return versions;
 }
 
+// --- Slugs ---
+
+/**
+ * A name whose slug is already in use by another project. Routes map this to
+ * a 409 so the UI can point at the name field rather than showing a generic
+ * save failure.
+ */
+export class SlugConflictError extends Error {
+  constructor(
+    readonly slug: string,
+    readonly conflictingName: string,
+  ) {
+    super(`A project named “${conflictingName}” already uses the URL “${slug}”`);
+    this.name = 'SlugConflictError';
+  }
+}
+
+/** A name with no alphanumeric content, which can't produce a URL segment. */
+export class UnsluggableNameError extends Error {
+  constructor(readonly name: string) {
+    super('Project name must contain at least one letter or number');
+    this.name = 'UnsluggableNameError';
+  }
+}
+
+/**
+ * Read every project's meta without touching version files.
+ *
+ * {@link listProjects} reads all of them to build version summaries, which is
+ * far more I/O than slug resolution needs.
+ */
+async function listMetas(): Promise<TrainingProjectMeta[]> {
+  const root = getTrainingProjectsRoot();
+  if (!(await pathExists(root))) return [];
+
+  const metas: TrainingProjectMeta[] = [];
+  for (const id of await fs.readdir(root)) {
+    const meta = await readMeta(id);
+    if (meta) metas.push(meta);
+  }
+  return metas;
+}
+
+/**
+ * Resolve a URL slug back to a project.
+ *
+ * Uniqueness is enforced on write (see {@link assertSlugAvailable}), but
+ * projects saved before that existed can still collide on disk. Oldest wins,
+ * so a given URL keeps resolving to the same project instead of flipping
+ * whenever the other one is edited.
+ */
+export async function findMetaBySlug(
+  slug: string,
+): Promise<TrainingProjectMeta | null> {
+  const matches = (await listMetas()).filter((m) => slugify(m.name) === slug);
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return matches[0]!;
+}
+
+/**
+ * Reject a name whose slug another project already owns.
+ *
+ * The slug is the project's identity in the URL, so two projects sharing one
+ * would make a bookmark ambiguous. `exceptId` lets a project keep its own slug
+ * through a rename that doesn't actually change it.
+ */
+async function assertSlugAvailable(
+  name: string,
+  exceptId?: string,
+): Promise<void> {
+  const slug = slugify(name);
+  if (!slug) throw new UnsluggableNameError(name);
+
+  const clash = (await listMetas()).find(
+    (m) => m.id !== exceptId && slugify(m.name) === slug,
+  );
+  if (clash) throw new SlugConflictError(slug, clash.name);
+}
+
 // --- Public API ---
 
 export async function listProjects(): Promise<TrainingProjectSummary[]> {
@@ -177,6 +258,7 @@ export async function listProjects(): Promise<TrainingProjectSummary[]> {
           // Older saves predate `datasets`; treat a missing list as empty.
           datasets: (v.form.datasets ?? []).map((d) => ({
             projectName: d.projectName,
+            folderName: d.folderName,
             thumbnail: d.thumbnail,
             thumbnailVersion: d.thumbnailVersion,
           })),
@@ -211,6 +293,8 @@ export async function createProject(
   form: FormState,
   label: string | null = null,
 ): Promise<{ meta: TrainingProjectMeta; version: TrainingProjectVersion }> {
+  await assertSlugAvailable(name);
+
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
 
@@ -322,6 +406,8 @@ export async function replaceProject(
   const meta = await readMeta(id);
   if (!meta) return null;
 
+  if (options.name?.trim()) await assertSlugAvailable(options.name, id);
+
   const dir = projectDir(id);
   const entries = await fs.readdir(dir);
   await Promise.all(
@@ -356,6 +442,9 @@ export async function renameProject(
 ): Promise<TrainingProjectMeta | null> {
   const meta = await readMeta(id);
   if (!meta) return null;
+
+  await assertSlugAvailable(name, id);
+
   const updated: TrainingProjectMeta = {
     ...meta,
     name: name.trim(),

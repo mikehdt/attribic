@@ -4,7 +4,7 @@ import type { TrainingProvider } from '@/app/services/training/types';
 export type DatasetSource = {
   projectName: string;
   folderName: string;
-  thumbnail?: string;
+  thumbnail?: boolean;
   thumbnailVersion?: number;
   dimensionHistogram?: Record<string, number>;
   folders: DatasetFolder[];

@@ -9,7 +9,8 @@ export type Project = {
   imageCount?: number;
   title?: string;
   color?: ProjectColor;
-  thumbnail?: string;
+  /** Whether a thumbnail exists; its path is derived from the project name. */
+  thumbnail?: boolean;
   thumbnailVersion?: number;
   featured?: boolean;
   hidden?: boolean;

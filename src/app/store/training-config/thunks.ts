@@ -126,6 +126,44 @@ export const loadProject =
     }
   };
 
+/**
+ * Load a project by its URL slug rather than its id.
+ *
+ * Used when the URL is the source of truth — a refresh or a bookmark on
+ * `/training/my-project/v2`, where the client has a slug and no id. Resolves
+ * to false when nothing matches, letting the caller send the user back to the
+ * unsaved form rather than leaving them on a URL that points at nothing.
+ */
+export const loadProjectBySlug =
+  (slug: string, version?: number): AppThunk<Promise<boolean>> =>
+  async (dispatch) => {
+    try {
+      const query = version ? `?version=${version}` : '';
+      const res = await fetch(
+        `/api/training/projects/by-slug/${encodeURIComponent(slug)}${query}`,
+      );
+      if (res.status === 404) return false;
+
+      const { meta, version: v } = await parseOrThrow<ProjectResponse>(res);
+      dispatch(
+        hydrateFromProject({
+          form: v.form,
+          loadedProject: toLoadedProject(meta, v),
+        }),
+      );
+      void dispatch(refreshDatasetHistograms());
+      return true;
+    } catch (error) {
+      dispatch(
+        addToast({
+          children: `Failed to load project: ${errorMessage(error)}`,
+          variant: 'error',
+        }),
+      );
+      return false;
+    }
+  };
+
 // --- Save: overwrite the currently loaded version ---
 
 export const saveCurrentVersion =

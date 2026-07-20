@@ -1,6 +1,6 @@
 'use client';
 
-import { ActivityIcon, ChevronDownIcon } from 'lucide-react';
+import { ActivityIcon, ChevronDownIcon, XIcon } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { memo, useCallback, useEffect, useRef } from 'react';
 
@@ -212,9 +212,13 @@ const ActivityPanelComponent = () => {
           type="button"
           onClick={handleClose}
           className="cursor-pointer rounded p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-          title="Minimise"
+          title={!hasJobs ? 'Close' : 'Minimise'}
         >
-          <ChevronDownIcon className="h-3.5 w-3.5" />
+          {!hasJobs ? (
+            <XIcon className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDownIcon className="h-3.5 w-3.5" />
+          )}
         </button>
       </div>
 
@@ -222,8 +226,8 @@ const ActivityPanelComponent = () => {
       <div className="max-h-96 overflow-y-auto">
         {!hasJobs && (
           <p className="px-3 py-6 text-center text-sm text-(--foreground)/50">
-            Nothing running. Training runs, tagging batches and model downloads
-            appear here.
+            No jobs are currently running. Training runs, tagging batches and
+            model downloads appear here.
           </p>
         )}
 

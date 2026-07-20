@@ -60,5 +60,10 @@ export type AppDispatch = AppStore['dispatch'];
 
 /**
  * @public For async operations
+ *
+ * The type parameter is the dispatch return value. It defaults to `void` —
+ * most thunks are fire-and-forget — but a caller that needs to await the
+ * outcome (routing that has to know whether a load succeeded, say) can
+ * declare `AppThunk<Promise<T>>`.
  */
-export type AppThunk = ThunkAction<void, RootState, unknown, Action>;
+export type AppThunk<R = void> = ThunkAction<R, RootState, unknown, Action>;

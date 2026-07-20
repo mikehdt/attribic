@@ -30,11 +30,13 @@ import {
   type CaptionMode,
   selectCaptionMode,
   selectProjectFolderName,
+  selectProjectHasThumbnail,
   selectProjectName,
-  selectProjectThumbnail,
+  selectProjectThumbnailVersion,
   setCaptionMode,
 } from '@/app/store/project';
 import { updateProject } from '@/app/utils/project-actions';
+import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 import { BucketCropModal } from '../asset-controls/bucket-crop-modal';
 import { CaptionPromptModal } from './caption-prompt-modal';
@@ -50,7 +52,8 @@ const ProjectMenuComponent = () => {
 
   const projectName = useAppSelector(selectProjectName);
   const projectFolderName = useAppSelector(selectProjectFolderName);
-  const projectThumbnail = useAppSelector(selectProjectThumbnail);
+  const hasThumbnail = useAppSelector(selectProjectHasThumbnail);
+  const thumbnailVersion = useAppSelector(selectProjectThumbnailVersion);
   const ioState = useAppSelector(selectIoState);
 
   const tagEditMode = useAppSelector(selectTagEditMode);
@@ -71,9 +74,10 @@ const ProjectMenuComponent = () => {
   );
 
   // Build thumbnail src
-  const thumbnailSrc = projectThumbnail
-    ? `/tagging-projects/${encodeURIComponent(projectThumbnail)}`
-    : null;
+  const thumbnailSrc =
+    hasThumbnail && projectFolderName
+      ? projectThumbnailSrc(projectFolderName, thumbnailVersion)
+      : null;
 
   const isOpen = getPopupState(popupId).isOpen;
   const ioInProgress =

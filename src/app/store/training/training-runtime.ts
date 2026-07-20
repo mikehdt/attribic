@@ -249,7 +249,10 @@ function snapshotClientConfig(
       gradientAccumulationSteps:
         (config.gradientAccumulationSteps as number) ?? 1,
       mixedPrecision: (config.mixedPrecision as 'bf16' | 'fp16') ?? 'bf16',
-      extra: { numRestarts: (config.numRestarts as number) ?? 1 },
+      extra: {
+        numRestarts: (config.numRestarts as number) ?? 1,
+        maxSavesToKeep: (config.maxSavesToKeep as number) ?? 0,
+      },
     },
     samplePrompts: (config.samplePrompts as string[]) ?? [],
   };
@@ -511,6 +514,9 @@ export function hydrateActiveTraining(): AppThunk {
               numRestarts:
                 ((cfg.hyperparameters as Record<string, unknown>)
                   ?.num_restarts as number) ?? 1,
+              maxSavesToKeep:
+                ((cfg.hyperparameters as Record<string, unknown>)
+                  ?.max_saves_to_keep as number) ?? 0,
             },
           },
           samplePrompts: [],
