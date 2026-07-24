@@ -1,3 +1,5 @@
+import { ImagesIcon } from 'lucide-react';
+
 import type { TrainingJob } from '@/app/store/jobs';
 
 import { ProgressBar } from '../../progress-bar/progress-bar';
@@ -11,6 +13,8 @@ import {
   formatEtaClock,
   formatLoss,
   formatPct,
+  formatSamplingLabel,
+  isSamplingPhase,
 } from '../helpers';
 import { LossChart } from '../loss-chart/loss-chart';
 import { SpeedChart } from '../speed-chart/speed-chart';
@@ -321,14 +325,21 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         <Stat
           label="Phase"
           value={
-            progress.phase ??
-            (isPreparing
-              ? 'Preparing'
-              : isRunning
-                ? 'Training'
-                : isCompleted
-                  ? 'Completed'
-                  : '—')
+            isSamplingPhase(progress.phase) ? (
+              <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400">
+                <ImagesIcon className="h-3.5 w-3.5 shrink-0" />
+                {formatSamplingLabel(progress.phase!)}
+              </span>
+            ) : (
+              (progress.phase ??
+              (isPreparing
+                ? 'Preparing'
+                : isRunning
+                  ? 'Training'
+                  : isCompleted
+                    ? 'Completed'
+                    : '—'))
+            )
           }
         />
       </div>

@@ -48,7 +48,7 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
       : null;
 
   const modalHeader = (
-    <div>
+    <div className="mb-2">
       <h2 className="text-sm font-medium text-(--foreground)">
         {config?.outputName || 'Training run'}
       </h2>

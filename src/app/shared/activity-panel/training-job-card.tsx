@@ -1,4 +1,4 @@
-import { Maximize2Icon, XIcon } from 'lucide-react';
+import { ImagesIcon, Maximize2Icon, XIcon } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 
 import { useConfirmAction } from '@/app/shared/use-confirm-action';
@@ -17,6 +17,8 @@ import {
   formatEta,
   formatLoss,
   formatPct,
+  formatSamplingLabel,
+  isSamplingPhase,
 } from './helpers';
 import { LossChart } from './loss-chart/loss-chart';
 import { useLrScheduleCurve } from './use-lr-schedule-curve';
@@ -235,9 +237,16 @@ export function TrainingJobCard({
                 frozen step bar (mid checkpoint save) doesn't look hung. */}
             <div className="mt-1 flex w-full text-xs">
               {isRunning ? (
-                <span className="truncate text-sky-600 dark:text-sky-400">
-                  {progress!.phase ?? 'Training'}
-                </span>
+                isSamplingPhase(progress!.phase) ? (
+                  <span className="flex min-w-0 items-center gap-1 truncate text-violet-600 dark:text-violet-400">
+                    <ImagesIcon className="h-3 w-3 shrink-0" />
+                    {formatSamplingLabel(progress!.phase!)}
+                  </span>
+                ) : (
+                  <span className="truncate text-sky-600 dark:text-sky-400">
+                    {progress!.phase ?? 'Training'}
+                  </span>
+                )
               ) : isFailed ? (
                 <span className="truncate text-rose-600 dark:text-rose-400">
                   Failed

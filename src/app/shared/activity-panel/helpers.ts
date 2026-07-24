@@ -293,6 +293,27 @@ export function deriveSampleEventCount(
 }
 
 /**
+ * Whether a phase label reports the trainer generating sample/preview images
+ * between training steps. The two backends word it differently — Kohya emits
+ * "Generating samples", ai-toolkit "Generating images - x/y" — so match both,
+ * and let callers give the phase its own distinct treatment.
+ */
+export function isSamplingPhase(phase: string | null | undefined): boolean {
+  if (!phase) return false;
+  return /generating\s+(sample|image)/i.test(phase);
+}
+
+/**
+ * A consistent label for the sampling phase, so ai-toolkit's "Generating
+ * images - 3/4" reads the same as Kohya's "Generating samples" while keeping
+ * any "x/y" count the backend supplies.
+ */
+export function formatSamplingLabel(phase: string): string {
+  const count = phase.match(/(\d+\s*\/\s*\d+)/);
+  return count ? `Generating samples ${count[1]}` : 'Generating samples';
+}
+
+/**
  * Per-step seconds implied by the headline ETA, for derived hints (next save /
  * epoch / sample) — so they stay coherent with it (always ≤ full ETA, no
  * jitter against it) rather than tracking the noisier instantaneous speed.

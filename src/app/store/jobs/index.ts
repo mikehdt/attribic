@@ -88,7 +88,23 @@ const jobsSlice = createSlice({
       const job = state.jobs[action.payload.id];
       if (!job || job.type !== 'training') return;
 
+      // A terminal tick (notably cancel) can arrive without the sample list and
+      // log tail the streaming ticks carry, and this reducer replaces progress
+      // wholesale — so guard the two cumulative snapshots that only ever grow:
+      // keep the previous non-empty value when the incoming one is empty. This
+      // is the last line of defence before the run is archived to history (the
+      // sidecar carries these forward too; see job_manager `_accumulate_progress`).
+      const prevSamples = job.progress?.samples ?? [];
+      const prevLogLines = job.progress?.logLines ?? [];
+
       job.progress = action.payload.progress;
+
+      if (job.progress.samples.length === 0 && prevSamples.length > 0) {
+        job.progress.samples = prevSamples;
+      }
+      if (job.progress.logLines.length === 0 && prevLogLines.length > 0) {
+        job.progress.logLines = prevLogLines;
+      }
 
       // Sync status from progress
       const progressStatus = action.payload.progress.status;

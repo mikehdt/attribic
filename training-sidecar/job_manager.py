@@ -626,6 +626,20 @@ class JobManager:
         progress.sample_steps = list(acc["sample_steps"])
         progress.saved_checkpoints = sorted(acc["saved"])
 
+        # The terminal updates synthesized outside the provider stream — cancel
+        # (cancel_job) and fail (_run_training) — carry only status/steps/error,
+        # not the sample list or log tail the providers include on every real
+        # tick. Those are full snapshots each tick (not deltas), so carry the
+        # last-known ones forward when this update omits them; job.progress still
+        # holds the previous update here. Without this a cancelled/failed run
+        # broadcasts (and persists) empty samples and logs — which blanks the
+        # detail view's log and, because the empty list aborts the history
+        # archive move, strands its sample images and drops the Samples tab.
+        if not progress.samples and job.progress.samples:
+            progress.samples = list(job.progress.samples)
+        if not progress.log_lines and job.progress.log_lines:
+            progress.log_lines = list(job.progress.log_lines)
+
     async def _update_progress(self, progress: JobProgress):
         """Update the referenced job's progress and broadcast to WebSocket clients."""
         job = self._jobs.get(progress.job_id)
