@@ -107,6 +107,43 @@ const ModelSelectSectionComponent = ({
     [onModelPathChange],
   );
 
+  const isSimple = viewMode === 'simple';
+
+  // In Simple view the component files collapse into a compact read-only
+  // summary once set — only unset components keep their full input so the
+  // user can still supply a required path (e.g. the checkpoint). Editing an
+  // already-set path is an Intermediate-and-up affair.
+  const [setComponents, unsetComponents] = useMemo(() => {
+    const set: typeof visibleComponents = [];
+    const unset: typeof visibleComponents = [];
+    for (const c of visibleComponents) {
+      ((modelPaths[c.type] ?? '').trim() !== '' ? set : unset).push(c);
+    }
+    return [set, unset];
+  }, [visibleComponents, modelPaths]);
+
+  const renderPathField = (component: (typeof visibleComponents)[number]) => (
+    <div key={component.type}>
+      <FormTitle className="flex items-baseline gap-1.5">
+        {component.label}
+        {!component.required && (
+          <span className="font-normal text-slate-400">(optional)</span>
+        )}
+      </FormTitle>
+      <ModelPathField
+        value={modelPaths[component.type] ?? ''}
+        onChange={handlePathChange(component.type)}
+        browseTitle={component.label}
+        downloadId={component.downloadId}
+        resetTo={modelDefaults?.[component.type]}
+      />
+
+      {component.hint && (
+        <p className="mt-0.5 text-xs text-slate-400">{component.hint}</p>
+      )}
+    </div>
+  );
+
   return (
     <CollapsibleSection
       title="Model"
@@ -180,30 +217,38 @@ const ModelSelectSectionComponent = ({
           </div>
         )}
 
-        {/* Model component paths */}
+        {/* Model component paths. Simple view summarises set files and only
+            keeps unset ones interactive; Intermediate+ shows every field. */}
         {visibleFields.has('modelPaths' satisfies keyof FormState) &&
-          visibleComponents.map((component) => (
-            <div key={component.type}>
-              <FormTitle className="flex items-baseline gap-1.5">
-                {component.label}
-                {!component.required && (
-                  <span className="font-normal text-slate-400">(optional)</span>
-                )}
-              </FormTitle>
-              <ModelPathField
-                value={modelPaths[component.type] ?? ''}
-                onChange={handlePathChange(component.type)}
-                browseTitle={component.label}
-                downloadId={component.downloadId}
-                resetTo={modelDefaults?.[component.type]}
-              />
-
-              {component.hint && (
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {component.hint}
-                </p>
+          (isSimple ? (
+            <>
+              {setComponents.length > 0 && (
+                <div className="space-y-1 rounded-md bg-slate-500/5 px-3 py-2">
+                  {setComponents.map((component) => {
+                    const path = modelPaths[component.type] ?? '';
+                    return (
+                      <div
+                        key={component.type}
+                        className="flex items-baseline justify-between gap-3 text-sm"
+                      >
+                        <span className="shrink-0 text-slate-400">
+                          {component.label}
+                        </span>
+                        <span
+                          className="min-w-0 truncate font-medium"
+                          title={path}
+                        >
+                          {path.split(/[\\/]/).pop() || path}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
-            </div>
+              {unsetComponents.map(renderPathField)}
+            </>
+          ) : (
+            visibleComponents.map(renderPathField)
           ))}
       </div>
     </CollapsibleSection>

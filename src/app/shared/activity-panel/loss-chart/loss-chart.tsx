@@ -150,7 +150,7 @@ const LossChartComponent = ({
   // end which is the plot's right edge. A boundary that lands on a drawn
   // checkpoint line is dropped — the checkpoint takes precedence, since in
   // epoch-save mode every save sits on an epoch boundary.
-  const epochLineXs: number[] = [];
+  const epochLines: { x: number; passed: boolean }[] = [];
   if (totalEpochs >= 2 && xMax > 0) {
     const stepsPerEpoch = Math.max(1, Math.ceil(xMax / totalEpochs));
     const drawnCheckpointXs = [...upcomingCheckpoints, ...savedCheckpoints].map(
@@ -160,7 +160,7 @@ const LossChartComponent = ({
       const step = Math.min(e * stepsPerEpoch, xMax);
       const x = xScale(step);
       if (drawnCheckpointXs.some((cx) => Math.abs(cx - x) < 4)) continue;
-      epochLineXs.push(x);
+      epochLines.push({ x, passed: step <= currentStep });
     }
   }
 
@@ -257,10 +257,10 @@ const LossChartComponent = ({
         </>
       )}
 
-      {/* Epoch boundaries: light grey, dashed — sit behind the checkpoint
-          lines, which take precedence where the two coincide. Rendered in
-          both variants. */}
-      {epochLineXs.map((x, i) => (
+      {/* Epoch boundaries: light grey, sit behind the checkpoint lines, which
+          take precedence where the two coincide. Passed epochs solidify;
+          upcoming ones stay dashed. Rendered in both variants. */}
+      {epochLines.map(({ x, passed }, i) => (
         <line
           key={`epoch-${i}`}
           x1={x}
@@ -268,7 +268,7 @@ const LossChartComponent = ({
           y1={lineTop}
           y2={lineBottom}
           strokeWidth={1}
-          strokeDasharray="2,3"
+          strokeDasharray={passed ? undefined : '2,3'}
           className="stroke-slate-300/70 dark:stroke-slate-600/60"
         />
       ))}

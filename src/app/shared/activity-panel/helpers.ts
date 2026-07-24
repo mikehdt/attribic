@@ -118,6 +118,17 @@ export function formatEta(seconds: number): string {
 }
 
 /**
+ * The wall-clock time an ETA lands on, as a compact "1:15pm". Computed from the
+ * current moment each render, so it tracks the ETA as that updates.
+ */
+export function formatEtaClock(etaSeconds: number): string {
+  const finish = new Date(Date.now() + etaSeconds * 1000);
+  return finish
+    .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    .replace(/\s?([AP])M/i, (_, p: string) => `${p.toLowerCase()}m`);
+}
+
+/**
  * Progress through `max` as a percentage, to one decimal place. Training runs
  * are long enough that a whole-number percentage sits still for minutes at a
  * time and reads as a stalled run.

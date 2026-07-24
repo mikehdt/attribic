@@ -7,6 +7,7 @@ import {
   deriveSavedCount,
   formatDuration,
   formatEta,
+  formatEtaClock,
   formatLoss,
   formatPct,
 } from '../helpers';
@@ -61,6 +62,46 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const elapsed =
     progress.completedAt != null && progress.startedAt != null
       ? progress.completedAt - progress.startedAt
+      : null;
+
+  // Per-step rate implied by the headline ETA, reused for the next-save /
+  // next-epoch hints so they stay coherent with it (always ≤ full ETA, no
+  // jitter against it) rather than tracking the noisier instantaneous speed.
+  const secPerStep =
+    hasStepInfo &&
+    progress.etaSeconds !== null &&
+    progress.etaSeconds > 0 &&
+    totalSteps > currentStep
+      ? progress.etaSeconds / (totalSteps - currentStep)
+      : null;
+
+  // Next confirmed-checkpoint step ahead of us — but not the final one, whose
+  // arrival is already the run-end ETA.
+  const nextCheckpointStep =
+    secPerStep !== null
+      ? (checkpointSteps.find((s) => s > currentStep && s < totalSteps) ?? null)
+      : null;
+
+  // Next epoch boundary ahead of us, hidden for single-epoch runs and when it
+  // coincides with the run end (again already covered by ETA).
+  const stepsPerEpoch =
+    progress.totalEpochs >= 2 ? totalSteps / progress.totalEpochs : 0;
+  const nextEpochBoundary =
+    secPerStep !== null && stepsPerEpoch > 0
+      ? (Math.floor(currentStep / stepsPerEpoch) + 1) * stepsPerEpoch
+      : 0;
+  const nextEpochStep =
+    nextEpochBoundary > currentStep && nextEpochBoundary < totalSteps
+      ? Math.round(nextEpochBoundary)
+      : null;
+
+  const nextSaveEta =
+    secPerStep !== null && nextCheckpointStep !== null
+      ? formatEta(Math.round((nextCheckpointStep - currentStep) * secPerStep))
+      : null;
+  const nextEpochEta =
+    secPerStep !== null && nextEpochStep !== null
+      ? formatEta(Math.round((nextEpochStep - currentStep) * secPerStep))
       : null;
 
   return (
@@ -178,12 +219,12 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
           label="Step"
           value={
             totalSteps > 0 ? (
-              <>
+              <span className="flex items-baseline">
                 {currentStep.toLocaleString()} / {totalSteps.toLocaleString()}
-                <span className="ml-1.5 font-normal text-slate-400">
-                  · {stepPct}%
+                <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+                  {stepPct}%
                 </span>
-              </>
+              </span>
             ) : (
               '—'
             )
@@ -192,19 +233,37 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         <Stat
           label="Epoch"
           value={
-            progress.totalEpochs > 0
-              ? `${progress.currentEpoch} / ${progress.totalEpochs}`
-              : '—'
+            progress.totalEpochs > 0 ? (
+              <span className="flex items-baseline">
+                {progress.currentEpoch} / {progress.totalEpochs}
+                {nextEpochEta && (
+                  <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+                    ~{nextEpochEta}
+                  </span>
+                )}
+              </span>
+            ) : (
+              '—'
+            )
           }
         />
         <Stat
           label="Checkpoints"
           value={
-            expectedCheckpoints > 0
-              ? `${savedCount > 0 ? savedCount : '—'} / ${expectedCheckpoints}`
-              : savedCount > 0
-                ? String(savedCount)
-                : '—'
+            expectedCheckpoints > 0 || savedCount > 0 ? (
+              <span className="flex items-baseline">
+                {expectedCheckpoints > 0
+                  ? `${savedCount > 0 ? savedCount : '—'} / ${expectedCheckpoints}`
+                  : String(savedCount)}
+                {nextSaveEta && (
+                  <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+                    ~{nextSaveEta}
+                  </span>
+                )}
+              </span>
+            ) : (
+              '—'
+            )
           }
         />
         <Stat
@@ -217,13 +276,20 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         <Stat
           label="ETA"
           value={
-            progress.etaSeconds !== null && progress.etaSeconds > 0
-              ? formatEta(progress.etaSeconds)
-              : '—'
+            progress.etaSeconds !== null && progress.etaSeconds > 0 ? (
+              <span className="flex items-baseline">
+                {formatEta(progress.etaSeconds)}
+                <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+                  ~{formatEtaClock(progress.etaSeconds)}
+                </span>
+              </span>
+            ) : (
+              '—'
+            )
           }
         />
         <Stat
-          label="Train time"
+          label="Training time"
           value={
             progress.trainingSeconds > 0
               ? formatDuration(progress.trainingSeconds * 1000)
