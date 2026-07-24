@@ -36,26 +36,49 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
   // host modals key their width off the same predicate.
   const showSamplesTab = showsSamplesView(job, grid);
 
-  // Placeholder row for the next predicted sampling event, prepended above the
-  // newest real row while training runs. All-null cells render as dashed
-  // placeholders; the ETA rides under the label. Skipped while preparing —
-  // the step counters belong to the setup phase then, not training — and while
-  // the newest row is still filling in (samples land one prompt at a time, and
-  // announcing the event after next mid-event reads as a spurious new row).
+  // Placeholder row of dashed cells, prepended above the newest real row while a
+  // run is live. Two jobs in one:
+  //   • Before any sample exists — startup, still preparing, or training but no
+  //     ETA yet — it gives the tab body from the moment we know sampling's
+  //     coming (columns are derived the instant the run starts), so it opens as
+  //     a full grid frame rather than a thin strip of column headers.
+  //   • Once real rows exist — it announces the *next* predicted event with its
+  //     ETA, but only while training's actually stepping (during preparing the
+  //     counters belong to setup) and not mid-event (samples land one prompt at
+  //     a time; a new row atop a half-filled one reads as spurious).
   const upcomingRow = useMemo<SampleRow | null>(() => {
     const progress = job?.progress ?? null;
-    if (!progress || progress.status !== 'training') return null;
-    const newest = grid.rows[0];
-    if (newest && newest.cells.some((cell) => cell === null)) return null;
-    const next = (progress.sampleSteps ?? []).find(
-      (s) => s > progress.currentStep,
-    );
-    if (next == null) return null;
-    const secPerStep = deriveSecPerStep(progress);
-    const eta =
-      secPerStep !== null
-        ? formatEta(Math.round((next - progress.currentStep) * secPerStep))
-        : null;
+    if (!progress || grid.columns.length === 0) return null;
+    const isLive =
+      progress.status === 'training' || progress.status === 'preparing';
+    if (!isLive) return null;
+
+    const hasRows = grid.rows.length > 0;
+
+    // With real rows on screen, only surface the placeholder as a genuine
+    // "Next" announcement: training must be stepping, the newest row fully
+    // filled, and there must be a further sample step to point at.
+    if (hasRows) {
+      if (progress.status !== 'training') return null;
+      if (grid.rows[0].cells.some((cell) => cell === null)) return null;
+      if ((progress.sampleSteps ?? []).every((s) => s <= progress.currentStep))
+        return null;
+    }
+
+    // ETA is best-effort: it needs training to be stepping, a known next step,
+    // and a measured pace. Absent any of that (notably during startup) the row
+    // still renders — just without a countdown.
+    let eta: string | null = null;
+    if (progress.status === 'training') {
+      const next = (progress.sampleSteps ?? []).find(
+        (s) => s > progress.currentStep,
+      );
+      const secPerStep = deriveSecPerStep(progress);
+      if (next != null && secPerStep !== null) {
+        eta = formatEta(Math.round((next - progress.currentStep) * secPerStep));
+      }
+    }
+
     return {
       key: 'upcoming',
       label: 'Next',
