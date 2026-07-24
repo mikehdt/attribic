@@ -104,19 +104,19 @@ const SamplingSectionComponent = ({
 
     const cadence =
       sampleMode === 'epochs'
-        ? `every ${sampleEveryEpochs === 1 ? 'epoch' : `${sampleEveryEpochs} epochs`}`
-        : `every ${sampleEverySteps === 1 ? 'step' : `${sampleEverySteps} steps`}`;
+        ? `${sampleEveryEpochs === 1 ? 'epoch' : `${sampleEveryEpochs} epochs`}`
+        : `${sampleEverySteps === 1 ? 'step' : `${sampleEverySteps} steps`}`;
     const prompts = samplePrompts.filter((p) => p.trim() !== '');
 
     return (
       <CollapsibleSection title="Sampling">
         <div className="space-y-1.5 text-sm">
           <p className="text-slate-500 dark:text-slate-400">
-            Sample images will be generated {cadence}
+            Sample images will be generated every {cadence}
             {prompts.length > 0 ? ' from these prompts:' : '.'}
           </p>
           {prompts.length > 0 && (
-            <ul className="space-y-0.5">
+            <ul className="list-inside list-disc space-y-0.5">
               {prompts.map((prompt, i) => (
                 <li
                   key={i}
@@ -128,9 +128,6 @@ const SamplingSectionComponent = ({
               ))}
             </ul>
           )}
-          <p className="text-xs text-slate-400">
-            Configured in the Intermediate view.
-          </p>
         </div>
       </CollapsibleSection>
     );

@@ -271,26 +271,6 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             )
           }
         />
-        {/* Hidden entirely (null value) for runs without sampling — unlike
-            checkpoints there's no "—" placeholder, since most runs never
-            sample and a permanently empty box would just be noise. */}
-        <Stat
-          label="Samples"
-          value={
-            expectedSamples > 0 || sampledCount > 0 ? (
-              <span className="flex items-baseline">
-                {expectedSamples > 0
-                  ? `${sampledCount > 0 ? sampledCount : '—'} / ${expectedSamples}`
-                  : String(sampledCount)}
-                {nextSampleEta && (
-                  <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
-                    ~{nextSampleEta}
-                  </span>
-                )}
-              </span>
-            ) : null
-          }
-        />
         <Stat
           label="Loss"
           value={progress.loss !== null ? formatLoss(progress.loss) : '—'}
@@ -340,6 +320,26 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
                     ? 'Completed'
                     : '—'))
             )
+          }
+        />
+        {/* Hidden entirely (null value) for runs without sampling — unlike
+            checkpoints there's no "—" placeholder, since most runs never
+            sample and a permanently empty box would just be noise. */}
+        <Stat
+          label="Samples"
+          value={
+            expectedSamples > 0 || sampledCount > 0 ? (
+              <span className="flex items-baseline">
+                {expectedSamples > 0
+                  ? `${sampledCount > 0 ? sampledCount : '—'} / ${expectedSamples}`
+                  : String(sampledCount)}
+                {nextSampleEta && (
+                  <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+                    ~{nextSampleEta}
+                  </span>
+                )}
+              </span>
+            ) : null
           }
         />
       </div>
