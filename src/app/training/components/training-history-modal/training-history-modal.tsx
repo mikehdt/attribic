@@ -9,6 +9,7 @@ import {
 import { useCallback, useState } from 'react';
 
 import { formatDuration } from '@/app/shared/activity-panel/helpers';
+import { showsSamplesView } from '@/app/shared/activity-panel/training-detail-modal/training-detail-tabs/samples-model';
 import { TrainingDetailTabs } from '@/app/shared/activity-panel/training-detail-modal/training-detail-tabs/training-detail-tabs';
 import { Button } from '@/app/shared/button';
 import { Modal } from '@/app/shared/modal';
@@ -166,7 +167,7 @@ export function TrainingHistoryModal() {
   const selected = selectedId
     ? (history.find((e) => e.id === selectedId) ?? null)
     : null;
-  const selectedHasSamples = (selected?.progress?.samples?.length ?? 0) > 0;
+  const selectedWide = selected != null && showsSamplesView(selected);
 
   const handleClose = useCallback(() => {
     setSelectedId(null);
@@ -206,7 +207,7 @@ export function TrainingHistoryModal() {
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      className={`w-full ${selected && selectedHasSamples ? 'max-w-5xl' : 'max-w-3xl'}`}
+      className={`w-full ${selectedWide ? 'max-w-5xl' : 'max-w-3xl'}`}
       labelledById={selected ? undefined : 'training-history-modal-title'}
       ariaLabel={selected ? 'Training history' : undefined}
     >

@@ -1,10 +1,11 @@
-import { TRAINING_PROVIDER_LABELS } from '@/app/services/training/types';
 import type { TrainingJob } from '@/app/store/jobs';
 
 import { ProgressBar } from '../../progress-bar/progress-bar';
 import {
   deriveExpectedCheckpointCount,
+  deriveSampleEventCount,
   deriveSavedCount,
+  deriveSecPerStep,
   formatDuration,
   formatEta,
   formatEtaClock,
@@ -14,6 +15,7 @@ import {
 import { LossChart } from '../loss-chart/loss-chart';
 import { SpeedChart } from '../speed-chart/speed-chart';
 import { Stat } from '../stat';
+import { showsSamplesView } from './training-detail-tabs/samples-model';
 import { useTrainingDetailView } from './use-training-detail-view';
 
 /**
@@ -59,21 +61,9 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const expectedCheckpoints =
     expectedRaw > 0 ? Math.max(expectedRaw, savedCount) : 0;
 
-  const elapsed =
-    progress.completedAt != null && progress.startedAt != null
-      ? progress.completedAt - progress.startedAt
-      : null;
-
   // Per-step rate implied by the headline ETA, reused for the next-save /
-  // next-epoch hints so they stay coherent with it (always ≤ full ETA, no
-  // jitter against it) rather than tracking the noisier instantaneous speed.
-  const secPerStep =
-    hasStepInfo &&
-    progress.etaSeconds !== null &&
-    progress.etaSeconds > 0 &&
-    totalSteps > currentStep
-      ? progress.etaSeconds / (totalSteps - currentStep)
-      : null;
+  // next-epoch / next-sample hints so they stay coherent with it.
+  const secPerStep = deriveSecPerStep(progress);
 
   // Next confirmed-checkpoint step ahead of us — but not the final one, whose
   // arrival is already the run-end ETA.
@@ -104,20 +94,31 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
       ? formatEta(Math.round((nextEpochStep - currentStep) * secPerStep))
       : null;
 
+  // Sample-generation progress: events with images vs the predicted total,
+  // plus a next-sample ETA. Unlike checkpoints, a final-step sample is still
+  // shown — it's a distinct deliverable, not just the run ending. The count is
+  // clamped so an unpredicted extra event (e.g. a baseline sample at step 0)
+  // can't push the numerator past the denominator.
+  const sampleSteps = progress.sampleSteps ?? [];
+  const sampledCount = deriveSampleEventCount(progress);
+  const expectedSamples =
+    sampleSteps.length > 0 ? Math.max(sampleSteps.length, sampledCount) : 0;
+  const nextSampleStep =
+    secPerStep !== null && hasStepInfo
+      ? (sampleSteps.find((s) => s > currentStep) ?? null)
+      : null;
+  const nextSampleEta =
+    secPerStep !== null && nextSampleStep !== null
+      ? formatEta(Math.round((nextSampleStep - currentStep) * secPerStep))
+      : null;
+
+  // Both host modals widen from max-w-3xl to max-w-5xl when the samples view
+  // shows (same predicate) — give the charts matching internal resolution so
+  // they don't just stretch.
+  const chartWidth = showsSamplesView(job) ? 880 : 640;
+
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium text-(--foreground)">
-          {config?.outputName || 'Training run'}
-        </h2>
-        <p className="text-xs text-slate-400">
-          {TRAINING_PROVIDER_LABELS[config?.provider ?? 'mock']}
-          {isCompleted && elapsed != null
-            ? ` · Completed in ${formatDuration(elapsed)}`
-            : ''}
-        </p>
-      </div>
-
       <div>
         <div className="flex items-baseline justify-between">
           <span className="text-xs text-slate-400 uppercase">Loss</span>
@@ -134,7 +135,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             provider={config?.provider}
             lrCurve={lrCurve}
             variant="detail"
-            width={640}
+            width={chartWidth}
             height={220}
             className="w-full"
           />
@@ -189,7 +190,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             <SpeedChart
               speedHistory={speedSeries}
               totalSteps={speedAxisSteps}
-              width={640}
+              width={chartWidth}
               height={90}
               className="w-full"
             />
@@ -264,6 +265,26 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             ) : (
               '—'
             )
+          }
+        />
+        {/* Hidden entirely (null value) for runs without sampling — unlike
+            checkpoints there's no "—" placeholder, since most runs never
+            sample and a permanently empty box would just be noise. */}
+        <Stat
+          label="Samples"
+          value={
+            expectedSamples > 0 || sampledCount > 0 ? (
+              <span className="flex items-baseline">
+                {expectedSamples > 0
+                  ? `${sampledCount > 0 ? sampledCount : '—'} / ${expectedSamples}`
+                  : String(sampledCount)}
+                {nextSampleEta && (
+                  <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+                    ~{nextSampleEta}
+                  </span>
+                )}
+              </span>
+            ) : null
           }
         />
         <Stat

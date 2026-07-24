@@ -12,50 +12,53 @@ type SamplesGridProps = {
 
 /**
  * The samples grid: prompt columns across the top, sampling events down the
- * side (newest first). Scrolls horizontally on narrow viewports rather than
- * crushing the columns. Thumbnails are the served images scaled by CSS — no
- * thumbnail generation.
+ * side (newest first). A CSS grid rather than a table so every prompt column
+ * gets an identical share of the width (equal `1fr` tracks with a floor),
+ * scrolling horizontally when they'd otherwise be crushed. Rows use
+ * `display: contents` so their cells participate in the one grid while the
+ * markup keeps its row grouping. Thumbnails are the served images scaled by
+ * CSS — no thumbnail generation.
  */
 export function SamplesGrid({ grid, onOpen }: SamplesGridProps) {
   const { columns, rows } = grid;
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-separate border-spacing-2">
-        <thead>
-          <tr>
-            {/* Corner cell above the row-stamp column. */}
-            <th className="w-20" />
-            {columns.map((column) => (
-              <ColumnHeader key={column.index} column={column} />
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <GridRow
-              key={row.key}
-              row={row}
-              columns={columns}
-              onOpen={onOpen}
-            />
+      <div
+        role="table"
+        className="grid gap-2"
+        // Label column hugs its widest stamp; prompt columns share the rest
+        // evenly, never dropping below 10rem — past that the container scrolls.
+        style={{
+          gridTemplateColumns: `auto repeat(${columns.length}, minmax(10rem, 1fr))`,
+        }}
+      >
+        <div role="row" className="contents">
+          {/* Corner cell above the row-stamp column. */}
+          <div role="columnheader" aria-label="Sampling event" />
+          {columns.map((column) => (
+            <ColumnHeader key={column.index} column={column} />
           ))}
-        </tbody>
-      </table>
+        </div>
+        {rows.map((row) => (
+          <GridRow key={row.key} row={row} columns={columns} onOpen={onOpen} />
+        ))}
+      </div>
     </div>
   );
 }
 
 function ColumnHeader({ column }: { column: SampleColumn }) {
   return (
-    <th className="min-w-40 max-w-56 text-left align-bottom">
+    // min-w-0 stops a long unbreakable prompt widening its track past 1fr.
+    <div role="columnheader" className="min-w-0 self-end">
       <span
         title={column.label}
         className="block truncate text-sm font-medium text-slate-600 dark:text-slate-300"
       >
         {column.label}
       </span>
-    </th>
+    </div>
   );
 }
 
@@ -69,14 +72,26 @@ function GridRow({
   onOpen: (rowKey: string, colIndex: number, trigger: HTMLElement) => void;
 }) {
   return (
-    <tr>
-      <th className="align-middle text-right text-sm font-medium whitespace-nowrap text-slate-500">
-        {row.label}
-      </th>
+    <div role="row" className="contents">
+      <div
+        role="rowheader"
+        className={`flex items-center justify-end text-right text-sm font-medium whitespace-nowrap ${
+          row.upcoming ? 'text-slate-400' : 'text-slate-500'
+        }`}
+      >
+        <span>
+          {row.label}
+          {row.sublabel && (
+            <span className="block text-xs font-normal text-slate-400">
+              {row.sublabel}
+            </span>
+          )}
+        </span>
+      </div>
       {columns.map((column) => {
         const sample = row.cells[column.index];
         return (
-          <td key={column.index} className="align-middle">
+          <div key={column.index} role="cell" className="min-w-0 self-center">
             {sample ? (
               <button
                 type="button"
@@ -98,9 +113,9 @@ function GridRow({
                 —
               </div>
             )}
-          </td>
+          </div>
         );
       })}
-    </tr>
+    </div>
   );
 }

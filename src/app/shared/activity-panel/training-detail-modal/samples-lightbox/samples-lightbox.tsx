@@ -19,6 +19,8 @@ type SamplesLightboxProps = {
   sample: SampleImage;
   row: SampleRow;
   column: SampleColumn;
+  /** Which directions have a reachable cell — dead ends render dimmed. */
+  nav: { up: boolean; down: boolean; left: boolean; right: boolean };
   onClose: () => void;
   onMove: (axis: 'row' | 'col', delta: 1 | -1) => void;
 };
@@ -43,6 +45,7 @@ export function SamplesLightbox({
   sample,
   row,
   column,
+  nav,
   onClose,
   onMove,
 }: SamplesLightboxProps) {
@@ -123,7 +126,16 @@ export function SamplesLightbox({
       className="absolute -inset-6 z-20 flex flex-col rounded-lg bg-white/95 outline-none backdrop-blur-sm dark:bg-slate-800/95"
     >
       <div className="flex items-start justify-between gap-3 border-b border-(--border-subtle) p-3">
-        <div className="min-w-0">
+        {/* Labelled back route to the grid — the X alone was easy to miss. */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex shrink-0 cursor-pointer items-center gap-0.5 rounded py-1 pr-2 pl-1 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+        >
+          <ChevronLeftIcon className="h-4 w-4" />
+          Samples
+        </button>
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-slate-500">{row.label}</p>
           <p className="text-sm break-words text-(--foreground)">
             {column.label}
@@ -151,6 +163,7 @@ export function SamplesLightbox({
         <NavButton
           className="left-2 top-1/2 -translate-y-1/2"
           label="Previous prompt"
+          disabled={!nav.left}
           onClick={() => onMove('col', -1)}
         >
           <ChevronLeftIcon className="h-5 w-5" />
@@ -158,6 +171,7 @@ export function SamplesLightbox({
         <NavButton
           className="right-2 top-1/2 -translate-y-1/2"
           label="Next prompt"
+          disabled={!nav.right}
           onClick={() => onMove('col', 1)}
         >
           <ChevronRightIcon className="h-5 w-5" />
@@ -165,6 +179,7 @@ export function SamplesLightbox({
         <NavButton
           className="left-1/2 top-2 -translate-x-1/2"
           label="Newer sampling event"
+          disabled={!nav.up}
           onClick={() => onMove('row', -1)}
         >
           <ChevronUpIcon className="h-5 w-5" />
@@ -172,6 +187,7 @@ export function SamplesLightbox({
         <NavButton
           className="bottom-2 left-1/2 -translate-x-1/2"
           label="Older sampling event"
+          disabled={!nav.down}
           onClick={() => onMove('row', 1)}
         >
           <ChevronDownIcon className="h-5 w-5" />
@@ -185,20 +201,27 @@ function NavButton({
   className,
   label,
   onClick,
+  disabled = false,
   children,
 }: {
   className: string;
   label: string;
   onClick: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
-      className={`absolute cursor-pointer rounded-full border border-slate-300 bg-white/90 p-1.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:border-slate-600 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white ${className}`}
+      className={`absolute rounded-full border p-1.5 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+        disabled
+          ? 'cursor-default border-slate-200 bg-white/60 text-slate-300 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-600'
+          : 'cursor-pointer border-slate-300 bg-white/90 text-slate-600 hover:bg-white hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
+      } ${className}`}
     >
       {children}
     </button>

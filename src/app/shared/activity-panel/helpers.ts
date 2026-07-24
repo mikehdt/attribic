@@ -275,6 +275,44 @@ export function deriveExpectedCheckpointCount(
   return new Set([...predicted, total]).size;
 }
 
+/**
+ * Count of distinct sampling events that have produced at least one image,
+ * grouped the same way as the samples grid's rows (by epoch for epoch-cadence
+ * runs, by step otherwise) so the "x / y" stat matches the table.
+ */
+export function deriveSampleEventCount(
+  progress: TrainingProgress | null,
+): number {
+  const samples = progress?.samples ?? [];
+  if (samples.length === 0) return 0;
+  const events = new Set<string>();
+  for (const s of samples) {
+    events.add(s.epoch != null ? `e${s.epoch}` : `s${s.step}`);
+  }
+  return events.size;
+}
+
+/**
+ * Per-step seconds implied by the headline ETA, for derived hints (next save /
+ * epoch / sample) — so they stay coherent with it (always ≤ full ETA, no
+ * jitter against it) rather than tracking the noisier instantaneous speed.
+ * Null while pending/preparing, when the step counters belong to a setup
+ * phase rather than training, or when there's no usable ETA.
+ */
+export function deriveSecPerStep(
+  progress: TrainingProgress | null,
+): number | null {
+  if (!progress) return null;
+  if (progress.status === 'pending' || progress.status === 'preparing') {
+    return null;
+  }
+  const total = progress.totalSteps ?? 0;
+  const current = progress.currentStep ?? 0;
+  if (total <= 0 || current >= total) return null;
+  if (progress.etaSeconds === null || progress.etaSeconds <= 0) return null;
+  return progress.etaSeconds / (total - current);
+}
+
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
   if (totalSeconds < 60) return `${totalSeconds}s`;

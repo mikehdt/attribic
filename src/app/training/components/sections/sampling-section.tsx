@@ -7,6 +7,7 @@ import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
+import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 
 import { FieldTitle } from '../field-title';
@@ -94,7 +95,46 @@ const SamplingSectionComponent = ({
     visibleFields.has('guidanceScale') ||
     visibleFields.has('sampleSampler');
 
-  if (!hasVisibleFields) return null;
+  // Simple view hides every sampling control, but if sampling was switched on
+  // in a higher tier the run will still generate images — show a read-only
+  // summary of what's coming so the setting isn't invisible. With sampling
+  // off there's nothing to say, so the section disappears as before.
+  if (!hasVisibleFields) {
+    if (!samplingEnabled) return null;
+
+    const cadence =
+      sampleMode === 'epochs'
+        ? `every ${sampleEveryEpochs === 1 ? 'epoch' : `${sampleEveryEpochs} epochs`}`
+        : `every ${sampleEverySteps === 1 ? 'step' : `${sampleEverySteps} steps`}`;
+    const prompts = samplePrompts.filter((p) => p.trim() !== '');
+
+    return (
+      <CollapsibleSection title="Sampling">
+        <div className="space-y-1.5 text-sm">
+          <p className="text-slate-500 dark:text-slate-400">
+            Sample images will be generated {cadence}
+            {prompts.length > 0 ? ' from these prompts:' : '.'}
+          </p>
+          {prompts.length > 0 && (
+            <ul className="space-y-0.5">
+              {prompts.map((prompt, i) => (
+                <li
+                  key={i}
+                  title={prompt}
+                  className="truncate text-slate-600 dark:text-slate-300"
+                >
+                  {prompt}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-slate-400">
+            Configured in the Intermediate view.
+          </p>
+        </div>
+      </CollapsibleSection>
+    );
+  }
 
   return (
     <CollapsibleSection
@@ -172,27 +212,32 @@ const SamplingSectionComponent = ({
                 visibleFields.has(
                   'sampleEverySteps' satisfies keyof FormState,
                 )) && (
-                <div>
+                // Same tray treatment as the Saving section's "Save Every",
+                // so the two cadence controls read as the same kind of thing.
+                // Spans two columns — the tray needs the width.
+                <div className="col-span-2">
                   <FormTitle>Generate Every</FormTitle>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={activeValue}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (val > 0) onFieldChange(activeField, val);
-                    }}
-                    className="w-full"
-                  />
-                  <SegmentedControl
-                    options={[
-                      { value: 'epochs', label: 'Epochs' },
-                      { value: 'steps', label: 'Steps' },
-                    ]}
-                    value={sampleMode}
-                    onChange={(val) => onFieldChange('sampleMode', val)}
-                    size="sm"
-                  />
+                  <InputTray size="md">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={activeValue}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (val > 0) onFieldChange(activeField, val);
+                      }}
+                      className="mr-1 w-20"
+                    />
+                    <SegmentedControl
+                      options={[
+                        { value: 'epochs', label: 'Epochs' },
+                        { value: 'steps', label: 'Steps' },
+                      ]}
+                      value={sampleMode}
+                      onChange={(val) => onFieldChange('sampleMode', val)}
+                      size="md"
+                    />
+                  </InputTray>
                 </div>
               )}
 

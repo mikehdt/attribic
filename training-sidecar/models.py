@@ -117,6 +117,11 @@ class JobProgress(BaseModel):
     # cadence at start. Persisted so the UI's upcoming-save ticks survive a
     # page refresh rather than being re-derived client-side.
     checkpoint_steps: list[int] = []
+    # PREDICTED sample-generation step positions, computed from the sampling
+    # cadence at start (empty when sampling is off or there are no prompts).
+    # Persisted for the same reason as checkpoint_steps. Unrelated to the
+    # hyperparameters' `sample_steps`, which is inference steps per image.
+    sample_steps: list[int] = []
     # Steps at which a checkpoint was CONFIRMED written on disk. Deduped by
     # the JobManager (a provider may report the same save more than once).
     saved_checkpoints: list[int] = []

@@ -862,6 +862,13 @@ class KohyaProvider(TrainingProvider):
         stderr_task = asyncio.create_task(drain(self._process.stderr, True))
 
         training_started = False
+        # True while sd-scripts is generating sample images. The sampler runs
+        # its own tqdm bars (e.g. 20 diffusion steps per image) which would
+        # otherwise be latched as the training bar via `training_started` and
+        # briefly rewrite current/total steps to 20/20 — collapsing the UI's
+        # charts. While set, only a bar that proves itself (avr_loss or the
+        # "steps" desc prefix) is accepted, which also clears the flag.
+        sampling_active = False
         # Last training step counts seen, so the terminal COMPLETED event can
         # report the bar as full (N/N) rather than dropping back to 0/0.
         current_step = 0
@@ -909,18 +916,29 @@ class KohyaProvider(TrainingProvider):
             # sd-scripts shows several tqdm bars (caching latents, caching TE
             # outputs, then the training loop). Only the training bar is
             # prefixed with "steps" and/or carries avr_loss — latch on that so
-            # setup bars stay under the Preparing label.
+            # setup bars stay under the Preparing label. An anonymous bar
+            # (no prefix, no loss) is only trusted mid-run when its total
+            # matches the established step count: the sampler's own diffusion
+            # bars (e.g. 13/20) would otherwise briefly rewrite current/total
+            # steps and collapse the charts, even if the "generating sample"
+            # log line that sets `sampling_active` was missed.
+            bar_total = int(match.group(2)) if match else 0
             is_training_bar = bool(
                 match
                 and (
                     loss_match
                     or line.lower().startswith("steps")
-                    or training_started
+                    or (
+                        training_started
+                        and not sampling_active
+                        and (total_steps <= 0 or bar_total == total_steps)
+                    )
                 )
             )
 
             if match and is_training_bar:
                 training_started = True
+                sampling_active = False
                 current_step = int(match.group(1))
                 total_steps = int(match.group(2))
                 eta = _parse_eta_seconds(match.group(3))
@@ -983,6 +1001,9 @@ class KohyaProvider(TrainingProvider):
                         "sample" in lower and "generat" in lower
                     ):
                         activity = "Generating samples"
+                        # Ignore the sampler's own tqdm bars until the real
+                        # training bar ("steps" / avr_loss) reappears.
+                        sampling_active = True
                     elif "model saved" in lower:
                         activity = "Checkpoint saved"
                         saved = [current_step]

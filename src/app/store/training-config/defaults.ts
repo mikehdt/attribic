@@ -74,7 +74,8 @@ export function defaultsToFormState(
     nativeResolution: defaults.nativeResolution,
     samplingEnabled: false,
     samplePrompts: [''],
-    sampleMode: 'steps',
+    // Epochs by default, matching saveMode — the two cadences read as a pair.
+    sampleMode: 'epochs',
     sampleEveryEpochs: 1,
     sampleEverySteps: defaults.sampleEvery,
     sampleSteps: defaults.sampleSteps,

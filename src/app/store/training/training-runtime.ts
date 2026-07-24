@@ -53,6 +53,7 @@ type SidecarJobProgress = {
     prompt_index: number;
   }>;
   checkpoint_steps?: number[];
+  sample_steps?: number[];
   saved_checkpoints?: number[];
   log_lines?: string[];
   error?: string | null;
@@ -77,6 +78,8 @@ type WsState = {
   port: number | null;
   /** Per-job checkpoint step positions, keyed by job_id. */
   checkpointStepsByJob: Map<string, number[]>;
+  /** Per-job predicted sample-generation step positions, keyed by job_id. */
+  sampleStepsByJob: Map<string, number[]>;
   /** Per-job "seen locally at" timestamp, keyed by job_id. */
   startedAtByJob: Map<string, number>;
 };
@@ -85,6 +88,7 @@ const ws: WsState = {
   socket: null,
   port: null,
   checkpointStepsByJob: new Map(),
+  sampleStepsByJob: new Map(),
   startedAtByJob: new Map(),
 };
 
@@ -117,6 +121,8 @@ function buildProgress(
   // upcoming vs reached positions.
   const checkpointSteps =
     msg.checkpoint_steps ?? ws.checkpointStepsByJob.get(jobId) ?? [];
+  const sampleSteps =
+    msg.sample_steps ?? ws.sampleStepsByJob.get(jobId) ?? [];
   const status = mapStatus(msg.status);
   const terminal =
     status === 'completed' || status === 'failed' || status === 'cancelled';
@@ -149,6 +155,7 @@ function buildProgress(
       promptIndex: s.prompt_index,
     })),
     checkpointSteps,
+    sampleSteps,
     savedCheckpoints: msg.saved_checkpoints ?? [],
     logLines: msg.log_lines ?? [],
     error: msg.error ?? null,
@@ -221,6 +228,39 @@ function deriveCheckpointSteps(config: Record<string, unknown>): number[] {
     }
   } else if (saveMode === 'steps' && saveEverySteps > 0) {
     for (let s = saveEverySteps; s <= totalSteps; s += saveEverySteps) {
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+/**
+ * Predicted sample-generation step positions from the form config — the
+ * fallback twin of `deriveCheckpointSteps` for sidecar payloads predating
+ * `sample_steps`. Gated on prompts because that's what actually enables
+ * sampling in the providers.
+ */
+function deriveSampleSteps(config: Record<string, unknown>): number[] {
+  const samplingEnabled = (config.samplingEnabled as boolean) ?? false;
+  const prompts = ((config.samplePrompts as string[]) ?? []).filter((p) =>
+    p.trim(),
+  );
+  if (!samplingEnabled || prompts.length === 0) return [];
+
+  const totalSteps = (config.steps as number) || 0;
+  const epochs = (config.epochs as number) || 0;
+  const sampleMode = (config.sampleMode as string) ?? 'steps';
+  const sampleEveryEpochs = (config.sampleEveryEpochs as number) ?? 1;
+  const sampleEverySteps = (config.sampleEverySteps as number) ?? 250;
+
+  const out: number[] = [];
+  if (sampleMode === 'epochs' && sampleEveryEpochs > 0 && epochs > 0) {
+    const stepsPerEpoch = Math.max(1, Math.ceil(totalSteps / epochs));
+    for (let e = sampleEveryEpochs; e <= epochs; e += sampleEveryEpochs) {
+      out.push(Math.min(e * stepsPerEpoch, totalSteps));
+    }
+  } else if (sampleMode === 'steps' && sampleEverySteps > 0) {
+    for (let s = sampleEverySteps; s <= totalSteps; s += sampleEverySteps) {
       out.push(s);
     }
   }
@@ -346,6 +386,7 @@ export function startTraining(
 
     // Stash per-job metadata used by the WS progress router.
     ws.checkpointStepsByJob.set(jobId, deriveCheckpointSteps(config));
+    ws.sampleStepsByJob.set(jobId, deriveSampleSteps(config));
     ws.startedAtByJob.set(jobId, Date.now());
 
     const job: TrainingJob = {
@@ -550,7 +591,9 @@ export function hydrateActiveTraining(): AppThunk {
                   ?.max_saves_to_keep as number) ?? 0,
             },
           },
-          samplePrompts: [],
+          // The persisted request carries the prompts — they drive the samples
+          // grid's column headers after a refresh.
+          samplePrompts: (cfg.sample_prompts as string[]) ?? [],
         },
         progress: active.progress
           ? buildProgress(active.job_id, active.progress)

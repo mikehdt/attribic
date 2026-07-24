@@ -1,5 +1,6 @@
 import { Modal } from '@/app/shared/modal';
 
+import { showsSamplesView } from './training-detail-tabs/samples-model';
 import { TrainingDetailTabs } from './training-detail-tabs/training-detail-tabs';
 import { useTrainingDetailModal } from './use-training-detail-modal';
 
@@ -23,15 +24,17 @@ export function TrainingDetailModal({
   const { job } = useTrainingDetailModal(jobId, onClose);
   const isOpen = jobId !== null && job !== null;
 
-  // Widen to make room for the samples grid only once samples exist — with none
-  // the modal keeps its original width and looks exactly as before.
-  const hasSamples = (job?.progress?.samples?.length ?? 0) > 0;
+  // Widen to make room for the samples grid whenever the Samples tab shows —
+  // the same predicate the tabs use, so the width is settled from the moment
+  // the modal opens rather than jumping when the first image arrives. Runs
+  // without sampling keep the original width and look exactly as before.
+  const wide = showsSamplesView(job);
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      className={`w-full ${hasSamples ? 'max-w-5xl' : 'max-w-3xl'}`}
+      className={`w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'}`}
       ariaLabel="Training details"
     >
       <TrainingDetailTabs key={job?.id} job={job} />

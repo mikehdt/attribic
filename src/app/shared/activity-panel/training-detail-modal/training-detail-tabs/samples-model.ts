@@ -15,8 +15,12 @@ export type SampleRow = {
   key: string;
   /** Row stamp, e.g. "Step 500" or "Epoch 3". */
   label: string;
+  /** Secondary line under the label — the upcoming row's "~10m" ETA. */
+  sublabel?: string;
   /** True when the run samples on an epoch cadence (label reads "Epoch N"). */
   isEpoch: boolean;
+  /** A predicted future event: every cell renders as a placeholder. */
+  upcoming?: boolean;
   /** One cell per column; null where that prompt hasn't been sampled yet. */
   cells: (SampleImage | null)[];
 };
@@ -31,18 +35,26 @@ export type SamplesGridModel = {
  * configured prompts (falling back to "Prompt N" where a sample's index runs
  * past the list); rows are sampling events grouped by epoch (epoch-cadence
  * runs, where step is 0) or step, newest first.
+ *
+ * A run with sampling configured but no images yet still gets its prompt
+ * columns (from the predicted `sampleSteps`), so the table can render as an
+ * empty frame from the moment the run starts — confirmation the setting took.
  */
 export function buildSamplesGrid(job: TrainingJob | null): SamplesGridModel {
   const samples = job?.progress?.samples ?? [];
   const prompts = job?.config?.samplePrompts ?? [];
+  const samplingExpected = (job?.progress?.sampleSteps ?? []).length > 0;
 
-  if (samples.length === 0) return { columns: [], rows: [] };
+  if (samples.length === 0 && !samplingExpected) {
+    return { columns: [], rows: [] };
+  }
 
   const maxPromptIndex = samples.reduce(
     (max, s) => Math.max(max, s.promptIndex),
     -1,
   );
   const columnCount = Math.max(prompts.length, maxPromptIndex + 1);
+  if (columnCount === 0) return { columns: [], rows: [] };
 
   const columns: SampleColumn[] = Array.from(
     { length: columnCount },
@@ -89,6 +101,22 @@ export function buildSamplesGrid(job: TrainingJob | null): SamplesGridModel {
     .map((g) => g.row);
 
   return { columns, rows };
+}
+
+/**
+ * Whether the detail view gets the samples treatment — the Samples tab and the
+ * wider modal. A live run qualifies as soon as sampling is configured (the
+ * empty grid frame is the confirmation the setting took); a terminal run only
+ * when images actually exist. Host modals key their width off this so they're
+ * wide from the start rather than jumping when the first image lands.
+ * `useTrainingDetailTabs` passes its memoised grid to avoid a rebuild.
+ */
+export function showsSamplesView(
+  job: TrainingJob | null,
+  grid: SamplesGridModel = buildSamplesGrid(job),
+): boolean {
+  const isLive = job?.status === 'running' || job?.status === 'preparing';
+  return grid.columns.length > 0 && (grid.rows.length > 0 || isLive);
 }
 
 /**

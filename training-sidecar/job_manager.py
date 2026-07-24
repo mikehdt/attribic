@@ -81,6 +81,35 @@ def _parse_sec_per_it(speed: Optional[str]) -> Optional[float]:
     return 1.0 / value if unit == "it/s" else value
 
 
+def _predict_cadence_steps(
+    every_steps: int,
+    every_epochs: int,
+    total_steps: int,
+    total_epochs: int,
+) -> list[int]:
+    """Step positions implied by a steps-or-epochs cadence (0/0 = disabled).
+
+    Steps take precedence, matching what the providers pass to their backends.
+    Epoch-based positions land on the trainer's own epoch rhythm: whole epochs
+    of `steps_per_epoch` counted from step 0, with the last epoch cut short by
+    a max-steps cap.
+    """
+    if total_steps <= 0:
+        return []
+    if every_steps > 0:
+        return list(range(every_steps, total_steps + 1, every_steps))
+    if every_epochs <= 0 or total_epochs <= 0:
+        return []
+
+    steps_per_epoch = max(1, math.ceil(total_steps / total_epochs))
+    out: list[int] = []
+    epoch = every_epochs
+    while epoch <= total_epochs:
+        out.append(min(epoch * steps_per_epoch, total_steps))
+        epoch += every_epochs
+    return out
+
+
 def predict_checkpoint_steps(
     hyperparameters: dict,
     total_steps: int | None = None,
@@ -92,40 +121,50 @@ def predict_checkpoint_steps(
     src/app/store/training/training-runtime.ts) but reads the snake_case
     hyperparameters the sidecar actually receives. The Node side sends the
     save cadence in the user's chosen unit — `save_every_n_steps` for
-    step-based saving, `save_every_n_epochs` for epoch-based (0/0 = disabled) —
-    with steps taking precedence, matching what the providers pass to their
-    backends.
+    step-based saving, `save_every_n_epochs` for epoch-based (0/0 = disabled).
 
-    Epoch-based saves land on the trainer's own epoch rhythm: whole epochs of
-    `steps_per_epoch` counted from step 0, with the last epoch cut short by a
-    max-steps cap. `total_steps` / `total_epochs` override the configured
-    values so a running job can re-derive that rhythm from what the trainer
-    actually reports — the configured pair can imply a different (wrong)
-    steps-per-epoch when a step cap truncates the run.
+    `total_steps` / `total_epochs` override the configured values so a running
+    job can re-derive the epoch rhythm from what the trainer actually reports —
+    the configured pair can imply a different (wrong) steps-per-epoch when a
+    step cap truncates the run.
     """
     hp = hyperparameters or {}
     if total_steps is None:
         total_steps = int(hp.get("steps", 0) or 0)
     if total_epochs is None:
         total_epochs = int(hp.get("epochs", 0) or 0)
-    if total_steps <= 0:
-        return []
+    return _predict_cadence_steps(
+        int(hp.get("save_every_n_steps", 0) or 0),
+        int(hp.get("save_every_n_epochs", 0) or 0),
+        total_steps,
+        total_epochs,
+    )
 
-    save_every_steps = int(hp.get("save_every_n_steps", 0) or 0)
-    if save_every_steps > 0:
-        return list(range(save_every_steps, total_steps + 1, save_every_steps))
 
-    save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
-    if save_every_epochs <= 0 or total_epochs <= 0:
-        return []
+def predict_sample_steps(
+    hyperparameters: dict,
+    total_steps: int | None = None,
+    total_epochs: int | None = None,
+) -> list[int]:
+    """Predict the step positions at which sample images will be generated.
 
-    steps_per_epoch = max(1, math.ceil(total_steps / total_epochs))
-    out: list[int] = []
-    epoch = save_every_epochs
-    while epoch <= total_epochs:
-        out.append(min(epoch * steps_per_epoch, total_steps))
-        epoch += save_every_epochs
-    return out
+    Same cadence rules as `predict_checkpoint_steps`, reading the sampling
+    fields (`sample_every_n_steps` / `sample_every_n_epochs`). Callers gate on
+    a non-empty prompt list — that's what actually enables sampling in the
+    providers. Unrelated to the `sample_steps` hyperparameter, which is the
+    inference step count per sample image.
+    """
+    hp = hyperparameters or {}
+    if total_steps is None:
+        total_steps = int(hp.get("steps", 0) or 0)
+    if total_epochs is None:
+        total_epochs = int(hp.get("epochs", 0) or 0)
+    return _predict_cadence_steps(
+        int(hp.get("sample_every_n_steps", 0) or 0),
+        int(hp.get("sample_every_n_epochs", 0) or 0),
+        total_steps,
+        total_epochs,
+    )
 
 
 def _lifecycle_from_training(status: JobStatus) -> LifecycleStatus:
@@ -146,6 +185,7 @@ def _lifecycle_from_training(status: JobStatus) -> LifecycleStatus:
 def _new_accumulator(
     *,
     checkpoint_steps: list[int],
+    sample_steps: list[int],
     training_seconds: float,
     provider: str,
     output_path: str,
@@ -170,6 +210,7 @@ def _new_accumulator(
         "stride": 1,
         "raw_count": raw_count,
         "checkpoint_steps": checkpoint_steps,
+        "sample_steps": sample_steps,
         "saved": saved if saved is not None else set(),
         # Active-training time accounting. `training_seconds` carries the
         # running total (seeded from any resume marker); `last_tick` is the
@@ -296,6 +337,14 @@ class JobManager:
         # Predict the checkpoint step positions once, up front, so they're
         # persisted with the job and survive a page refresh.
         checkpoint_steps = predict_checkpoint_steps(request.hyperparameters)
+        # Same for sample-generation positions — but only when there are
+        # prompts to sample: providers enable sampling purely on a non-empty
+        # prompt list, so a cadence without prompts never fires.
+        sample_steps = (
+            predict_sample_steps(request.hyperparameters)
+            if request.sample_prompts
+            else []
+        )
         # If this run resumes from a saved state, seed the training clock from
         # the marker left beside that state so the timer continues rather than
         # restarting at zero (see training_time.py).
@@ -306,10 +355,12 @@ class JobManager:
             job_id=job_id,
             status=JobStatus.PENDING,
             checkpoint_steps=checkpoint_steps,
+            sample_steps=sample_steps,
             training_seconds=carryforward,
         )
         self._accumulators[job_id] = _new_accumulator(
             checkpoint_steps=checkpoint_steps,
+            sample_steps=sample_steps,
             training_seconds=carryforward,
             provider=request.provider.value,
             output_path=request.output_path,
@@ -455,6 +506,7 @@ class JobManager:
                 last_step=job.progress.current_step,
                 raw_count=len(job.progress.loss_history),
                 checkpoint_steps=list(job.progress.checkpoint_steps),
+                sample_steps=list(job.progress.sample_steps),
                 saved={int(s) for s in job.progress.saved_checkpoints},
                 training_seconds=float(job.progress.training_seconds or 0.0),
                 provider=cfg.get("provider") or job.provider.value,
@@ -520,13 +572,22 @@ class JobManager:
         # what the trainer reports keeps upcoming checkpoints on the same beat
         # as the confirmed ones.
         if progress.total_steps > 0 and progress.total_epochs > 0:
+            hp = (job.config or {}).get("hyperparameters", {})
             refined = predict_checkpoint_steps(
-                (job.config or {}).get("hyperparameters", {}),
+                hp,
                 total_steps=progress.total_steps,
                 total_epochs=progress.total_epochs,
             )
             if refined:
                 acc["checkpoint_steps"] = refined
+            if (job.config or {}).get("sample_prompts"):
+                refined_samples = predict_sample_steps(
+                    hp,
+                    total_steps=progress.total_steps,
+                    total_epochs=progress.total_epochs,
+                )
+                if refined_samples:
+                    acc["sample_steps"] = refined_samples
 
         # Append a loss point only when actively training, the loss is
         # numeric, and the step advanced — so between-step activity events
@@ -562,6 +623,7 @@ class JobManager:
         progress.speed_history = list(acc["speed_history"])
         progress.prep_speed_history = list(acc["prep_speed"])
         progress.checkpoint_steps = list(acc["checkpoint_steps"])
+        progress.sample_steps = list(acc["sample_steps"])
         progress.saved_checkpoints = sorted(acc["saved"])
 
     async def _update_progress(self, progress: JobProgress):

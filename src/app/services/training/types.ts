@@ -88,6 +88,12 @@ export type TrainingProgress = {
   samples: SampleImage[];
   /** Predicted checkpoint step positions derived from the save cadence. */
   checkpointSteps: number[];
+  /**
+   * Predicted sample-generation step positions derived from the sampling
+   * cadence; empty when sampling is off. Unrelated to the `sampleSteps`
+   * hyperparameter (inference steps per sample image).
+   */
+  sampleSteps: number[];
   /** Steps at which the trainer confirmed a checkpoint was actually written. */
   savedCheckpoints: number[];
   logLines: string[];
