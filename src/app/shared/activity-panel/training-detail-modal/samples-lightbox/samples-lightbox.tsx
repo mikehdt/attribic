@@ -126,29 +126,21 @@ export function SamplesLightbox({
       className="absolute -inset-6 z-20 flex flex-col rounded-lg bg-white/95 backdrop-blur-sm outline-none dark:bg-slate-800/95"
     >
       <div className="flex items-start justify-between gap-3 border-b border-(--border-subtle) p-3">
-        {/* Labelled back route to the grid — the X alone was easy to miss. */}
         <button
           type="button"
           onClick={onClose}
-          className="flex shrink-0 cursor-pointer items-center gap-0.5 rounded py-1 pr-2 pl-1 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+          className="flex shrink-0 cursor-pointer items-center gap-0.5 self-center rounded py-1 pr-2 pl-1 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
         >
           <ChevronLeftIcon className="h-4 w-4" />
-          Samples
+          Back
         </button>
-        <div className="min-w-0 flex-1">
+
+        <div className="min-w-0 flex-1 justify-center">
           <p className="text-sm font-medium text-slate-500">{row.label}</p>
           <p className="wrap-break-words text-sm text-(--foreground)">
             {column.label}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close preview"
-          className="shrink-0 cursor-pointer rounded-full p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-        >
-          <XIcon className="h-5 w-5" />
-        </button>
       </div>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center p-4">
