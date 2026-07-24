@@ -167,6 +167,14 @@ const LossChartComponent = ({
   const lineTop = padding.top;
   const lineBottom = height - padding.bottom;
 
+  // The run's end is itself the final checkpoint — a violet line always sits on
+  // the plot's right edge (dashed until the trainer confirms the save, solid
+  // once written), even when no other checkpoints exist. Any other checkpoint
+  // line that maps to the same edge is dropped so it isn't drawn twice.
+  const rightEdgeX = width - padding.right;
+  const atRightEdge = (step: number) => Math.abs(xScale(step) - rightEdgeX) < 4;
+  const finalCheckpointSaved = savedCheckpoints.some(atRightEdge);
+
   const lastPoint = visibleHistory[visibleHistory.length - 1];
 
   // LR schedule background: curve points spread across the full plot width,
@@ -275,7 +283,7 @@ const LossChartComponent = ({
 
       {/* Upcoming checkpoints: dashed, faded violet — same family as the
           solid saved-checkpoint lines, distinct from the grey epoch grid. */}
-      {upcomingCheckpoints.map((step) => (
+      {upcomingCheckpoints.filter((step) => !atRightEdge(step)).map((step) => (
         <line
           key={`upcoming-${step}`}
           x1={xScale(step)}
@@ -290,7 +298,7 @@ const LossChartComponent = ({
 
       {/* Pruned by the rolling save window — no longer on disk, so they drop
           back to solid slate rather than the live-checkpoint violet. */}
-      {prunedCheckpoints.map((step) => (
+      {prunedCheckpoints.filter((step) => !atRightEdge(step)).map((step) => (
         <line
           key={`pruned-${step}`}
           x1={xScale(step)}
@@ -303,7 +311,7 @@ const LossChartComponent = ({
       ))}
 
       {/* Confirmed checkpoint saves still on disk: solid */}
-      {liveCheckpoints.map((step) => (
+      {liveCheckpoints.filter((step) => !atRightEdge(step)).map((step) => (
         <line
           key={`saved-${step}`}
           x1={xScale(step)}
@@ -314,6 +322,18 @@ const LossChartComponent = ({
           className="stroke-violet-500/70 dark:stroke-violet-400/70"
         />
       ))}
+
+      {/* Final checkpoint: always on the right edge (the run's end save).
+          Dashed until confirmed written, solid once saved. */}
+      <line
+        x1={rightEdgeX}
+        x2={rightEdgeX}
+        y1={lineTop}
+        y2={lineBottom}
+        strokeWidth={1}
+        strokeDasharray={finalCheckpointSaved ? undefined : '2,3'}
+        className="stroke-violet-500/70 dark:stroke-violet-400/70"
+      />
 
       {/* Raw loss: recedes when the smoothed trend line carries the shape. */}
       {linePath ? (
