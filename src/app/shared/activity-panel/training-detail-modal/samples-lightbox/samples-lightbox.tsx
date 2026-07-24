@@ -123,7 +123,7 @@ export function SamplesLightbox({
       onKeyDown={handleKeyDown}
       // -inset-6 extends over the modal's p-6 padding so the overlay covers the
       // Modal's own close button (top-3/right-3, z-1); z-20 sits above it.
-      className="absolute -inset-6 z-20 flex flex-col rounded-lg bg-white/95 outline-none backdrop-blur-sm dark:bg-slate-800/95"
+      className="absolute -inset-6 z-20 flex flex-col rounded-lg bg-white/95 backdrop-blur-sm outline-none dark:bg-slate-800/95"
     >
       <div className="flex items-start justify-between gap-3 border-b border-(--border-subtle) p-3">
         {/* Labelled back route to the grid — the X alone was easy to miss. */}
@@ -137,7 +137,7 @@ export function SamplesLightbox({
         </button>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-slate-500">{row.label}</p>
-          <p className="text-sm break-words text-(--foreground)">
+          <p className="wrap-break-words text-sm text-(--foreground)">
             {column.label}
           </p>
         </div>
@@ -161,7 +161,7 @@ export function SamplesLightbox({
         />
 
         <NavButton
-          className="left-2 top-1/2 -translate-y-1/2"
+          className="top-1/2 left-2 -translate-y-1/2"
           label="Previous prompt"
           disabled={!nav.left}
           onClick={() => onMove('col', -1)}
@@ -169,7 +169,7 @@ export function SamplesLightbox({
           <ChevronLeftIcon className="h-5 w-5" />
         </NavButton>
         <NavButton
-          className="right-2 top-1/2 -translate-y-1/2"
+          className="top-1/2 right-2 -translate-y-1/2"
           label="Next prompt"
           disabled={!nav.right}
           onClick={() => onMove('col', 1)}
@@ -177,7 +177,7 @@ export function SamplesLightbox({
           <ChevronRightIcon className="h-5 w-5" />
         </NavButton>
         <NavButton
-          className="left-1/2 top-2 -translate-x-1/2"
+          className="top-2 left-1/2 -translate-x-1/2"
           label="Newer sampling event"
           disabled={!nav.up}
           onClick={() => onMove('row', -1)}
@@ -219,8 +219,8 @@ function NavButton({
       title={label}
       className={`absolute rounded-full border p-1.5 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
         disabled
-          ? 'cursor-default border-slate-200 bg-white/60 text-slate-300 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-600'
-          : 'cursor-pointer border-slate-300 bg-white/90 text-slate-600 hover:bg-white hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
+          ? 'cursor-default border-slate-200/60 bg-white/20 text-slate-300/40 dark:border-slate-700/60 dark:bg-slate-900/20 dark:text-slate-600/40'
+          : 'cursor-pointer border-slate-300 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
       } ${className}`}
     >
       {children}

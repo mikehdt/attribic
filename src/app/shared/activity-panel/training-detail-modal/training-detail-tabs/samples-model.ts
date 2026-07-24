@@ -15,8 +15,6 @@ export type SampleRow = {
   key: string;
   /** Row stamp, e.g. "Step 500" or "Epoch 3". */
   label: string;
-  /** Secondary line under the label — the upcoming row's "~10m" ETA. */
-  sublabel?: string;
   /** True when the run samples on an epoch cadence (label reads "Epoch N"). */
   isEpoch: boolean;
   /** A predicted future event: every cell renders as a placeholder. */
@@ -67,10 +65,7 @@ export function buildSamplesGrid(job: TrainingJob | null): SamplesGridModel {
   // Group by sampling event: epoch-cadence runs carry a non-null epoch (step is
   // 0), step-cadence runs carry a null epoch. Key + sort value follow whichever
   // unit the run actually samples on.
-  const groups = new Map<
-    string,
-    { sortValue: number; row: SampleRow }
-  >();
+  const groups = new Map<string, { sortValue: number; row: SampleRow }>();
 
   for (const sample of samples) {
     const isEpoch = sample.epoch != null;

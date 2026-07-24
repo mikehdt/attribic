@@ -75,19 +75,13 @@ function GridRow({
     <div role="row" className="contents">
       <div
         role="rowheader"
-        className={`flex items-center justify-end text-right text-sm font-medium whitespace-nowrap ${
+        className={`flex items-end justify-center text-right text-sm font-medium whitespace-nowrap [writing-mode:sideways-lr] ${
           row.upcoming ? 'text-slate-400' : 'text-slate-500'
         }`}
       >
-        <span>
-          {row.label}
-          {row.sublabel && (
-            <span className="block text-xs font-normal text-slate-400">
-              {row.sublabel}
-            </span>
-          )}
-        </span>
+        {row.label ?? '—'}
       </div>
+
       {columns.map((column) => {
         const sample = row.cells[column.index];
         return (

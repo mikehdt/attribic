@@ -81,8 +81,7 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
 
     return {
       key: 'upcoming',
-      label: 'Next',
-      sublabel: eta ? `~${eta}` : undefined,
+      label: eta ? `~${eta}` : undefined,
       isEpoch: false,
       upcoming: true,
       cells: grid.columns.map(() => null),
@@ -138,14 +137,22 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
         const { colIndex } = pos;
 
         if (axis === 'row') {
-          for (let r = rowIndex + delta; r >= 0 && r < rows.length; r += delta) {
+          for (
+            let r = rowIndex + delta;
+            r >= 0 && r < rows.length;
+            r += delta
+          ) {
             if (rows[r].cells[colIndex]) {
               return { rowKey: rows[r].key, colIndex };
             }
           }
         } else {
           const cells = rows[rowIndex].cells;
-          for (let c = colIndex + delta; c >= 0 && c < cells.length; c += delta) {
+          for (
+            let c = colIndex + delta;
+            c >= 0 && c < cells.length;
+            c += delta
+          ) {
             if (cells[c]) return { rowKey: pos.rowKey, colIndex: c };
           }
         }
