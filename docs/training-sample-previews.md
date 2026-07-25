@@ -141,8 +141,12 @@ Two problems with leaving files where the trainers drop them:
   carries `progress.samples`, so the history detail view renders from the
   same data as the live view — just resolved against the archive dir.
 - **Deletion**: `deleteHistoryEntry` / `clearHistory` fire
-  `DELETE /api/training/samples/<jobId>` (fire-and-forget, tolerate 404).
-  The activity panel's "Clear all" only dismisses — files stay, correctly.
+  `DELETE /api/training/samples/<jobId>` **and**
+  `DELETE /api/training/jobs/<jobId>` (fire-and-forget, tolerate 404) — the
+  latter sweeps the run's `.training/jobs` working files: the generated config
+  folder (`<jobId>/`, toml/yaml + sample-prompt txt) and the crash-recovery
+  snapshot `<jobId>.json`. The activity panel's "Clear all" only dismisses —
+  files stay, correctly.
 
 Why move rather than leave-in-place + delete-individually: the loras folder
 stays clean (no ever-growing `sample/` dump), deletion is `rm -rf` of one

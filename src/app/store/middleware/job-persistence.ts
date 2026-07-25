@@ -85,11 +85,18 @@ function archiveJobSamples(
     });
 }
 
-/** Fire-and-forget delete of a run's archived sample folder. 404/failure ok. */
-function deleteArchivedSamples(jobId: string) {
-  void fetch(`/api/training/samples/${encodeURIComponent(jobId)}`, {
-    method: 'DELETE',
-  }).catch(() => {
+/**
+ * Fire-and-forget delete of everything a finished run left on disk: its
+ * archived sample folder and its `.training/jobs` working files (generated
+ * config + crash-recovery state). 404/failure ok — deletion is best-effort and
+ * both routes are idempotent.
+ */
+function deleteRunArtifacts(jobId: string) {
+  const id = encodeURIComponent(jobId);
+  void fetch(`/api/training/samples/${id}`, { method: 'DELETE' }).catch(() => {
+    // Nonexistent folder / offline — deletion is best-effort.
+  });
+  void fetch(`/api/training/jobs/${id}`, { method: 'DELETE' }).catch(() => {
     // Nonexistent folder / offline — deletion is best-effort.
   });
 }
@@ -201,11 +208,12 @@ jobPersistenceMiddleware.startListening({
   },
 });
 
-// Delete a run's archived sample folder when the run actually leaves Run
-// History — a single delete or a full clear. Fire-and-forget: a 404 / fs error
-// is fine (the folder is already gone or can be swept by hand). NB: the
-// activity panel's "Clear all" dispatches dismissAllFromPanel/dismissFromPanel,
-// which are deliberately NOT matched here — dismissing keeps the files.
+// Delete a run's on-disk leftovers — archived samples and `.training/jobs`
+// working files — when the run actually leaves Run History, via a single delete
+// or a full clear. Fire-and-forget: a 404 / fs error is fine (already gone, or
+// sweepable by hand). NB: the activity panel's "Clear all" dispatches
+// dismissAllFromPanel/dismissFromPanel, which are deliberately NOT matched here
+// — dismissing keeps the files.
 jobPersistenceMiddleware.startListening({
   matcher: isAnyOf(deleteHistoryEntry, clearHistory),
   effect: (action, listenerApi) => {
@@ -214,10 +222,10 @@ jobPersistenceMiddleware.startListening({
       // the reducer has already emptied the archive.
       const prev = listenerApi.getOriginalState() as RootState;
       for (const id of Object.keys(prev.trainingHistory.entries)) {
-        deleteArchivedSamples(id);
+        deleteRunArtifacts(id);
       }
     } else if (deleteHistoryEntry.match(action)) {
-      deleteArchivedSamples(action.payload);
+      deleteRunArtifacts(action.payload);
     }
   },
 });
