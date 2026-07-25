@@ -28,7 +28,9 @@ export const StableLayout = ({ children }: { children: React.ReactNode }) => {
   // `/training/[project]/[version]` shares the `project` param name, so this
   // has to be scoped to tagging or the pagination base path would be built
   // from a training slug.
-  const project = isTagging ? (params.project as string | undefined) : undefined;
+  const project = isTagging
+    ? (params.project as string | undefined)
+    : undefined;
   const currentPage = parseInt(params.page as string, 10) || 1;
   const basePath = project
     ? `/tagging/${encodeURIComponent(project)}`

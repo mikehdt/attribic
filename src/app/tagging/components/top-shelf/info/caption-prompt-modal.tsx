@@ -94,9 +94,9 @@ export const CaptionPromptModal = ({
         </div>
 
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          This prompt is sent with each image when captioning this project. Every
-          captioning run starts from it — a run can tweak its own copy without
-          changing what&apos;s saved here.
+          This prompt is sent with each image when captioning this project.
+          Every captioning run starts from it — a run can tweak its own copy
+          without changing what&apos;s saved here.
         </p>
 
         <textarea

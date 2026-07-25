@@ -67,9 +67,13 @@ function archiveJobSamples(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jobId: job.id, samples }),
   })
-    .then((res) => (res.ok ? (res.json() as Promise<{
-      samples?: SampleImage[];
-    }>) : null))
+    .then((res) =>
+      res.ok
+        ? (res.json() as Promise<{
+            samples?: SampleImage[];
+          }>)
+        : null,
+    )
     .then((data) => {
       const archived = data?.samples;
       if (!archived || archived.length === 0) return; // nothing moved → keep paths

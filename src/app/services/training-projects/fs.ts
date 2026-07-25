@@ -163,7 +163,9 @@ export class SlugConflictError extends Error {
     readonly slug: string,
     readonly conflictingName: string,
   ) {
-    super(`A project named “${conflictingName}” already uses the URL “${slug}”`);
+    super(
+      `A project named “${conflictingName}” already uses the URL “${slug}”`,
+    );
     this.name = 'SlugConflictError';
   }
 }

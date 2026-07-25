@@ -182,9 +182,7 @@ type OnnxSnapshot = {
 };
 
 type OnnxAttachEvent =
-  | OnnxSnapshot
-  | { result: OnnxBatchResult }
-  | { cancelled: true };
+  OnnxSnapshot | { result: OnnxBatchResult } | { cancelled: true };
 
 /**
  * Reattach to a batch this stream didn't start: yield a snapshot, replay every

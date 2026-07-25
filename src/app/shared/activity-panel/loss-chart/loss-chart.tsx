@@ -5,7 +5,11 @@ import type {
   TrainingProvider,
 } from '@/app/services/training/types';
 
-import { formatLoss, splitPrunedCheckpoints, trimSettleSteps } from '../helpers';
+import {
+  formatLoss,
+  splitPrunedCheckpoints,
+  trimSettleSteps,
+} from '../helpers';
 import { useLossChartScale } from './use-loss-chart-scale';
 
 type LossChartVariant = 'compact' | 'detail';
@@ -283,45 +287,51 @@ const LossChartComponent = ({
 
       {/* Upcoming checkpoints: dashed, faded violet — same family as the
           solid saved-checkpoint lines, distinct from the grey epoch grid. */}
-      {upcomingCheckpoints.filter((step) => !atRightEdge(step)).map((step) => (
-        <line
-          key={`upcoming-${step}`}
-          x1={xScale(step)}
-          x2={xScale(step)}
-          y1={lineTop}
-          y2={lineBottom}
-          strokeWidth={1}
-          strokeDasharray="2,3"
-          className="stroke-violet-500/70 dark:stroke-violet-400/70"
-        />
-      ))}
+      {upcomingCheckpoints
+        .filter((step) => !atRightEdge(step))
+        .map((step) => (
+          <line
+            key={`upcoming-${step}`}
+            x1={xScale(step)}
+            x2={xScale(step)}
+            y1={lineTop}
+            y2={lineBottom}
+            strokeWidth={1}
+            strokeDasharray="2,3"
+            className="stroke-violet-500/70 dark:stroke-violet-400/70"
+          />
+        ))}
 
       {/* Pruned by the rolling save window — no longer on disk, so they drop
           back to solid slate rather than the live-checkpoint violet. */}
-      {prunedCheckpoints.filter((step) => !atRightEdge(step)).map((step) => (
-        <line
-          key={`pruned-${step}`}
-          x1={xScale(step)}
-          x2={xScale(step)}
-          y1={lineTop}
-          y2={lineBottom}
-          strokeWidth={1}
-          className="stroke-slate-400/70 dark:stroke-slate-500/70"
-        />
-      ))}
+      {prunedCheckpoints
+        .filter((step) => !atRightEdge(step))
+        .map((step) => (
+          <line
+            key={`pruned-${step}`}
+            x1={xScale(step)}
+            x2={xScale(step)}
+            y1={lineTop}
+            y2={lineBottom}
+            strokeWidth={1}
+            className="stroke-slate-400/70 dark:stroke-slate-500/70"
+          />
+        ))}
 
       {/* Confirmed checkpoint saves still on disk: solid */}
-      {liveCheckpoints.filter((step) => !atRightEdge(step)).map((step) => (
-        <line
-          key={`saved-${step}`}
-          x1={xScale(step)}
-          x2={xScale(step)}
-          y1={lineTop}
-          y2={lineBottom}
-          strokeWidth={1}
-          className="stroke-violet-500/70 dark:stroke-violet-400/70"
-        />
-      ))}
+      {liveCheckpoints
+        .filter((step) => !atRightEdge(step))
+        .map((step) => (
+          <line
+            key={`saved-${step}`}
+            x1={xScale(step)}
+            x2={xScale(step)}
+            y1={lineTop}
+            y2={lineBottom}
+            strokeWidth={1}
+            className="stroke-violet-500/70 dark:stroke-violet-400/70"
+          />
+        ))}
 
       {/* Final checkpoint: always on the right edge (the run's end save).
           Dashed until confirmed written, solid once saved. */}

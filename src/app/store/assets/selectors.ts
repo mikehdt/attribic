@@ -142,7 +142,10 @@ export const selectHasModifiedAssets = wrapSelector(
   ),
 );
 
-const isAssetTagless = (asset: ImageAsset, captionMode: CaptionMode): boolean => {
+const isAssetTagless = (
+  asset: ImageAsset,
+  captionMode: CaptionMode,
+): boolean => {
   // "Persisted tags" = tags present on disk (not pending add/delete).
   const hasNoPersistedTags = asset.tagList.every(
     (tag) =>

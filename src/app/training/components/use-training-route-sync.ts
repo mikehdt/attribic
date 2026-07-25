@@ -50,7 +50,10 @@ function canonicalPath(project: LoadedProject | null): string {
 }
 
 /** Whether what's loaded already answers what the URL is asking for. */
-function satisfies(project: LoadedProject | null, target: RouteTarget): boolean {
+function satisfies(
+  project: LoadedProject | null,
+  target: RouteTarget,
+): boolean {
   if (!project || !target.slug) return false;
   if (slugify(project.name) !== target.slug) return false;
   // A URL with no version segment accepts whichever version is open; the

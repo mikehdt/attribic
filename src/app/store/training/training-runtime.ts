@@ -121,8 +121,7 @@ function buildProgress(
   // upcoming vs reached positions.
   const checkpointSteps =
     msg.checkpoint_steps ?? ws.checkpointStepsByJob.get(jobId) ?? [];
-  const sampleSteps =
-    msg.sample_steps ?? ws.sampleStepsByJob.get(jobId) ?? [];
+  const sampleSteps = msg.sample_steps ?? ws.sampleStepsByJob.get(jobId) ?? [];
   const status = mapStatus(msg.status);
   const terminal =
     status === 'completed' || status === 'failed' || status === 'cancelled';
