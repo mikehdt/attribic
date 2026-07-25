@@ -335,6 +335,12 @@ export const Button = ({
   return (
     <button
       type={type}
+      // Firefox restores form-control state across an F5, which strips the
+      // `disabled` attribute off a button that was enabled before the reload —
+      // the server sends it disabled, Firefox re-enables it before React gets
+      // there, and hydration reports a `disabled` mismatch. Opting out of
+      // autocomplete opts out of that restoration.
+      autoComplete="off"
       onClick={handleClick}
       onKeyDown={onKeyDown}
       onBlur={onBlur}

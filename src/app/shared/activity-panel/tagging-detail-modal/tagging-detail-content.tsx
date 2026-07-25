@@ -102,7 +102,6 @@ function LastResult({ job }: { job: TaggingJob }) {
  */
 export function TaggingDetailContent({
   job,
-  onCancel,
 }: {
   job: TaggingJob | null;
   /** Absent for archived/terminal-only views; the button hides itself. */

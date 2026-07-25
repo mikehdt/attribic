@@ -8,6 +8,12 @@ import { useEffect, useState } from 'react';
  *
  * A 1s `setInterval` rather than `requestAnimationFrame`: the display only
  * changes once a second, so repainting every frame buys nothing.
+ *
+ * `now` is only ever stamped from the interval, never synchronously on mount or
+ * when the effect re-arms — a setState in the effect body would cost a cascading
+ * render every time a job starts. The cost is that a job starting well after
+ * mount reads up to a second low until the first tick, which is inside the drift
+ * this readout already tolerates.
  */
 export function useElapsed(
   startedAt: number | null,
@@ -18,10 +24,9 @@ export function useElapsed(
 
   useEffect(() => {
     if (!running) return;
-    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [running]);
+  }, [running, startedAt]);
 
   if (startedAt == null) return null;
   if (completedAt != null) return completedAt - startedAt;
