@@ -5,6 +5,7 @@ import {
   type ThunkAction,
 } from '@reduxjs/toolkit';
 
+import { assetImportReducer } from './asset-import';
 import { assetsReducer } from './assets';
 import { autoTaggerReducer } from './auto-tagger';
 import { filtersReducer } from './filters';
@@ -20,6 +21,7 @@ import { trainingConfigReducer } from './training-config';
 import { trainingHistoryReducer } from './training-history';
 
 const rootReducer = combineReducers({
+  assetImport: assetImportReducer,
   assets: assetsReducer,
   autoTagger: autoTaggerReducer,
   filters: filtersReducer,

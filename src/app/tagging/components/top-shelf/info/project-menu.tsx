@@ -2,6 +2,7 @@ import {
   BoxIcon,
   CalculatorIcon,
   ChevronDownIcon,
+  ImagePlusIcon,
   MessageSquareTextIcon,
   RefreshCwIcon,
 } from 'lucide-react';
@@ -11,6 +12,7 @@ import { memo, useCallback, useId, useRef, useState } from 'react';
 import { MenuEditModeSwitcher } from '@/app/shared/menu-edit-mode-switcher';
 import { MenuItem } from '@/app/shared/menu-item';
 import { Popup, usePopup } from '@/app/shared/popup';
+import { openAssetImport } from '@/app/store/asset-import';
 import {
   IoState,
   loadAllAssets,
@@ -107,6 +109,11 @@ const ProjectMenuComponent = () => {
       );
     }
   }, [closePopup, popupId, dispatch, projectFolderName]);
+
+  const handleAddImages = useCallback(() => {
+    closePopup(popupId);
+    dispatch(openAssetImport());
+  }, [closePopup, popupId, dispatch]);
 
   const handleOpenBucketModal = useCallback(() => {
     closePopup(popupId);
@@ -259,6 +266,12 @@ const ProjectMenuComponent = () => {
             icon={<RefreshCwIcon className="h-5 w-5" />}
             label="Refresh Assets"
             onClick={handleRefresh}
+            disabled={ioInProgress}
+          />
+          <MenuItem
+            icon={<ImagePlusIcon className="h-5 w-5" />}
+            label="Add Images"
+            onClick={handleAddImages}
             disabled={ioInProgress}
           />
           <MenuItem

@@ -16,6 +16,7 @@ import {
   parsePreferencesCookie,
   PREFERENCES_COOKIE,
 } from './store/preferences/local-storage';
+import { AssetImportHost } from './tagging/components/asset-import/asset-import-host';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -100,16 +101,22 @@ export default async function Root({
       </head>
       <body>
         <StoreProvider preloadedPreferences={preferences}>
-          <AppProvider>
-            <ModalProvider>
-              <PopupProvider>
+          <ModalProvider>
+            <PopupProvider>
+              {/* AppProvider gates the page content on the tagging route — it
+                  swaps in the loading, error and empty-project views — so it
+                  sits inside these providers rather than around them. Outside,
+                  the gate would take the modal and popup contexts down with it,
+                  leaving those views unable to open a modal or raise a toast. */}
+              <AppProvider>
                 <StableLayout>{children}</StableLayout>
-                <ModelManagerModal />
-              </PopupProvider>
-              <ToastContainer />
-              <ActivityPanel />
-            </ModalProvider>
-          </AppProvider>
+              </AppProvider>
+              <ModelManagerModal />
+              <AssetImportHost />
+            </PopupProvider>
+            <ToastContainer />
+            <ActivityPanel />
+          </ModalProvider>
         </StoreProvider>
       </body>
     </html>
