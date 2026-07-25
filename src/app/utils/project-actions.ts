@@ -19,6 +19,7 @@ import {
 } from '@/app/services/tagging-projects/fs';
 import type { CaptionMode } from '@/app/store/project/types';
 
+import { validateProjectFolderName } from './project-folder-name';
 import { sharp } from './sharp';
 import { isValidRepeatFolder, parseSubfolder } from './subfolder-utils';
 
@@ -42,6 +43,8 @@ export type Project = {
   thumbnailVersion?: number;
   hidden?: boolean;
   private?: boolean;
+  /** Keeps an asset-less project in the list; see `ProjectConfig`. */
+  showWhenEmpty?: boolean;
   featured?: boolean;
   captionMode?: CaptionMode;
   triggerPhrases?: string[];
@@ -191,6 +194,7 @@ export const getProjectList = async (): Promise<Project[]> => {
           thumbnailVersion: config?.thumbnailVersion,
           hidden: isHidden,
           private: isPrivate,
+          showWhenEmpty: config?.showWhenEmpty || false,
           featured: config?.featured || false,
           captionMode: config?.captionMode,
           triggerPhrases: config?.triggerPhrases,
@@ -217,6 +221,89 @@ export const getProjectList = async (): Promise<Project[]> => {
     console.error('Error reading projects folder:', error);
     throw new Error(`Failed to read projects from configured folder`);
   }
+};
+
+export type CreateProjectResult =
+  { success: true; project: Project } | { success: false; error: string };
+
+/**
+ * Create a new tagging project: a folder under the projects root, seeded with a
+ * `.tagging` config.
+ *
+ * The config is what makes the new project visible — the list hides folders
+ * with no assets, so `showWhenEmpty` is set to carry it through until the first
+ * image arrives.
+ *
+ * Failures come back as `{ success: false, error }` rather than thrown: these
+ * are the user's to fix (bad name, name taken) and the form flags the field
+ * with them, whereas a thrown Server Action error is redacted in production.
+ */
+export const createProject = async (
+  folderName: string,
+  title?: string,
+): Promise<CreateProjectResult> => {
+  const name = folderName.trim();
+
+  const nameError = validateProjectFolderName(name);
+  if (nameError) return { success: false, error: nameError };
+
+  const { projectsFolder } = getServerConfig();
+
+  if (!fs.existsSync(projectsFolder)) {
+    return {
+      success: false,
+      error: 'The configured projects folder does not exist.',
+    };
+  }
+
+  // Scanned case-insensitively rather than left to mkdir's EEXIST: NTFS treats
+  // "Foo" and "foo" as the same folder, and the clash is worth naming since an
+  // existing asset-less folder won't be in the list to explain itself.
+  let clash: string | undefined;
+  try {
+    clash = fs
+      .readdirSync(projectsFolder, { withFileTypes: true })
+      .find(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name.toLowerCase() === name.toLowerCase(),
+      )?.name;
+  } catch (error) {
+    console.error('Error reading projects folder:', error);
+    return { success: false, error: 'Could not read the projects folder.' };
+  }
+
+  if (clash) {
+    return {
+      success: false,
+      error: `A folder named “${clash}” already exists in the projects folder.`,
+    };
+  }
+
+  const projectPath = path.join(projectsFolder, name);
+  const trimmedTitle = title?.trim();
+
+  try {
+    fs.mkdirSync(projectPath);
+    writeConfig(name, {
+      showWhenEmpty: true,
+      ...(trimmedTitle ? { title: trimmedTitle } : {}),
+    });
+  } catch (error) {
+    console.error(`Error creating project ${name}:`, error);
+    return { success: false, error: 'Could not create the project folder.' };
+  }
+
+  return {
+    success: true,
+    project: {
+      name,
+      path: projectPath,
+      imageCount: 0,
+      title: trimmedTitle || undefined,
+      showWhenEmpty: true,
+    },
+  };
 };
 
 /**

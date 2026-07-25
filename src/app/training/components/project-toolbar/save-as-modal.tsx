@@ -97,8 +97,8 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
   }, [loadedProject, projects]);
 
   // The name has to survive being turned into a URL segment, so both checks
-  // run on the slug rather than the raw string: "Arcadia Style" and
-  // "arcadia-style" are distinct names but would claim the same URL, and a
+  // run on the slug rather than the raw string: "My Project" and
+  // "my-project" are distinct names but would claim the same URL, and a
   // name of pure punctuation yields no segment at all. The server enforces
   // this too — this is just the inline version.
   const nameSlug = useMemo(() => slugify(name), [name]);
@@ -226,7 +226,7 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. arcadia style"
+                placeholder="e.g. My Project"
               />
               {nameTaken && (
                 <p className="text-sm text-rose-600">

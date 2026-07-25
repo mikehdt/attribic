@@ -249,7 +249,9 @@ const ProjectItemComponent = ({
             <div className="relative flex items-center">
               {project.imageCount !== undefined && (
                 <div className="text-sm text-slate-500 tabular-nums transition-transform duration-200 group-hover:-translate-x-8 dark:text-slate-300">
-                  {project.imageCount} images
+                  {project.imageCount === 1
+                    ? `1 image`
+                    : `${project.imageCount} images`}
                 </div>
               )}
               <div

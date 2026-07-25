@@ -3,6 +3,7 @@
 import {
   FolderClosedIcon,
   FolderOpenIcon,
+  FolderPlusIcon,
   FolderXIcon,
   PencilIcon,
   StarIcon,
@@ -13,6 +14,7 @@ import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 
 import { useProjectList } from './hooks/use-project-list';
+import { NewProjectModal } from './new-project-modal/new-project-modal';
 import { ProjectItem, type ProjectItemActions } from './project-item';
 
 /**
@@ -66,6 +68,10 @@ export const ProjectList = () => {
     handleSaveProjectsFolder,
     handleProjectSelect,
     loadProjects,
+    isNewProjectOpen,
+    handleOpenNewProject,
+    handleCloseNewProject,
+    handleProjectCreated,
     editingProject,
     editTitle,
     editColor,
@@ -169,11 +175,27 @@ export const ProjectList = () => {
           folder={projectsFolder}
           onSave={handleSaveProjectsFolder}
         />
-        <p className="mt-4 flex w-full justify-center">
+        <p className="mt-4 flex w-full justify-center gap-3">
           <Button onClick={loadProjects} size="md" width="xl">
             Refresh
           </Button>
+          <Button
+            onClick={handleOpenNewProject}
+            color="sky"
+            size="md"
+            width="xl"
+          >
+            <FolderPlusIcon />
+            New Project
+          </Button>
         </p>
+
+        <NewProjectModal
+          isOpen={isNewProjectOpen}
+          onClose={handleCloseNewProject}
+          projectsFolder={projectsFolder}
+          onCreated={handleProjectCreated}
+        />
       </div>
     );
   }
@@ -246,13 +268,27 @@ export const ProjectList = () => {
         />
       </div>
 
-      <Button onClick={loadProjects} size="md" width="xl">
-        Refresh Project List
-      </Button>
+      <div className="flex gap-3">
+        <Button onClick={loadProjects} size="md" width="xl">
+          Refresh Project List
+        </Button>
+
+        <Button onClick={handleOpenNewProject} color="sky" size="md" width="xl">
+          <FolderPlusIcon />
+          New Project
+        </Button>
+      </div>
 
       <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-        Note: project folders with no images are not shown
+        Note: project folders with no images are not shown, unless created here
       </p>
+
+      <NewProjectModal
+        isOpen={isNewProjectOpen}
+        onClose={handleCloseNewProject}
+        projectsFolder={projectsFolder}
+        onCreated={handleProjectCreated}
+      />
     </div>
   );
 };

@@ -23,6 +23,13 @@ export type ProjectConfig = {
   hidden?: boolean;
   /** Never listed at all, as opposed to `hidden` which lists then filters. */
   private?: boolean;
+  /**
+   * List the project even with no assets in it. The project list otherwise
+   * hides image-less folders, since the projects root usually holds unrelated
+   * folders too — but a folder created through the app is a deliberate project
+   * and has to survive the gap between creation and the first image landing.
+   */
+  showWhenEmpty?: boolean;
   featured?: boolean;
   autoTagger?: AutoTaggerSettings;
   captionMode?: CaptionMode;

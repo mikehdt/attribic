@@ -26,7 +26,8 @@ export const useProjectList = () => {
   const [error, setError] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [projectsFolder, setProjectsFolder] = useState('');
-  const { showErrorToast } = useToast();
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const { showToast, showErrorToast } = useToast();
 
   const editActions = useEditProject(setProjects, { onError: showErrorToast });
 
@@ -44,7 +45,14 @@ export const useProjectList = () => {
 
       // Call server action to get project list (always include hidden, but not private)
       const projectData = await getProjectList();
-      setProjects(projectData.filter((project) => project?.imageCount));
+      // Asset-less folders are dropped — the projects root usually holds
+      // unrelated folders too — except where the project opted out of that with
+      // `showWhenEmpty`, which is how a newly created project stays visible.
+      setProjects(
+        projectData.filter(
+          (project) => project?.imageCount || project?.showWhenEmpty,
+        ),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load projects');
     } finally {
@@ -76,6 +84,22 @@ export const useProjectList = () => {
       }
     },
     [loadProjects],
+  );
+
+  const handleOpenNewProject = useCallback(() => setIsNewProjectOpen(true), []);
+  const handleCloseNewProject = useCallback(
+    () => setIsNewProjectOpen(false),
+    [],
+  );
+
+  const handleProjectCreated = useCallback(
+    (folderName: string) => {
+      // Refetched rather than pushed into state so the new project picks up the
+      // same shape and ordering as the rest of the list.
+      loadProjects();
+      showToast(`Created project “${folderName}”`);
+    },
+    [loadProjects, showToast],
   );
 
   useEffect(() => {
@@ -148,6 +172,10 @@ export const useProjectList = () => {
     handleSaveProjectsFolder,
     handleProjectSelect,
     loadProjects,
+    isNewProjectOpen,
+    handleOpenNewProject,
+    handleCloseNewProject,
+    handleProjectCreated,
     ...editActions,
   };
 };
