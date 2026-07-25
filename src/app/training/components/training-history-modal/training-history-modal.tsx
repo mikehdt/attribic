@@ -213,14 +213,16 @@ export function TrainingHistoryModal() {
     >
       {selected ? (
         <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => setSelectedId(null)}
-            className="flex w-fit cursor-pointer items-center gap-1.5 text-sm text-slate-500 hover:text-(--foreground)"
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            Back to history
-          </button>
+          <span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedId(null)}
+            >
+              <ArrowLeftIcon />
+              Back to history
+            </Button>
+          </span>
           <TrainingDetailTabs key={selected.id} job={selected} />
         </div>
       ) : (

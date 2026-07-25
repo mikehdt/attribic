@@ -8,6 +8,7 @@ import {
 import { useEffect, useRef } from 'react';
 
 import type { SampleImage } from '@/app/services/training/types';
+import { Button } from '@/app/shared/button';
 
 import type {
   SampleColumn,
@@ -123,27 +124,23 @@ export function SamplesLightbox({
       onKeyDown={handleKeyDown}
       // -inset-6 extends over the modal's p-6 padding so the overlay covers the
       // Modal's own close button (top-3/right-3, z-1); z-20 sits above it.
-      className="absolute -inset-6 z-20 flex flex-col rounded-lg bg-white/95 backdrop-blur-sm outline-none dark:bg-slate-800/95"
+      className="absolute inset-0 z-20 flex flex-col rounded-lg bg-white/95 backdrop-blur-sm outline-none dark:bg-slate-800/95"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-(--border-subtle) p-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex shrink-0 cursor-pointer items-center gap-0.5 self-center rounded py-1 pr-2 pl-1 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-        >
-          <ChevronLeftIcon className="h-4 w-4" />
-          Back
-        </button>
-
+      <div className="flex items-center justify-between gap-3 border-b border-(--border-subtle) bg-slate-100 px-6 py-3 dark:bg-slate-800">
         <div className="min-w-0 flex-1 justify-center">
           <p className="text-sm font-medium text-slate-500">{row.label}</p>
           <p className="wrap-break-words text-sm text-(--foreground)">
             {column.label}
           </p>
         </div>
+
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          Close Lightbox
+          <XIcon />
+        </Button>
       </div>
 
-      <div className="relative flex min-h-0 flex-1 items-center justify-center p-4">
+      <div className="relative flex min-h-0 flex-1 items-center justify-center bg-white p-4 dark:bg-slate-900">
         {/* eslint-disable-next-line @next/next/no-img-element -- local sample served straight off disk; the optimiser adds nothing for a throwaway preview */}
         <img
           key={sample.path}

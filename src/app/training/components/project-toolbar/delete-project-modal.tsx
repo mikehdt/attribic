@@ -14,6 +14,7 @@ import {
   fetchProjectList,
 } from '@/app/store/training-config/thunks';
 
+import { ModelBackendBadges } from './model-backend-badges';
 import { RadioRow } from './radio-row';
 
 type DeleteProjectModalProps = {
@@ -130,11 +131,22 @@ export const DeleteProjectModal = ({
                     setConfirmed(false);
                   }}
                 >
-                  <div className="flex flex-col">
-                    <span>
-                      Version v{v.version}
-                      {v.label ? ` · ${v.label}` : ''}
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    {/* Mirrors the project menu: with a label the badges drop
+                        to their own line, otherwise they sit beside v{n}. */}
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium tabular-nums">
+                        v{v.version}
+                      </span>
+                      {v.label ? (
+                        <span className="truncate text-xs text-slate-500">
+                          {v.label}
+                        </span>
+                      ) : (
+                        <ModelBackendBadges version={v} />
+                      )}
                     </span>
+                    {v.label && <ModelBackendBadges version={v} />}
                     {onlyOneVersion && (
                       <span className="text-xs text-slate-500">
                         Only version — delete the whole project instead.

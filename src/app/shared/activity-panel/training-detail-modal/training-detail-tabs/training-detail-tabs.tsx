@@ -76,7 +76,7 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
   // isn't cramped when the grid behind it is only a row or two tall — the
   // overlay is absolutely pinned to this wrapper, so this is what sizes it.
   return (
-    <div className={lightbox ? 'relative min-h-[70vh]' : 'relative'}>
+    <div className={lightbox ? 'min-h-[70vh]' : 'relative'}>
       {modalHeader}
 
       {/* Sit the tab control left of the modal's absolute close button. */}

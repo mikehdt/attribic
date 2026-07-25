@@ -21,6 +21,7 @@ import {
   setDatasetHistogram,
   stampSaved,
 } from './index';
+import { forgetRecentProject, recordRecentProject } from './recent-projects';
 import type { FormState, LoadedProject } from './types';
 
 type ProjectResponse = {
@@ -28,10 +29,16 @@ type ProjectResponse = {
   version: TrainingProjectVersion;
 };
 
-function toLoadedProject(
+/**
+ * Build the loaded-project pointer for a project we've just opened or saved,
+ * and stamp it as recently used. Every path that points the form at a project
+ * on disk funnels through here, so the Recent Projects list can't miss one.
+ */
+function adoptProject(
   meta: TrainingProjectMeta,
   version: TrainingProjectVersion,
 ): LoadedProject {
+  recordRecentProject(meta.id, version.version);
   return {
     id: meta.id,
     name: meta.name,
@@ -112,7 +119,7 @@ export const loadProject =
       dispatch(
         hydrateFromProject({
           form: v.form,
-          loadedProject: toLoadedProject(meta, v),
+          loadedProject: adoptProject(meta, v),
         }),
       );
       void dispatch(refreshDatasetHistograms());
@@ -148,7 +155,7 @@ export const loadProjectBySlug =
       dispatch(
         hydrateFromProject({
           form: v.form,
-          loadedProject: toLoadedProject(meta, v),
+          loadedProject: adoptProject(meta, v),
         }),
       );
       void dispatch(refreshDatasetHistograms());
@@ -189,7 +196,7 @@ export const saveCurrentVersion =
         },
       );
       const { meta, version } = await parseOrThrow<ProjectResponse>(res);
-      dispatch(stampSaved(toLoadedProject(meta, version)));
+      dispatch(stampSaved(adoptProject(meta, version)));
     } catch (error) {
       dispatch(
         addToast({
@@ -215,7 +222,7 @@ export const saveAsNewProject =
       dispatch(
         hydrateFromProject({
           form: version.form,
-          loadedProject: toLoadedProject(meta, version),
+          loadedProject: adoptProject(meta, version),
         }),
       );
       void dispatch(refreshDatasetHistograms());
@@ -248,7 +255,7 @@ export const saveAsNewVersion =
       dispatch(
         hydrateFromProject({
           form: version.form,
-          loadedProject: toLoadedProject(meta, version),
+          loadedProject: adoptProject(meta, version),
         }),
       );
       void dispatch(refreshDatasetHistograms());
@@ -289,7 +296,7 @@ export const replaceExistingProject =
       dispatch(
         hydrateFromProject({
           form: version.form,
-          loadedProject: toLoadedProject(meta, version),
+          loadedProject: adoptProject(meta, version),
         }),
       );
       void dispatch(refreshDatasetHistograms());
@@ -378,6 +385,7 @@ export const deleteProject =
         { method: 'DELETE' },
       );
       await parseOrThrow<{ ok: boolean }>(res);
+      forgetRecentProject(id);
 
       const loaded = getState().trainingConfig.loadedProject;
       if (loaded && loaded.id === id) {

@@ -3,13 +3,22 @@
 import {
   ChevronDownIcon,
   CircleIcon,
+  ClockIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   PencilIcon,
   SaveIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import type { TrainingProjectSummary } from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
@@ -21,6 +30,7 @@ import {
   selectIsDirty,
   selectLoadedProject,
 } from '@/app/store/training-config';
+import { loadRecentProjects } from '@/app/store/training-config/recent-projects';
 import {
   fetchProjectList,
   loadProject,
@@ -30,6 +40,12 @@ import {
 import type { LoadedProject } from '@/app/store/training-config/types';
 
 import { ModelBackendBadges } from './model-backend-badges';
+
+/** How many recent projects the menu lists (fewer than are stored). */
+const MAX_RECENT_SHOWN = 3;
+
+const MENU_ITEM_CLASS =
+  'flex cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700';
 
 type ProjectSelectorProps = {
   onRequestLoad: () => void;
@@ -153,24 +169,68 @@ const PopupContent = ({
   onClose,
 }: PopupContentProps) => {
   const dispatch = useAppDispatch();
-  const [summary, setSummary] = useState<TrainingProjectSummary | null>(null);
+  const [projects, setProjects] = useState<TrainingProjectSummary[] | null>(
+    null,
+  );
+  // Read once: the popup remounts on every open, so this is always current
+  // without having to watch localStorage.
+  const [recents] = useState(loadRecentProjects);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [labelEditVersion, setLabelEditVersion] = useState<number | null>(null);
   const [labelValue, setLabelValue] = useState('');
 
-  // Fetch fresh version list on mount (popup just opened).
+  // Fetch the fresh project list on mount (popup just opened). It backs both
+  // the loaded project's version list and the recent-projects section.
   useEffect(() => {
-    if (!loadedProject) return;
     let cancelled = false;
-    fetchProjectList().then((list) => {
-      if (cancelled) return;
-      setSummary(list.find((p) => p.id === loadedProject.id) ?? null);
-    });
+    fetchProjectList()
+      .then((list) => {
+        if (!cancelled) setProjects(list);
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([]);
+      });
     return () => {
       cancelled = true;
     };
-  }, [loadedProject]);
+  }, []);
+
+  const summary = useMemo(
+    () =>
+      loadedProject && projects
+        ? (projects.find((p) => p.id === loadedProject.id) ?? null)
+        : null,
+    [projects, loadedProject],
+  );
+
+  /**
+   * Recents resolved against what's actually on disk: names come from the
+   * fetched list (so a rename can't show stale text), deleted projects drop
+   * out, and an entry whose version has since been deleted falls back to the
+   * project's latest.
+   */
+  const recentEntries = useMemo(() => {
+    if (!projects) return [];
+    const out: { id: string; name: string; version: number }[] = [];
+    for (const entry of recents) {
+      // The loaded project already sits at the top of this menu.
+      if (entry.id === loadedProject?.id) continue;
+      const project = projects.find((p) => p.id === entry.id);
+      if (!project) continue;
+      const version = project.versions.some((v) => v.version === entry.version)
+        ? entry.version
+        : project.latestVersion;
+      out.push({ id: project.id, name: project.name, version });
+      if (out.length === MAX_RECENT_SHOWN) break;
+    }
+    return out;
+  }, [projects, recents, loadedProject]);
+
+  const handleOpenRecent = (id: string, version: number) => {
+    onClose();
+    void dispatch(loadProject(id, version));
+  };
 
   const handleGoEphemeral = () => {
     onClose();
@@ -335,40 +395,67 @@ const PopupContent = ({
         <button
           type="button"
           onClick={onRequestSaveAs}
-          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+          className={MENU_ITEM_CLASS}
         >
           <SaveIcon className="h-4 w-4" />
           Save As…
         </button>
+
+        {loadedProject && (
+          <button
+            type="button"
+            onClick={onRequestDelete}
+            className={MENU_ITEM_CLASS}
+          >
+            <Trash2Icon className="h-4 w-4" />
+            Delete this project / version…
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col">
+        {loadedProject && (
+          <button
+            type="button"
+            onClick={handleGoEphemeral}
+            className={MENU_ITEM_CLASS}
+          >
+            <FolderPlusIcon className="h-4 w-4" />
+            New Project
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onRequestLoad}
-          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+          className={MENU_ITEM_CLASS}
         >
           <FolderOpenIcon className="h-4 w-4" />
           {loadedProject ? 'Load other project…' : 'Load project…'}
         </button>
-        {loadedProject && (
-          <>
-            <button
-              type="button"
-              onClick={onRequestDelete}
-              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              <Trash2Icon className="h-4 w-4" />
-              Delete project or version…
-            </button>
-            <button
-              type="button"
-              onClick={handleGoEphemeral}
-              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              <FolderPlusIcon className="h-4 w-4" />
-              New Project
-            </button>
-          </>
-        )}
       </div>
+
+      {recentEntries.length > 0 && (
+        <div className="flex flex-col py-1">
+          <p className="px-3 py-1 text-sm font-medium text-slate-400 dark:text-slate-500">
+            Recent
+          </p>
+          {recentEntries.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => handleOpenRecent(entry.id, entry.version)}
+              className={MENU_ITEM_CLASS}
+            >
+              <ClockIcon className="h-4 w-4 shrink-0 text-slate-400" />
+              <span className="truncate">{entry.name}</span>
+              <span className="ml-auto shrink-0 text-slate-400 tabular-nums">
+                v{entry.version}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
