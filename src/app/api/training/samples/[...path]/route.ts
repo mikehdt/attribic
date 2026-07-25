@@ -4,8 +4,7 @@ import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getImageMimeType, isSupportedImageExtension } from '@/app/constants';
-import { getProjectsFolder } from '@/app/services/config/server-config';
-import { resolveLoraOutputDir } from '@/app/services/training/output-path';
+import { getLoraOutputRoot } from '@/app/services/training/training-root';
 
 /** True if `target` resolves to a path at or below `root`. */
 const isWithin = (root: string, target: string): boolean => {
@@ -18,11 +17,7 @@ const isSafeJobId = (id: string): boolean =>
   /^[A-Za-z0-9._-]+$/.test(id) && !/^\.+$/.test(id);
 
 /** Resolve the loras output root the same way the GET/archive routes do. */
-const resolveSamplesRoot = (): string =>
-  path.resolve(
-    resolveLoraOutputDir(getProjectsFolder()) ??
-      path.join(process.cwd(), '.training', 'outputs'),
-  );
+const resolveSamplesRoot = (): string => path.resolve(getLoraOutputRoot());
 
 export async function GET(
   request: NextRequest,
@@ -33,7 +28,7 @@ export async function GET(
 
     // Confine everything to the loras output root — the same resolver the
     // training request builder uses, so this always matches where samples
-    // actually land (falls back to .training/outputs when unconfigured).
+    // actually land.
     const samplesRoot = resolveSamplesRoot();
     const resolvedPath = path.resolve(samplesRoot, ...pathSegments);
 

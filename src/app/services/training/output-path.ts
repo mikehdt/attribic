@@ -5,7 +5,7 @@
  * are named, so there's no need to nest them per-project. Kept isomorphic (no
  * Node `path`) so the UI can show the same location the request builder sends
  * to the sidecar. Returns null when there's no configured folder to anchor to —
- * the request builder substitutes its own `.training/outputs` fallback then.
+ * `getLoraOutputRoot` substitutes a fallback inside the training root then.
  */
 export function resolveLoraOutputDir(
   projectsFolder: string | null | undefined,

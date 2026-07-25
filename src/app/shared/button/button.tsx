@@ -13,6 +13,16 @@ import {
  * across the application. Supports multiple color variants, sizes, and states.
  */
 
+/**
+ * Firefox restores form-control state across an F5, which strips the `disabled`
+ * attribute off a button that was enabled before the reload — the server sends
+ * it disabled, Firefox re-enables it before React gets there, and hydration
+ * reports a `disabled` mismatch. Opting out of autocomplete opts out of that
+ * restoration. React's `ButtonHTMLAttributes` omits `autoComplete` (it isn't in
+ * the HTML spec for `<button>`), so it is spread in as an untyped extra.
+ */
+const firefoxNoRestore = { autoComplete: 'off' } as Record<string, string>;
+
 type ButtonColor =
   'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
 type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'toolbar';
@@ -335,12 +345,7 @@ export const Button = ({
   return (
     <button
       type={type}
-      // Firefox restores form-control state across an F5, which strips the
-      // `disabled` attribute off a button that was enabled before the reload —
-      // the server sends it disabled, Firefox re-enables it before React gets
-      // there, and hydration reports a `disabled` mismatch. Opting out of
-      // autocomplete opts out of that restoration.
-      autoComplete="off"
+      {...firefoxNoRestore}
       onClick={handleClick}
       onKeyDown={onKeyDown}
       onBlur={onBlur}

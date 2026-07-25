@@ -12,6 +12,8 @@
 import path from 'path';
 import { Worker } from 'worker_threads';
 
+import { getModelsFolder } from '@/app/services/config/server-config';
+
 import type { TaggerModel, TaggerOptions, TaggerOutput } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -28,7 +30,7 @@ function getWorkerPath(): string {
 
 function spawnWorker(): Worker {
   const w = new Worker(getWorkerPath(), {
-    workerData: { appRoot: process.cwd() },
+    workerData: { modelsDir: getModelsFolder() },
   });
 
   w.on('error', (err) => {

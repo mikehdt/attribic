@@ -22,6 +22,9 @@ class SidecarConfig:
     port: int = 9733
     host: str = "127.0.0.1"
     app_root: Path = field(default_factory=lambda: Path.cwd())
+    # Everything the training system writes — jobs, saved projects, the PID
+    # file, backend logs. Anchored to the configured projects folder; see
+    # `src/app/services/training/training-root.ts` for the Node-side twin.
     training_dir: Path = field(default_factory=lambda: Path.cwd() / ".training")
     backends: dict[str, str] = field(default_factory=dict)
     # Default: a single worker on GPU 0. Multi-GPU users can add a second
@@ -46,11 +49,18 @@ def load_config(app_root: Optional[Path] = None) -> SidecarConfig:
     port = 9733
     backends: dict[str, str] = {}
     workers: list[WorkerConfig] = [WorkerConfig(gpu_id=0)]
+    projects_folder: Optional[Path] = None
 
     if config_path.exists():
         try:
             with open(config_path, "r") as f:
                 data = json.load(f)
+
+            # The training root hangs off the projects folder so runs sit
+            # next to the datasets they were trained on.
+            raw_projects = data.get("projectsFolder")
+            if isinstance(raw_projects, str) and raw_projects.strip():
+                projects_folder = Path(raw_projects)
 
             # Read training backend paths
             raw_backends = data.get("trainingBackends", {})
@@ -80,7 +90,7 @@ def load_config(app_root: Optional[Path] = None) -> SidecarConfig:
     return SidecarConfig(
         port=port,
         app_root=app_root,
-        training_dir=app_root / ".training",
+        training_dir=(projects_folder or app_root) / ".training",
         backends=backends,
         workers=workers,
     )

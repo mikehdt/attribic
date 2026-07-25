@@ -3,8 +3,7 @@ import path from 'node:path';
 
 import { NextResponse } from 'next/server';
 
-import { getProjectsFolder } from '@/app/services/config/server-config';
-import { resolveLoraOutputDir } from '@/app/services/training/output-path';
+import { getLoraOutputRoot } from '@/app/services/training/training-root';
 import type { SampleImage } from '@/app/services/training/types';
 
 /** True if `target` resolves to a path at or below `root`. */
@@ -61,10 +60,7 @@ export async function POST(request: Request) {
 
     // Same resolver the serving/GET route uses, so the archive lands under the
     // exact root those paths are later resolved against.
-    const root = path.resolve(
-      resolveLoraOutputDir(getProjectsFolder()) ??
-        path.join(process.cwd(), '.training', 'outputs'),
-    );
+    const root = path.resolve(getLoraOutputRoot());
 
     const archiveDir = path.resolve(root, '.run-samples', jobId);
     // Created lazily on the first actual move, so a request whose samples are

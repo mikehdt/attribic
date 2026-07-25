@@ -8,6 +8,8 @@ import { type ChildProcess, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+import { getTrainingRoot } from './training-root';
+
 const SIDECAR_PORT = 9733;
 const HEALTH_TIMEOUT_MS = 5000;
 // Generous because the first `uv run` provisions the whole venv (torch is
@@ -34,12 +36,8 @@ function getAppRoot(): string {
   return process.cwd();
 }
 
-function getTrainingDir(): string {
-  return path.join(getAppRoot(), '.training');
-}
-
 function getPidPath(): string {
-  return path.join(getTrainingDir(), 'sidecar.pid');
+  return path.join(getTrainingRoot(), 'sidecar.pid');
 }
 
 function getSidecarDir(): string {
@@ -245,8 +243,9 @@ async function doSpawnSidecar(): Promise<void> {
   const sidecarDir = getSidecarDir();
   const { command, args } = getSpawnCommand();
 
-  // Ensure .training directory exists
-  const trainingDir = getTrainingDir();
+  // Ensure the training root exists — the sidecar writes its PID file there
+  // as soon as it boots.
+  const trainingDir = getTrainingRoot();
   if (!fs.existsSync(trainingDir)) {
     fs.mkdirSync(trainingDir, { recursive: true });
   }

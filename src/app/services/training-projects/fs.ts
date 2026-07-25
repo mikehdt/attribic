@@ -2,8 +2,8 @@
  * Filesystem helpers for saved training projects.
  *
  * Projects are stored under `{projectsFolder}/.training/projects/{id}/`
- * with one `meta.json` plus `v{N}.json` per version. If no projectsFolder
- * is configured, falls back to `{cwd}/.training/projects/`.
+ * with one `meta.json` plus `v{N}.json` per version — alongside the rest of
+ * the training root (jobs, sidecar PID, backend logs).
  *
  * Versions are numbered from 1 and do not need to be contiguous — deleting
  * a middle version is allowed and creates gaps. `latestVersion` on meta
@@ -13,7 +13,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import { getProjectsFolder } from '@/app/services/config/server-config';
+import { getTrainingProjectsDir } from '@/app/services/training/training-root';
 import type { FormState } from '@/app/store/training-config/types';
 import { slugify } from '@/app/utils/slug';
 
@@ -26,9 +26,7 @@ import type {
 // --- Path helpers ---
 
 export function getTrainingProjectsRoot(): string {
-  const pf = getProjectsFolder();
-  const base = pf || path.join(process.cwd(), '.training-fallback');
-  return path.join(base, '.training', 'projects');
+  return getTrainingProjectsDir();
 }
 
 /**

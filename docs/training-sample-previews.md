@@ -158,9 +158,8 @@ and note it; sidecar-side history (already deferred to the queueing
 milestone) would eventually make this moot by moving ownership server-side.
 
 Edge case: with no configured `projectsFolder`, outputs fall back to
-`.training/outputs` — the archive and serving root follow the same resolver
-(`resolveLoraOutputDir` / request-builder fallback), so behaviour is
-consistent.
+`{trainingRoot}/outputs` — the archive and serving root go through the same
+resolver (`getLoraOutputRoot`), so behaviour is consistent.
 
 ---
 

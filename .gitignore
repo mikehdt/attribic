@@ -43,11 +43,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# downloaded models
-.auto-tagger/models
+# downloaded models (training checkpoints + vlm/wd14 taggers)
 public/models
 
-# training sidecar
+# training sidecar — only used when no projectsFolder is configured;
+# otherwise the training root lives at {projectsFolder}/.training
 .training/
 training-sidecar/.venv/
 **/__pycache__/

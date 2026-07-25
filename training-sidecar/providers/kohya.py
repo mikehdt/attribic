@@ -40,6 +40,20 @@ RATE_PATTERN = re.compile(r"([\d.]+)\s*(it/s|s/it)")
 # sd-scripts prints "epoch 1/10" between epochs.
 EPOCH_PATTERN = re.compile(r"epoch\s+(\d+)\s*/\s*(\d+)")
 
+# Activity label for the sampling pause. The UI matches it (isSamplingPhase) to
+# rename the in-flight samples row and freeze its countdowns, so it's set from
+# one place — both where sampling is detected and where a frozen training-bar
+# redraw has to preserve it.
+SAMPLING_PHASE = "Generating samples"
+
+# The line that opens a sampling pause, carrying the step it fired at:
+#   "generating sample images at step / サンプル画像生成 ステップ: 250"  (sd-scripts)
+#   "Generating sample images at step 250"                              (Anima)
+# `\D*` spans the Japanese half of the localised variant.
+SAMPLE_ANNOUNCE_PATTERN = re.compile(
+    r"generating sample images at step\D*(\d+)", re.IGNORECASE
+)
+
 # sd-scripts writes samples as
 #   {output_name}_{num_suffix}_{promptIdx:02d}_{timestamp}{_seed}.png
 # where num_suffix is `e%06d` (epoch cadence) or `%06d` (step cadence). We strip
@@ -869,6 +883,14 @@ class KohyaProvider(TrainingProvider):
         # charts. While set, only a bar that proves itself (avr_loss or the
         # "steps" desc prefix) is accepted, which also clears the flag.
         sampling_active = False
+        # Step the current sampling pause was announced at. train_network.py does
+        # `progress_bar.update(1); global_step += 1` and then samples immediately,
+        # but tqdm only repaints every 0.1s — so the bar line for that step
+        # usually arrives *during* the pause, and `unpause()` forces another
+        # repaint on the way out. Anchoring on the announced step means those
+        # catch-up repaints read as what they are; only a bar beyond it is
+        # training actually resuming.
+        sampling_step = 0
         # Last training step counts seen, so the terminal COMPLETED event can
         # report the bar as full (N/N) rather than dropping back to 0/0.
         current_step = 0
@@ -938,8 +960,14 @@ class KohyaProvider(TrainingProvider):
 
             if match and is_training_bar:
                 training_started = True
-                sampling_active = False
-                current_step = int(match.group(1))
+                new_step = int(match.group(1))
+                # sd-scripts reprints the training bar throughout the sampling
+                # pause — sometimes catching up to the step sampling was
+                # announced at. Only a bar past that step is training resuming;
+                # without this every repaint flipped the UI back to Training.
+                still_sampling = sampling_active and new_step <= sampling_step
+                sampling_active = still_sampling
+                current_step = new_step
                 total_steps = int(match.group(2))
                 eta = _parse_eta_seconds(match.group(3))
 
@@ -972,7 +1000,8 @@ class KohyaProvider(TrainingProvider):
                     log_lines=log_lines[-50:],
                     # An advancing step means we're actively training — clear
                     # any transient activity label (e.g. a prior "Saving").
-                    phase=None,
+                    # A bar frozen mid-sample keeps the sampling label instead.
+                    phase=SAMPLING_PHASE if still_sampling else None,
                 )
             else:
                 # Collapse repeats — sd-scripts prints some output once per
@@ -997,12 +1026,27 @@ class KohyaProvider(TrainingProvider):
                     if "saving checkpoint" in lower or "saving model" in lower:
                         activity = "Saving checkpoint"
                         saved = [current_step]
-                    elif "generating sample" in lower or (
-                        "sample" in lower and "generat" in lower
+                    elif (
+                        "generating sample" in lower
+                        or ("sample" in lower and "generat" in lower)
+                        # Each image in the batch echoes its own "prompt:" block
+                        # (height/width/scale/seed follow). Re-asserting on those
+                        # keeps a multi-prompt event unbroken even if the opening
+                        # "generating sample images" line was missed or scrolled
+                        # past — "negative_prompt:" deliberately doesn't match.
+                        or lower.startswith("prompt:")
                     ):
-                        activity = "Generating samples"
+                        activity = SAMPLING_PHASE
+                        announce = SAMPLE_ANNOUNCE_PATTERN.search(lower)
+                        if announce:
+                            sampling_step = int(announce.group(1))
+                        elif not sampling_active:
+                            # Re-armed off a "prompt:" line without the opening
+                            # announcement (missed, or the sampler logged out of
+                            # order) — the frozen bar is the best anchor we have.
+                            sampling_step = current_step
                         # Ignore the sampler's own tqdm bars until the real
-                        # training bar ("steps" / avr_loss) reappears.
+                        # training bar ("steps" / avr_loss) moves past that step.
                         sampling_active = True
                     elif "model saved" in lower:
                         activity = "Checkpoint saved"

@@ -10,6 +10,7 @@ import { NextRequest } from 'next/server';
 import path from 'path';
 
 import { getModel } from '@/app/services/auto-tagger';
+import { getModelDir } from '@/app/services/auto-tagger/model-manager';
 import {
   getHfToken,
   getModelsFolder,
@@ -57,16 +58,8 @@ export async function POST(request: NextRequest) {
       const taggerModel = getModel(modelId);
       if (taggerModel) {
         downloadable = taggerModelToDownloadable(taggerModel);
-        // Auto-tagger models go to their own directory
-        resolvedTargetDir =
-          targetDir ??
-          path.join(
-            process.cwd(),
-            '.auto-tagger',
-            'models',
-            taggerModel.provider,
-            taggerModel.id,
-          );
+        // Auto-tagger models go to a per-provider folder in the models folder
+        resolvedTargetDir = targetDir ?? getModelDir(taggerModel);
       }
     }
 
@@ -231,13 +224,7 @@ export async function DELETE(request: NextRequest) {
     } else {
       const taggerModel = getModel(modelId);
       if (taggerModel) {
-        targetDir = path.join(
-          process.cwd(),
-          '.auto-tagger',
-          'models',
-          taggerModel.provider,
-          taggerModel.id,
-        );
+        targetDir = getModelDir(taggerModel);
         downloadable = taggerModelToDownloadable(taggerModel);
       }
     }

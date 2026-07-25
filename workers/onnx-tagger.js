@@ -20,9 +20,9 @@ const { parentPort, workerData } = require('worker_threads');
 const path = require('path');
 const fs = require('fs');
 
-// workerData provides the app root so we can resolve model paths
-const APP_ROOT = workerData.appRoot;
-const MODELS_DIR = path.join(APP_ROOT, '.auto-tagger', 'models');
+// workerData provides the resolved models folder — the worker can't read
+// config.json itself (that's server-config's job), so the manager passes it in
+const MODELS_DIR = workerData.modelsDir;
 
 // Lazy-loaded native modules (loaded on first use)
 let ort = null;

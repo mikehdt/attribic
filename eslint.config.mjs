@@ -11,7 +11,7 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     '.next/**',
     '.cache/**',
-    '.auto-tagger/**',
+    'public/models/**',
     'out/**',
     'build/**',
     '**/.venv/**',
