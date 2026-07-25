@@ -29,6 +29,7 @@ import {
 import type {
   AppModelDefaults,
   DatasetFolder,
+  DatasetScan,
   FolderAugmentation,
   FormState,
   LoadedProject,
@@ -329,27 +330,31 @@ const trainingConfigSlice = createSlice({
     },
 
     /**
-     * Refresh a dataset's dimension histogram from a fresh disk scan.
+     * Record what a fresh disk scan found for a dataset: its dimension
+     * histogram, plus whether the folder is still there and how much it holds.
      *
-     * The histogram is derived from the files on disk, not user config — it's
+     * Both are derived from the files on disk, not user config — they're
      * deliberately not persisted (see `writeVersion`) and a rescan must never
      * make a clean project look dirty. So the baseline snapshot is updated in
-     * lockstep with the form, keeping it out of the dirty comparison entirely.
+     * lockstep with the form, keeping them out of the dirty comparison.
      *
      * Keyed by folderName rather than index: the scan is async, and datasets
      * can be added or removed while it's in flight.
      */
-    setDatasetHistogram: (
+    setDatasetScan: (
       state,
       action: PayloadAction<{
         folderName: string;
         dimensionHistogram: Record<string, number>;
+        scan: DatasetScan;
       }>,
     ) => {
-      const { folderName, dimensionHistogram } = action.payload;
+      const { folderName, dimensionHistogram, scan } = action.payload;
       for (const form of [state.form, state.baselineSnapshot]) {
         const dataset = form?.datasets.find((d) => d.folderName === folderName);
-        if (dataset) dataset.dimensionHistogram = dimensionHistogram;
+        if (!dataset) continue;
+        dataset.dimensionHistogram = dimensionHistogram;
+        dataset.scan = scan;
       }
     },
 
@@ -496,7 +501,7 @@ export const {
   removeSamplePrompt,
   setSamplePrompt,
   addDataset,
-  setDatasetHistogram,
+  setDatasetScan,
   removeDataset,
   setFolderRepeats,
   updateFolderAugment,
@@ -543,6 +548,47 @@ export const selectDatasetStats = createSelector(selectForm, (form) => {
     }
   }
   return { totalImages, totalEffective };
+});
+
+export type DatasetIssue = {
+  projectName: string;
+  folderName: string;
+  /** Images the saved config claims this dataset has. */
+  savedImageCount: number;
+  /** `missing` — folder gone; `empty` — folder still there, nothing in it. */
+  reason: 'missing' | 'empty';
+};
+
+/**
+ * Datasets whose saved image counts are no longer backed by anything on disk.
+ *
+ * Image counts are persisted with the config but the files aren't, so a folder
+ * that's been moved, renamed, or emptied since the save leaves the form
+ * claiming a dataset it can't actually train on. Left unflagged that surfaces
+ * only as an oddly generic bucket list, and the run fails at the sidecar.
+ *
+ * Only datasets that have actually been rescanned are considered — a freshly
+ * picked one has no scan yet, and its folder was on disk moments ago anyway.
+ */
+export const selectDatasetIssues = createSelector(selectForm, (form) => {
+  const issues: DatasetIssue[] = [];
+  for (const dataset of form.datasets) {
+    if (!dataset.scan || dataset.scan.assetCount > 0) continue;
+
+    const savedImageCount = dataset.folders.reduce(
+      (sum, folder) => sum + folder.imageCount,
+      0,
+    );
+    if (savedImageCount === 0) continue;
+
+    issues.push({
+      projectName: dataset.projectName,
+      folderName: dataset.folderName,
+      savedImageCount,
+      reason: dataset.scan.exists ? 'empty' : 'missing',
+    });
+  }
+  return issues;
 });
 
 export const selectCalculatedSteps = createSelector(

@@ -11,14 +11,14 @@ import type {
   TrainingProjectSummary,
   TrainingProjectVersion,
 } from '@/app/services/training-projects/disk-schema';
-import { getProjectDimensionHistogram } from '@/app/utils/project-actions';
+import { scanProjectDataset } from '@/app/utils/project-actions';
 
 import type { AppThunk } from '../index';
 import { addToast } from '../toasts';
 import {
   clearLoadedProject,
   hydrateFromProject,
-  setDatasetHistogram,
+  setDatasetScan,
   stampSaved,
 } from './index';
 import { forgetRecentProject, recordRecentProject } from './recent-projects';
@@ -56,22 +56,26 @@ async function parseOrThrow<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-// --- Dimension histograms (derived from disk, never persisted) ---
+// --- Disk scans (derived from disk, never persisted) ---
 
 /**
- * Rescan every attached dataset's image dimensions from disk.
+ * Rescan every attached dataset from disk: image dimensions, plus whether the
+ * folder is still there and what it holds.
  *
- * Histograms are captured once when a dataset is picked and are stripped on
+ * Scan results are captured once when a dataset is picked and are stripped on
  * save, so without this a config would render size information about a folder
  * as it looked at some arbitrary point in the past. They drive the
  * native-resolution mismatch warning, so a stale one can claim a dataset is
- * correctly sized when it no longer is. Scans run in parallel and are
- * header-only reads, so this is cheap enough to do on every load.
+ * correctly sized when it no longer is — and the folder-gone warning, which
+ * needs the current state of the disk by definition. Scans run in parallel and
+ * are header-only reads, so this is cheap enough to do on every load.
  *
- * A folder that fails to scan (deleted, renamed, permissions) is skipped
- * rather than blanked — the rest of the datasets still refresh.
+ * A folder that fails to scan outright (permissions, I/O) is skipped rather
+ * than blanked — the rest of the datasets still refresh. A folder that's simply
+ * absent is not a failure: it comes back as a scan saying so, which is what the
+ * missing-dataset warning is built on.
  */
-export const refreshDatasetHistograms =
+export const refreshDatasetScans =
   (): AppThunk => async (dispatch, getState) => {
     const { datasets } = getState().trainingConfig.form;
     if (datasets.length === 0) return;
@@ -79,17 +83,17 @@ export const refreshDatasetHistograms =
     await Promise.all(
       datasets.map(async (ds) => {
         try {
-          const dimensionHistogram = await getProjectDimensionHistogram(
-            ds.folderName,
-          );
+          const { exists, assetCount, dimensionHistogram } =
+            await scanProjectDataset(ds.folderName);
           dispatch(
-            setDatasetHistogram({
+            setDatasetScan({
               folderName: ds.folderName,
               dimensionHistogram,
+              scan: { exists, assetCount },
             }),
           );
         } catch {
-          // Leave the existing histogram alone; a failed scan shouldn't wipe it.
+          // Leave the existing scan alone; a failed read shouldn't wipe it.
         }
       }),
     );
@@ -122,7 +126,7 @@ export const loadProject =
           loadedProject: adoptProject(meta, v),
         }),
       );
-      void dispatch(refreshDatasetHistograms());
+      void dispatch(refreshDatasetScans());
     } catch (error) {
       dispatch(
         addToast({
@@ -158,7 +162,7 @@ export const loadProjectBySlug =
           loadedProject: adoptProject(meta, v),
         }),
       );
-      void dispatch(refreshDatasetHistograms());
+      void dispatch(refreshDatasetScans());
       return true;
     } catch (error) {
       dispatch(
@@ -225,7 +229,7 @@ export const saveAsNewProject =
           loadedProject: adoptProject(meta, version),
         }),
       );
-      void dispatch(refreshDatasetHistograms());
+      void dispatch(refreshDatasetScans());
       dispatch(addToast({ children: `Saved as new project “${meta.name}”` }));
     } catch (error) {
       dispatch(
@@ -258,7 +262,7 @@ export const saveAsNewVersion =
           loadedProject: adoptProject(meta, version),
         }),
       );
-      void dispatch(refreshDatasetHistograms());
+      void dispatch(refreshDatasetScans());
       dispatch(
         addToast({
           children: `Saved as v${version.version} of “${meta.name}”`,
@@ -299,7 +303,7 @@ export const replaceExistingProject =
           loadedProject: adoptProject(meta, version),
         }),
       );
-      void dispatch(refreshDatasetHistograms());
+      void dispatch(refreshDatasetScans());
       dispatch(addToast({ children: `Replaced project “${meta.name}”` }));
     } catch (error) {
       dispatch(

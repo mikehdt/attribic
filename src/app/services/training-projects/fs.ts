@@ -107,12 +107,13 @@ async function readVersion(
 /**
  * Strip fields derived from the files on disk rather than chosen by the user.
  *
- * `dimensionHistogram` is a snapshot of the image sizes in a project folder.
- * Persisting it means a config saved today keeps asserting yesterday's sizes
- * after the folder changes, with nothing to invalidate it — and those sizes
- * drive the native-resolution mismatch warning, so a stale copy can quietly
- * claim a dataset is clean when it isn't. It's cheap to rescan (header-only
- * reads), so it's re-derived on load instead of stored.
+ * `dimensionHistogram` is a snapshot of the image sizes in a project folder,
+ * and `scan` records whether that folder was there at all. Persisting either
+ * means a config saved today keeps asserting yesterday's disk after the folder
+ * changes, with nothing to invalidate it — and they drive the
+ * native-resolution mismatch and missing-dataset warnings, so a stale copy can
+ * quietly claim a dataset is fine when it isn't. Both are cheap to rescan
+ * (header-only reads), so they're re-derived on load instead of stored.
  */
 function stripDerived(form: FormState): FormState {
   return {
@@ -120,6 +121,7 @@ function stripDerived(form: FormState): FormState {
     datasets: form.datasets.map((dataset) => {
       const stripped = { ...dataset };
       delete stripped.dimensionHistogram;
+      delete stripped.scan;
       return stripped;
     }),
   };

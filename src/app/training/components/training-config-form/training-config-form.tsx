@@ -47,6 +47,7 @@ const TrainingConfigFormComponent = ({
     defaults,
     appModelDefaults,
     datasetStats,
+    datasetIssues,
     calculatedSteps,
     calculatedEpochs,
     sectionHasChanges,
@@ -237,9 +238,12 @@ const TrainingConfigFormComponent = ({
     .filter((c) => c.required)
     .every((c) => state.modelPaths[c.type]?.trim());
 
+  // Image counts come from the saved config, so they can outlive the folder
+  // they describe — a dataset that failed its disk rescan blocks the run.
   const canStart =
     state.outputName.trim() !== '' &&
     datasetStats.totalImages > 0 &&
+    datasetIssues.length === 0 &&
     hasAllRequiredComponents;
 
   return (
@@ -263,6 +267,7 @@ const TrainingConfigFormComponent = ({
 
           <DatasetSection
             datasets={state.datasets}
+            datasetIssues={datasetIssues}
             extraFolders={state.extraFolders}
             selectedProvider={state.selectedProvider}
             hasChanges={sectionHasChanges.dataset}
@@ -424,6 +429,7 @@ const TrainingConfigFormComponent = ({
             selectedProvider={state.selectedProvider}
             modelPaths={state.modelPaths}
             datasets={state.datasets}
+            datasetIssues={datasetIssues}
             totalImages={datasetStats.totalImages}
             totalEffective={datasetStats.totalEffective}
             durationMode={state.durationMode}

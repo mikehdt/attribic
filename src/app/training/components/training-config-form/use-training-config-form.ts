@@ -21,6 +21,7 @@ import {
   selectCalculatedEpochs,
   selectCalculatedSteps,
   selectCurrentModel,
+  selectDatasetIssues,
   selectDatasetStats,
   selectForm,
   selectModelDefaults,
@@ -36,7 +37,7 @@ import {
   updateFolderAugment as updateFolderAugmentAction,
 } from '@/app/store/training-config';
 import { defaultFolderAugmentation } from '@/app/store/training-config/defaults';
-import { refreshDatasetHistograms } from '@/app/store/training-config/thunks';
+import { refreshDatasetScans } from '@/app/store/training-config/thunks';
 import type {
   AppModelDefaults,
   DatasetFolder,
@@ -73,6 +74,7 @@ export function useTrainingConfigForm() {
   const defaults = useAppSelector(selectModelDefaults);
   const appModelDefaults = useAppSelector(selectAppModelDefaults);
   const datasetStats = useAppSelector(selectDatasetStats);
+  const datasetIssues = useAppSelector(selectDatasetIssues);
   const calculatedSteps = useAppSelector(selectCalculatedSteps);
   const calculatedEpochs = useAppSelector(selectCalculatedEpochs);
   const sectionHasChanges = useAppSelector(selectSectionHasChanges);
@@ -191,7 +193,7 @@ export function useTrainingConfigForm() {
   );
 
   const rescanDatasets = useCallback(() => {
-    void dispatch(refreshDatasetHistograms());
+    void dispatch(refreshDatasetScans());
   }, [dispatch]);
 
   const setFolderRepeats = useCallback(
@@ -263,6 +265,7 @@ export function useTrainingConfigForm() {
     defaults,
     appModelDefaults,
     datasetStats,
+    datasetIssues,
     calculatedSteps,
     calculatedEpochs,
     sectionHasChanges,

@@ -582,3 +582,40 @@ export const getProjectDimensionHistogram = async (
   }
   return histogram;
 };
+
+export type ProjectDatasetScan = {
+  /** Whether the project folder still exists under the projects root. */
+  exists: boolean;
+  /** Assets found across the root and any repeat subfolders. */
+  assetCount: number;
+  dimensionHistogram: Record<string, number>;
+};
+
+/**
+ * Re-scan a project folder that a training config has attached as a dataset.
+ *
+ * Existence and asset count come back alongside the histogram because a
+ * histogram alone can't explain itself: a moved folder, an emptied one, and a
+ * folder of videos all scan to `{}`. The training form needs to tell a config
+ * that has lost its images from one that never had size data.
+ */
+export const scanProjectDataset = async (
+  projectName: string,
+): Promise<ProjectDatasetScan> => {
+  const { projectsFolder } = getServerConfig();
+
+  if (!fs.existsSync(path.join(projectsFolder, projectName))) {
+    return { exists: false, assetCount: 0, dimensionHistogram: {} };
+  }
+
+  const [folders, dimensionHistogram] = await Promise.all([
+    getProjectFolders(projectName),
+    getProjectDimensionHistogram(projectName),
+  ]);
+
+  return {
+    exists: true,
+    assetCount: folders.reduce((sum, folder) => sum + folder.imageCount, 0),
+    dimensionHistogram,
+  };
+};

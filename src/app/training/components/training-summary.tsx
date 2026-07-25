@@ -13,7 +13,9 @@ import {
 } from '@/app/services/training/models';
 import { parseNativeResolution } from '@/app/services/training/native-resolution';
 import type { TrainingProvider } from '@/app/services/training/types';
+import type { DatasetIssue } from '@/app/store/training-config';
 
+import { DatasetIssueWarning } from './dataset-issue-warning';
 import { KohyaBucketPreview } from './kohya-bucket-preview';
 import { NativeResolutionPreview } from './native-resolution-preview';
 import type { DatasetSource } from './training-config-form/use-training-config-form';
@@ -25,6 +27,7 @@ type TrainingSummaryProps = {
   selectedProvider: TrainingProvider;
   modelPaths: Partial<Record<ModelComponentType, string>>;
   datasets: DatasetSource[];
+  datasetIssues: DatasetIssue[];
   totalImages: number;
   totalEffective: number;
   durationMode: 'epochs' | 'steps';
@@ -87,6 +90,11 @@ const ReadinessItem = ({
   );
 };
 
+const issueSummary = (issues: DatasetIssue[]) =>
+  issues.length === 1
+    ? `${issues[0].projectName} not found`
+    : `${issues.length} sources not found`;
+
 const SummaryRow = ({
   label,
   children,
@@ -109,6 +117,7 @@ const TrainingSummaryComponent = ({
   selectedProvider,
   modelPaths,
   datasets,
+  datasetIssues,
   totalImages,
   totalEffective,
   durationMode,
@@ -134,7 +143,9 @@ const TrainingSummaryComponent = ({
   seed,
 }: TrainingSummaryProps) => {
   const hasOutputName = outputName.trim() !== '';
-  const hasDataset = totalImages > 0;
+  // Saved image counts are what totalImages is built from, so a dataset whose
+  // folder has gone still reads as present here — the scan is what settles it.
+  const hasDataset = totalImages > 0 && datasetIssues.length === 0;
 
   const requiredComponents = currentModel.components.filter((c) => c.required);
   const hasAllComponents = requiredComponents.every((c) =>
@@ -183,10 +194,19 @@ const TrainingSummaryComponent = ({
     [nativeResolution],
   );
 
+  // A broken dataset makes both previews meaningless — neither has sizes to
+  // work from, and the bucket one degrades into an innocent-looking list of
+  // every bucket the resolution allows. Warn in their place instead.
+  const hasIssues = datasetIssues.length > 0;
   const isKohya = selectedProvider === 'kohya';
-  const showNative = isKohya && native !== null && datasets.length > 0;
+  const showNative =
+    isKohya && !hasIssues && native !== null && datasets.length > 0;
   const showBuckets =
-    isKohya && !native && resolution.length > 0 && datasets.length > 0;
+    isKohya &&
+    !hasIssues &&
+    !native &&
+    resolution.length > 0 &&
+    datasets.length > 0;
 
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(13rem,1fr))] gap-4 lg:grid-cols-1">
@@ -235,6 +255,10 @@ const TrainingSummaryComponent = ({
           )}
         </div>
       </div>
+
+      {/* Missing/emptied dataset folders — replaces both preview panels, and
+          applies to every backend, not just Kohya */}
+      {hasIssues && <DatasetIssueWarning issues={datasetIssues} />}
 
       {/* Bucketing (Kohya only) */}
       {showBuckets && (
@@ -314,9 +338,11 @@ const TrainingSummaryComponent = ({
             label="Dataset"
             isReady={hasDataset}
             detail={
-              hasDataset
-                ? `${totalImages} ${totalImages !== 1 ? 'images' : 'image'}`
-                : undefined
+              hasIssues
+                ? issueSummary(datasetIssues)
+                : hasDataset
+                  ? `${totalImages} ${totalImages !== 1 ? 'images' : 'image'}`
+                  : undefined
             }
           />
 

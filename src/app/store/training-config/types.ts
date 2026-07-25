@@ -7,7 +7,19 @@ export type DatasetSource = {
   thumbnail?: boolean;
   thumbnailVersion?: number;
   dimensionHistogram?: Record<string, number>;
+  /**
+   * What the last disk rescan found for this folder. Derived from disk and
+   * never persisted (see `stripDerived`); absent until a scan has run.
+   */
+  scan?: DatasetScan;
   folders: DatasetFolder[];
+};
+
+export type DatasetScan = {
+  /** Whether the project folder still exists under the projects root. */
+  exists: boolean;
+  /** Assets found on disk, across the root and any repeat subfolders. */
+  assetCount: number;
 };
 
 export type FolderAugmentation = {
