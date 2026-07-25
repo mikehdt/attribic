@@ -84,7 +84,7 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
         <SegmentedControl
           options={[
             { value: 'overview' as const, label: 'Overview' },
-            { value: 'samples' as const, label: 'Samples' },
+            { value: 'samples' as const, label: 'Sample Images' },
           ]}
           value={tab}
           onChange={setTab}

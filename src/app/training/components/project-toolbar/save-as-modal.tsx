@@ -182,6 +182,16 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
               role="radiogroup"
               aria-label="Save destination"
             >
+              <RadioRow
+                name="save-as-destination"
+                value={NEW_PROJECT}
+                checked={isNew}
+                onChange={() => setSelected(NEW_PROJECT)}
+              >
+                <FolderPlusIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                <span className="flex-1">New project</span>
+              </RadioRow>
+
               {orderedProjects.map((p) => (
                 <RadioRow
                   key={p.id}
@@ -202,16 +212,6 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
                   </span>
                 </RadioRow>
               ))}
-
-              <RadioRow
-                name="save-as-destination"
-                value={NEW_PROJECT}
-                checked={isNew}
-                onChange={() => setSelected(NEW_PROJECT)}
-              >
-                <FolderPlusIcon className="h-4 w-4 shrink-0 text-slate-400" />
-                <span className="flex-1">New project</span>
-              </RadioRow>
             </div>
           )}
         </div>

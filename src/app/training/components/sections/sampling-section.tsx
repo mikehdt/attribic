@@ -126,7 +126,7 @@ const SamplingSectionComponent = ({
     const totalImages = rounds * prompts.length;
 
     return (
-      <CollapsibleSection title="Sampling">
+      <CollapsibleSection title="Sample Images">
         <div className="space-y-1.5 text-sm">
           <p className="text-slate-500 dark:text-slate-400">
             Sample images will be generated every {cadence}
