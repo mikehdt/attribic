@@ -30,6 +30,7 @@ import type {
   AppModelDefaults,
   DatasetFolder,
   DatasetScan,
+  DurationMode,
   FolderAugmentation,
   FormState,
   LoadedProject,
@@ -37,6 +38,81 @@ import type {
   SectionName,
   TrainingConfigState,
 } from './types';
+
+/**
+ * Images the run sees per epoch, before and after per-folder repeats.
+ * Shared by the dataset-stats selector and the epochs↔steps conversion.
+ */
+function datasetTotals(form: FormState) {
+  let totalImages = 0;
+  let totalEffective = 0;
+  for (const ds of form.datasets) {
+    for (const folder of ds.folders) {
+      const repeats = folder.overrideRepeats ?? folder.detectedRepeats;
+      if (repeats === 0) continue;
+      totalImages += folder.imageCount;
+      totalEffective += folder.imageCount * repeats;
+    }
+  }
+  return { totalImages, totalEffective };
+}
+
+/**
+ * The three epochs/steps toggles — Duration, Generate Every, Save Every —
+ * move together. They describe the same run in the same unit and all resolve
+ * to steps in the end, so a mixed pair reads as an accident rather than a
+ * choice.
+ */
+const CADENCE_PAIRS = [
+  { mode: 'durationMode', epochs: 'epochs', steps: 'steps' },
+  {
+    mode: 'sampleMode',
+    epochs: 'sampleEveryEpochs',
+    steps: 'sampleEverySteps',
+  },
+  { mode: 'saveMode', epochs: 'saveEveryEpochs', steps: 'saveEverySteps' },
+] as const;
+
+type CadenceModeField = (typeof CADENCE_PAIRS)[number]['mode'];
+
+const isCadenceModeField = (field: string): field is CadenceModeField =>
+  CADENCE_PAIRS.some((pair) => pair.mode === field);
+
+/**
+ * Flip every cadence to `next`, converting the numbers rather than swapping
+ * to whatever was last parked in the other unit. Without this, "sample every
+ * 2 epochs, save every 4" becomes the two unrelated step defaults the moment
+ * you touch a toggle — same words, a completely different run.
+ *
+ * Conversion mirrors the epochs↔steps maths the Duration readout already
+ * shows, so the resolved run length doesn't move when the unit does. Both
+ * directions floor to at least 1: a cadence of 0 means "never" to the
+ * backends, which is a silent way to turn sampling or saving off.
+ *
+ * With no dataset attached there's no images-per-epoch to convert through, so
+ * the stored values are left alone and only the unit changes.
+ */
+function switchCadenceUnit(form: FormState, next: DurationMode) {
+  const { totalEffective } = datasetTotals(form);
+  const canConvert = totalEffective > 0 && form.batchSize > 0;
+
+  for (const pair of CADENCE_PAIRS) {
+    if (canConvert && form[pair.mode] !== next) {
+      if (next === 'steps') {
+        form[pair.steps] = Math.max(
+          1,
+          Math.ceil((totalEffective * form[pair.epochs]) / form.batchSize),
+        );
+      } else {
+        form[pair.epochs] = Math.max(
+          1,
+          Math.floor((form[pair.steps] * form.batchSize) / totalEffective),
+        );
+      }
+    }
+    form[pair.mode] = next;
+  }
+}
 
 const initialState: TrainingConfigState = {
   form: initialFormState(),
@@ -53,9 +129,17 @@ const trainingConfigSlice = createSlice({
       state: TrainingConfigState,
       action: PayloadAction<{ field: K; value: FormState[K] }>,
     ) => {
+      const field = action.payload.field as string;
+
+      // Switching any one epochs/steps toggle switches all of them.
+      if (isCadenceModeField(field)) {
+        switchCadenceUnit(state.form, action.payload.value as DurationMode);
+        return;
+      }
+
       // Cast through unknown — the generic narrowing isn't preserved when
       // RTK infers action types, but the runtime assignment is safe.
-      (state.form as Record<string, unknown>)[action.payload.field as string] =
+      (state.form as Record<string, unknown>)[field] =
         action.payload.value as unknown;
     },
 
@@ -536,19 +620,7 @@ export const selectModelDefaults = createSelector(selectForm, (form) =>
   getDefaults(form.modelId),
 );
 
-export const selectDatasetStats = createSelector(selectForm, (form) => {
-  let totalImages = 0;
-  let totalEffective = 0;
-  for (const ds of form.datasets) {
-    for (const folder of ds.folders) {
-      const repeats = folder.overrideRepeats ?? folder.detectedRepeats;
-      if (repeats === 0) continue;
-      totalImages += folder.imageCount;
-      totalEffective += folder.imageCount * repeats;
-    }
-  }
-  return { totalImages, totalEffective };
-});
+export const selectDatasetStats = createSelector(selectForm, datasetTotals);
 
 export type DatasetIssue = {
   projectName: string;

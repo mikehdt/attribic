@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrowDownIcon, ArrowUpIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import type {
@@ -7,7 +8,9 @@ import type {
   TrainingProjectVersionSummary,
 } from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
+import { Dropdown, DropdownItem } from '@/app/shared/dropdown';
 import { Input } from '@/app/shared/input/input';
+import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { Modal } from '@/app/shared/modal';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectLoadedProject } from '@/app/store/training-config';
@@ -108,6 +111,40 @@ function ProjectSummaryBadges({
   );
 }
 
+type SortField = 'recent' | 'name';
+type SortDirection = 'asc' | 'desc';
+
+const SORT_FIELD_ITEMS: DropdownItem<SortField>[] = [
+  { value: 'recent', label: 'Recent' },
+  { value: 'name', label: 'Name' },
+];
+
+/** Direction each field is most useful in when first selected. */
+const DEFAULT_DIRECTION: Record<SortField, SortDirection> = {
+  recent: 'desc',
+  name: 'asc',
+};
+
+const DIRECTION_LABELS: Record<SortField, Record<SortDirection, string>> = {
+  recent: { asc: 'Oldest', desc: 'Newest' },
+  name: { asc: 'A-Z', desc: 'Z-A' },
+};
+
+/** Ascending comparators; descending is the same compare flipped. */
+const ASCENDING_COMPARATORS: Record<
+  SortField,
+  (a: TrainingProjectSummary, b: TrainingProjectSummary) => number
+> = {
+  // ISO timestamps sort correctly as strings.
+  recent: (a, b) => a.updatedAt.localeCompare(b.updatedAt),
+  // Natural order so "run 2" sorts before "run 10".
+  name: (a, b) =>
+    a.name.localeCompare(b.name, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    }),
+};
+
 function formatRelative(iso: string): string {
   const now = Date.now();
   const then = new Date(iso).getTime();
@@ -134,6 +171,9 @@ export const LoadProjectModal = ({
   // synchronous setState (which causes a cascading-render warning).
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState('');
+  // Defaults match the order the list endpoint already returns.
+  const [sortField, setSortField] = useState<SortField>('recent');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
 
@@ -161,14 +201,24 @@ export const LoadProjectModal = ({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((p) => p.name.toLowerCase().includes(q));
-  }, [projects, query]);
+    const matches = q
+      ? projects.filter((p) => p.name.toLowerCase().includes(q))
+      : projects;
+    const compare = ASCENDING_COMPARATORS[sortField];
+    return [...matches].sort(
+      sortDirection === 'asc' ? compare : (a, b) => compare(b, a),
+    );
+  }, [projects, query, sortField, sortDirection]);
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === selectedId) ?? null,
     [projects, selectedId],
   );
+
+  const handleSortFieldChange = (field: SortField) => {
+    setSortField(field);
+    setSortDirection(DEFAULT_DIRECTION[field]);
+  };
 
   const handleSelectProject = (id: string) => {
     setSelectedId(id);
@@ -205,13 +255,45 @@ export const LoadProjectModal = ({
           </p>
         ) : (
           <>
-            <Input
-              placeholder="Search…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full"
-              autoFocus
-            />
+            <div className="flex w-full items-center gap-2">
+              <Input
+                placeholder="Search…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="flex-1"
+                autoFocus
+              />
+              <InputTray>
+                <Dropdown
+                  size="sm"
+                  items={SORT_FIELD_ITEMS}
+                  selectedValue={sortField}
+                  onChange={handleSortFieldChange}
+                  aria-label="Sort projects by"
+                  alignRight
+                />
+                <Button
+                  type="button"
+                  onClick={() =>
+                    setSortDirection((prev) =>
+                      prev === 'asc' ? 'desc' : 'asc',
+                    )
+                  }
+                  variant="ghost"
+                  size="sm"
+                  title={`Sort ${sortDirection === 'asc' ? 'ascending' : 'descending'}`}
+                >
+                  {sortDirection === 'asc' ? (
+                    <ArrowUpIcon />
+                  ) : (
+                    <ArrowDownIcon />
+                  )}
+                  <span className="ml-1">
+                    {DIRECTION_LABELS[sortField][sortDirection]}
+                  </span>
+                </Button>
+              </InputTray>
+            </div>
 
             <div className="flex w-full gap-3">
               {/* Project list */}
@@ -252,7 +334,7 @@ export const LoadProjectModal = ({
 
               {/* Version list */}
               <div
-                className="flex max-h-112 w-64 flex-col gap-1 overflow-auto rounded-md border border-slate-200 p-2 dark:border-slate-700"
+                className="flex w-64 flex-col gap-1 overflow-auto rounded-md border border-slate-200 p-2 dark:border-slate-700"
                 role="radiogroup"
                 aria-label="Versions"
               >

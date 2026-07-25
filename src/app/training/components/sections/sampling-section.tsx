@@ -50,6 +50,9 @@ type SamplingSectionProps = {
   sampleSteps: number;
   guidanceScale: number;
   sampleSampler: string;
+  /** Resolved run length, for working out how many samples the run produces. */
+  calculatedSteps: number;
+  calculatedEpochs: number;
   defaults: TrainingDefaults;
   visibleFields: Set<string>;
   hiddenChangesCount?: number;
@@ -72,6 +75,8 @@ const SamplingSectionComponent = ({
   sampleSteps,
   guidanceScale,
   sampleSampler,
+  calculatedSteps,
+  calculatedEpochs,
   defaults,
   visibleFields,
   hiddenChangesCount,
@@ -108,6 +113,18 @@ const SamplingSectionComponent = ({
         : `${sampleEverySteps === 1 ? 'step' : `${sampleEverySteps} steps`}`;
     const prompts = samplePrompts.filter((p) => p.trim() !== '');
 
+    // How many times the cadence fires across the resolved run length. Both
+    // are 0 until a dataset is attached, so the tally is left off until then.
+    const rounds =
+      sampleMode === 'epochs'
+        ? sampleEveryEpochs > 0
+          ? Math.floor(calculatedEpochs / sampleEveryEpochs)
+          : 0
+        : sampleEverySteps > 0
+          ? Math.floor(calculatedSteps / sampleEverySteps)
+          : 0;
+    const totalImages = rounds * prompts.length;
+
     return (
       <CollapsibleSection title="Sampling">
         <div className="space-y-1.5 text-sm">
@@ -127,6 +144,17 @@ const SamplingSectionComponent = ({
                 </li>
               ))}
             </ul>
+          )}
+          {totalImages > 0 && (
+            <p className="text-slate-500 tabular-nums dark:text-slate-400">
+              {rounds} {rounds === 1 ? 'round' : 'rounds'} &times;{' '}
+              {prompts.length} {prompts.length === 1 ? 'prompt' : 'prompts'} ={' '}
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                {totalImages.toLocaleString()}{' '}
+                {totalImages === 1 ? 'image' : 'images'}
+              </span>{' '}
+              over the run
+            </p>
           )}
         </div>
       </CollapsibleSection>
