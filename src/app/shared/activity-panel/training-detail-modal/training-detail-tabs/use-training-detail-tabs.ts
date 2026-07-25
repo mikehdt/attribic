@@ -43,11 +43,26 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
   const isGenerating =
     job?.progress?.status === 'training' && isSamplingPhase(job.progress.phase);
 
+  // Whether the newest real row belongs to the event happening right now, as
+  // opposed to a past one. The step/epoch counters freeze at the position
+  // sampling fired at, so a row at or beyond that position has to be this
+  // event's — anything earlier means this event hasn't landed an image yet.
+  // Without this the two indistinguishable "top row is full" states (nothing
+  // generated yet vs everything generated) both read as "starting".
+  const newestRow = grid.rows[0] ?? null;
+  const newestRowIsCurrentEvent =
+    newestRow != null &&
+    job?.progress != null &&
+    (newestRow.eventValue ?? 0) >=
+      (newestRow.isEpoch
+        ? job.progress.currentEpoch
+        : job.progress.currentStep);
+
   // Whether the newest real row is the one being written right now — samples
   // land one prompt at a time, so a half-filled top row *is* the live event.
   const newestRowInFlight =
     isGenerating &&
-    grid.rows.length > 0 &&
+    newestRowIsCurrentEvent &&
     grid.rows[0].cells.some((cell) => cell === null);
 
   // Placeholder row of dashed cells, prepended above the newest real row while a
@@ -76,12 +91,20 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
     // happening, even when it's the run's last.
     if (isGenerating) {
       if (newestRowInFlight) return null;
+      // Every image of this event has landed. The trainer is still paused —
+      // writing them out, restoring state before it resumes stepping — but
+      // nothing is rendering, so a "Generating" row above the completed one
+      // would be a phantom, its first cell claiming work that's already done.
+      if (newestRowIsCurrentEvent) return null;
       return {
         key: 'upcoming',
         label: 'Generating',
         isEpoch: false,
         upcoming: true,
         cells: grid.columns.map(() => null),
+        // Nothing has landed yet, so the first prompt is the one rendering.
+        generatingIndex: 0,
+        generatingProgress: progress.sampleProgress ?? null,
       };
     }
 
@@ -116,20 +139,30 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
       upcoming: true,
       cells: grid.columns.map(() => null),
     };
-  }, [job, grid, isGenerating, newestRowInFlight]);
+  }, [job, grid, isGenerating, newestRowInFlight, newestRowIsCurrentEvent]);
 
   // Display-only overlay on the grid: the in-flight row is renamed and any
   // placeholder prepended. `grid` itself keeps its step/epoch labels and stable
   // keys, so the lightbox's lookups are untouched by the rename.
   const displayGrid = useMemo(() => {
     const rows = newestRowInFlight
-      ? [{ ...grid.rows[0], label: 'Generating' }, ...grid.rows.slice(1)]
+      ? [
+          {
+            ...grid.rows[0],
+            label: 'Generating',
+            // Samples land in prompt order, so the leftmost gap is the image
+            // on the GPU right now — that's the cell that gets the bar.
+            generatingIndex: grid.rows[0].cells.findIndex((c) => c === null),
+            generatingProgress: job?.progress?.sampleProgress ?? null,
+          },
+          ...grid.rows.slice(1),
+        ]
       : grid.rows;
     if (!upcomingRow) {
       return newestRowInFlight ? { columns: grid.columns, rows } : grid;
     }
     return { columns: grid.columns, rows: [upcomingRow, ...rows] };
-  }, [grid, upcomingRow, newestRowInFlight]);
+  }, [grid, upcomingRow, newestRowInFlight, job?.progress?.sampleProgress]);
 
   // Callers key this hook's component by job id, so tab/lightbox state resets
   // per run; within a run it survives live progress updates. When a run has no

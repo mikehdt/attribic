@@ -21,7 +21,13 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Optional
 
-from models import JobProgress, JobStatus, SampleImage, StartJobRequest
+from models import (
+    JobProgress,
+    JobStatus,
+    SampleImage,
+    SampleProgress,
+    StartJobRequest,
+)
 from providers.base import TrainingProvider
 
 # sd-scripts' main training bar looks like:
@@ -844,23 +850,37 @@ class KohyaProvider(TrainingProvider):
         )
         current_epoch = 0
         total_epochs = 0
+        # Epoch number logged during a sampling pause, applied once the pause
+        # ends — see the EPOCH_PATTERN branch in the run loop.
+        pending_epoch: Optional[int] = None
 
         async def read_stream(stream: asyncio.StreamReader):
-            """Read lines, splitting on tqdm's \\r as well as \\n."""
+            """Read lines, splitting on tqdm's \\r as well as \\n.
+
+            Cuts at whichever terminator comes FIRST. Preferring \\n would
+            swallow every \\r-separated redraw sitting ahead of it in the same
+            chunk: a bar that repaints faster than we drain the pipe (a fast
+            sampler, or tqdm's closing double-repaint) then arrives as one
+            merged line and only its first count is ever parsed — which is how
+            a whole sampling event's progress disappears at once.
+            """
             buffer = ""
             while True:
                 chunk = await stream.read(256)
                 if not chunk:
                     break
                 buffer += chunk.decode("utf-8", errors="replace")
-                while "\r" in buffer or "\n" in buffer:
-                    for sep in ["\n", "\r"]:
-                        if sep in buffer:
-                            line, buffer = buffer.split(sep, 1)
-                            line = ANSI_PATTERN.sub("", line).strip()
-                            if line:
-                                yield line
-                            break
+                while True:
+                    cuts = [
+                        i for i in (buffer.find("\r"), buffer.find("\n")) if i >= 0
+                    ]
+                    if not cuts:
+                        break
+                    cut = min(cuts)
+                    line, buffer = buffer[:cut], buffer[cut + 1 :]
+                    line = ANSI_PATTERN.sub("", line).strip()
+                    if line:
+                        yield line
 
         # sd-scripts (via accelerate/tqdm) writes progress to stderr, so we
         # merge both streams — see the equivalent note in ai_toolkit.py.
@@ -891,6 +911,11 @@ class KohyaProvider(TrainingProvider):
         # catch-up repaints read as what they are; only a bar beyond it is
         # training actually resuming.
         sampling_step = 0
+        # Last (current, total) read off the sampler's own diffusion bar, e.g.
+        #   Sampling:  67%|██████▋   | 16/24 [00:13<00:07,  1.14it/s]
+        # Kept so the ~10/s tqdm redraws only produce an event when the count
+        # actually moves. Reset at the start of each sampling pause.
+        last_sample_bar: Optional[tuple[int, int]] = None
         # Last training step counts seen, so the terminal COMPLETED event can
         # report the bar as full (N/N) rather than dropping back to 0/0.
         current_step = 0
@@ -926,8 +951,18 @@ class KohyaProvider(TrainingProvider):
 
             epoch_match = EPOCH_PATTERN.search(line)
             if epoch_match:
-                current_epoch = int(epoch_match.group(1))
                 total_epochs = int(epoch_match.group(2))
+                if sampling_active:
+                    # sd-scripts samples at the end of an epoch and the loop
+                    # logs the *next* epoch immediately after — while the
+                    # trainer is still finishing the pause. Hold the new number
+                    # back so the reported epoch keeps naming the event being
+                    # sampled (which is what its sample filenames encode, and
+                    # what the UI matches the in-flight row against); every
+                    # other counter is frozen through the pause anyway.
+                    pending_epoch = int(epoch_match.group(1))
+                else:
+                    current_epoch = int(epoch_match.group(1))
 
             match = TQDM_PATTERN.search(line)
             # avr_loss and the it/s rate both sit *inside* the tqdm bracket, so
@@ -967,6 +1002,10 @@ class KohyaProvider(TrainingProvider):
                 # without this every repaint flipped the UI back to Training.
                 still_sampling = sampling_active and new_step <= sampling_step
                 sampling_active = still_sampling
+                if not still_sampling and pending_epoch is not None:
+                    # Pause over — adopt the epoch the loop logged during it.
+                    current_epoch = pending_epoch
+                    pending_epoch = None
                 current_step = new_step
                 total_steps = int(match.group(2))
                 eta = _parse_eta_seconds(match.group(3))
@@ -1010,6 +1049,35 @@ class KohyaProvider(TrainingProvider):
 
                 lower = line.lower()
                 if training_started:
+                    # A tqdm bar during a sampling pause is the sampler's own
+                    # diffusion bar for the image being rendered right now
+                    # ("Sampling: 67%|…| 16/24 …") — the training bar was
+                    # claimed above, so anything left here belongs to the
+                    # sampler. Forward it so the UI can draw a determinate bar
+                    # in the cell that image is destined for. Emitted only when
+                    # the count moves, since tqdm redraws far faster than the
+                    # UI needs.
+                    if match and sampling_active:
+                        bar = (int(match.group(1)), int(match.group(2)))
+                        if bar != last_sample_bar:
+                            last_sample_bar = bar
+                            yield JobProgress(
+                                job_id=job_id,
+                                status=JobStatus.TRAINING,
+                                current_step=current_step,
+                                total_steps=total_steps,
+                                current_epoch=current_epoch,
+                                total_epochs=total_epochs,
+                                loss=last_loss,
+                                phase=SAMPLING_PHASE,
+                                samples=samples,
+                                log_lines=log_lines[-50:],
+                                sample_progress=SampleProgress(
+                                    current=bar[0], total=bar[1]
+                                ),
+                            )
+                        continue
+
                     # Between steps sd-scripts pauses to save checkpoints or
                     # generate samples — the step bar freezes during that, so
                     # surface what it's doing as a one-line activity label.
@@ -1045,8 +1113,15 @@ class KohyaProvider(TrainingProvider):
                             # announcement (missed, or the sampler logged out of
                             # order) — the frozen bar is the best anchor we have.
                             sampling_step = current_step
-                        # Ignore the sampler's own tqdm bars until the real
-                        # training bar ("steps" / avr_loss) moves past that step.
+                        # The sampler's bar restarts per image, so drop the last
+                        # reading rather than letting a finished image's count
+                        # suppress the first tick of the next one.
+                        if not sampling_active:
+                            last_sample_bar = None
+                        # Latch the pause so the sampler's own tqdm bars are read
+                        # as sample progress (branch above) rather than training
+                        # steps, until the real training bar ("steps" / avr_loss)
+                        # moves past that step.
                         sampling_active = True
                     elif "model saved" in lower:
                         activity = "Checkpoint saved"
@@ -1110,6 +1185,12 @@ class KohyaProvider(TrainingProvider):
         # non-zero exit from the kill is expected — don't report it as a failure.
         if self._cancelled:
             return
+
+        # A run that ended inside a sampling pause never got the training bar
+        # that would have adopted the held epoch — the terminal event should
+        # still report the last one the trainer logged.
+        if pending_epoch is not None:
+            current_epoch = pending_epoch
 
         # Final scan — samples generated at the last save/end land after the
         # last training-bar update, so catch any stragglers here. Runs on the

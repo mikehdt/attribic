@@ -1,59 +1,6 @@
-# Architecture Overview
+# Project Constraints
 
-This is a Next.js 16 application for managing and tagging image collections with the following architecture:
-
-## State Management
-
-- Redux Toolkit with typed hooks
-- Store slices: assets, autoTagger, filters, preferences, project, selection, toasts, training
-- Custom middleware: filter-manager for coordinating filter state changes
-- Async operations handled via AppThunk type
-
-## Routing
-
-- `/` — Project list (always shown, no single-project mode)
-- `/tagging/[project]/[page]` — Image tagging view with pagination
-- `/training/[project]` — Training configuration and monitoring (in development)
-
-Project context is derived from the URL slug, not sessionStorage. The `[project]` segment is the folder name within the configured `projectsFolder`.
-
-## Core Features
-
-- Image gallery with pagination
-- Tag management (add/edit/reorder tags via drag-and-drop using @dnd-kit)
-- Advanced filtering (tags, dimensions, filetype)
-- Project-based organisation (multi-project only, no single-project/default mode)
-- Tag persistence to associated text files
-- LoRA training system (in development) — Python sidecar with ai-toolkit and Kohya backends
-
-## Key Directories
-
-- `src/app/store/` - Redux store configuration and slices
-- `src/app/components/` - React components organised by feature area
-- `src/app/services/` - Service layers (auto-tagger, training)
-- `src/app/utils/` - Utility functions and helpers
-- `src/app/api/` - Next.js API routes for serving images and project data
-- `public/tagging-projects/` - Tagging project metadata and thumbnails
-
-## Component Architecture
-
-- Feature-based component organization (asset, tagging, top-shelf, bottom-shelf)
-- Shared components in `src/app/components/shared/`
-- Hook-based logic extraction for complex components
-- Context providers for component-specific state (tagging, filters, popups)
-
-## API Structure
-
-- `/api/images/[...path]` - Dynamic image serving
-- `/api/auto-tagger/*` - Auto-tagger model management, batch tagging, downloads
-- `/api/config` - Configuration data (projectsFolder, pythonPath, trainingBackends)
-
-## Data Flow
-
-- Images and tags loaded via API routes
-- Project context derived from URL params (`[project]` slug), stored in Redux
-- Components use typed selectors and actions
-- Filter changes trigger middleware that coordinates related state updates
+Multi-project only — no single-project/default mode. Project context is derived from the URL slug, not sessionStorage. The `[project]` segment is the folder name within the configured `projectsFolder`.
 
 # Development Guidelines
 
@@ -63,7 +10,6 @@ Project context is derived from the URL slug, not sessionStorage. The `[project]
 - Preference for named exports over default exports
 - Only export values consumed elsewhere
 - Path alias `@/app/...` for clean imports, maximum two `../../` levels
-- Feature-based component organization
 
 ## Component Folder Pattern (preferred)
 

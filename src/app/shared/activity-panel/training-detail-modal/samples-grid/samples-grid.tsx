@@ -1,3 +1,6 @@
+import type { SampleProgress } from '@/app/services/training/types';
+import { ProgressBar } from '@/app/shared/progress-bar/progress-bar';
+
 import {
   type SampleColumn,
   type SampleRow,
@@ -62,6 +65,42 @@ function ColumnHeader({ column }: { column: SampleColumn }) {
   );
 }
 
+/**
+ * The cell the trainer is rendering into right now. Determinate when the
+ * backend reports the sampler's diffusion steps (Kohya), indeterminate
+ * otherwise (ai-toolkit reports only the image count within the event), so the
+ * cell always reads as "working" rather than as an empty slot.
+ */
+function GeneratingCell({
+  progress,
+  label,
+}: {
+  progress: SampleProgress | null;
+  label: string;
+}) {
+  const determinate = progress != null && progress.total > 0;
+  return (
+    <div
+      className="flex h-28 w-full flex-col items-center justify-center gap-2 rounded border border-dashed border-violet-400 px-3 dark:border-violet-500/70"
+      title={`Generating ${label}`}
+    >
+      {determinate ? (
+        <ProgressBar
+          value={progress.current}
+          max={progress.total}
+          size="xs"
+          color="indigo"
+        />
+      ) : (
+        <ProgressBar size="xs" color="indigo" indeterminate />
+      )}
+      <span className="text-sm text-violet-600 dark:text-violet-400">
+        {determinate ? `${progress.current}/${progress.total}` : 'Generating…'}
+      </span>
+    </div>
+  );
+}
+
 function GridRow({
   row,
   columns,
@@ -102,6 +141,11 @@ function GridRow({
                   className="h-28 w-full object-contain"
                 />
               </button>
+            ) : column.index === row.generatingIndex ? (
+              <GeneratingCell
+                progress={row.generatingProgress ?? null}
+                label={column.label}
+              />
             ) : (
               <div className="flex h-28 w-full items-center justify-center rounded border border-dashed border-slate-200 text-xs text-slate-400 dark:border-slate-700">
                 —

@@ -1,4 +1,7 @@
-import type { SampleImage } from '@/app/services/training/types';
+import type {
+  SampleImage,
+  SampleProgress,
+} from '@/app/services/training/types';
 import type { TrainingJob } from '@/app/store/jobs';
 
 /** A prompt column in the samples grid. */
@@ -21,10 +24,29 @@ export type SampleRow = {
   label?: string;
   /** True when the run samples on an epoch cadence (label reads "Epoch N"). */
   isEpoch: boolean;
+  /**
+   * The position this event sits at — its epoch on an epoch-cadence run, its
+   * step otherwise (epoch-cadence sample filenames encode no step). Rows sort
+   * on it, and comparing it against the trainer's frozen counters is how the
+   * live view tells this event apart from the one about to start. Absent on
+   * placeholder rows, which sit at no position at all.
+   */
+  eventValue?: number;
   /** A predicted future event: every cell renders as a placeholder. */
   upcoming?: boolean;
   /** One cell per column; null where that prompt hasn't been sampled yet. */
   cells: (SampleImage | null)[];
+  /**
+   * Column index of the image the trainer is rendering right now. Set on the
+   * in-flight event only (display overlay, not the base grid) so that one cell
+   * shows a progress bar instead of an empty placeholder.
+   */
+  generatingIndex?: number;
+  /**
+   * How far through that image the sampler is, or null when the backend
+   * doesn't report it — the cell then runs an indeterminate bar.
+   */
+  generatingProgress?: SampleProgress | null;
 };
 
 export type SamplesGridModel = {
@@ -84,6 +106,7 @@ export function buildSamplesGrid(job: TrainingJob | null): SamplesGridModel {
           key,
           label: isEpoch ? `Epoch ${sample.epoch}` : `Step ${sample.step}`,
           isEpoch,
+          eventValue: sortValue,
           cells: Array.from({ length: columnCount }, () => null),
         },
       };

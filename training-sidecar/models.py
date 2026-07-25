@@ -58,6 +58,18 @@ class SampleImage(BaseModel):
     prompt_index: int
 
 
+class SampleProgress(BaseModel):
+    """Diffusion-step progress of the sample image being rendered right now.
+
+    Only meaningful while the trainer is paused generating samples; backends
+    that don't expose a per-image bar simply never report it (the UI then shows
+    an indeterminate bar for the duration).
+    """
+
+    current: int
+    total: int
+
+
 class DatasetEntry(BaseModel):
     path: str
     num_repeats: int = 1
@@ -135,6 +147,11 @@ class JobProgress(BaseModel):
     phase: Optional[str] = None
     # Iteration rate as reported by the trainer, e.g. "2.30 it/s" / "23.01 s/it".
     speed: Optional[str] = None
+    # Diffusion-step progress of the sample image currently being rendered.
+    # Set only during a sampling pause and only by backends whose logs expose
+    # the sampler's own bar (Kohya); null everywhere else, including the moment
+    # sampling ends — a training tick clears it by simply omitting it.
+    sample_progress: Optional[SampleProgress] = None
     # Cumulative wall-time (seconds) spent actively TRAINING, accumulated
     # centrally by the JobManager from the gaps between TRAINING-status ticks —
     # so it excludes queueing/preparing (model load, latent caching) and, unlike

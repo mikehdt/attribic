@@ -54,6 +54,14 @@ export type SampleImage = {
   promptIndex: number;
 };
 
+/**
+ * Diffusion-step progress of the sample image the trainer is rendering right
+ * now (Kohya's own sampler bar). Present only during a sampling pause, and only
+ * for backends whose logs expose it — ai-toolkit reports the image count within
+ * the event but no per-image bar, so it stays null there.
+ */
+export type SampleProgress = { current: number; total: number };
+
 export type TrainingProgress = {
   jobId: string;
   status: TrainingJobStatus;
@@ -107,6 +115,12 @@ export type TrainingProgress = {
   phase: string | null;
   /** Iteration rate from the trainer, e.g. "2.30 it/s" / "23.01 s/it". */
   speed: string | null;
+  /**
+   * Progress through the sample image being rendered right now; null whenever
+   * the trainer isn't sampling or the backend doesn't report it (the samples
+   * grid then falls back to an indeterminate bar).
+   */
+  sampleProgress: SampleProgress | null;
   /**
    * Cumulative seconds spent actively training, accumulated sidecar-side from
    * the gaps between training ticks. Excludes queueing/preparing and, unlike

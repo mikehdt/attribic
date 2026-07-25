@@ -59,6 +59,7 @@ type SidecarJobProgress = {
   error?: string | null;
   phase?: string | null;
   speed?: string | null;
+  sample_progress?: { current: number; total: number } | null;
   training_seconds?: number;
 };
 
@@ -160,6 +161,9 @@ function buildProgress(
     error: msg.error ?? null,
     phase: msg.phase ?? null,
     speed: msg.speed ?? null,
+    // Absent on every tick but the sampler's own bar — the omission is what
+    // clears the in-flight cell's bar when generation ends.
+    sampleProgress: msg.sample_progress ?? null,
     trainingSeconds: msg.training_seconds ?? 0,
   };
 }
