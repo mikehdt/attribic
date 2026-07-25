@@ -59,9 +59,9 @@ function datasetTotals(form: FormState) {
 
 /**
  * The three epochs/steps toggles — Duration, Generate Every, Save Every —
- * move together. They describe the same run in the same unit and all resolve
- * to steps in the end, so a mixed pair reads as an accident rather than a
- * choice.
+ * each pick their own unit. Mixing them is a legitimate choice, not an
+ * accident: a long epoch is exactly when you'd train for n epochs but sample
+ * every 200 steps, a cadence that isn't a whole number of epochs at all.
  */
 const CADENCE_PAIRS = [
   { mode: 'durationMode', epochs: 'epochs', steps: 'steps' },
@@ -73,45 +73,49 @@ const CADENCE_PAIRS = [
   { mode: 'saveMode', epochs: 'saveEveryEpochs', steps: 'saveEverySteps' },
 ] as const;
 
-type CadenceModeField = (typeof CADENCE_PAIRS)[number]['mode'];
+type CadencePair = (typeof CADENCE_PAIRS)[number];
 
-const isCadenceModeField = (field: string): field is CadenceModeField =>
-  CADENCE_PAIRS.some((pair) => pair.mode === field);
+const findCadencePair = (field: string): CadencePair | undefined =>
+  CADENCE_PAIRS.find((pair) => pair.mode === field);
 
 /**
- * Flip every cadence to `next`, converting the numbers rather than swapping
- * to whatever was last parked in the other unit. Without this, "sample every
- * 2 epochs, save every 4" becomes the two unrelated step defaults the moment
- * you touch a toggle — same words, a completely different run.
+ * Switch one cadence's unit, carrying its number across rather than revealing
+ * whatever was last parked in the other unit. Without this, "sample every 2
+ * epochs" becomes the model's default step cadence the moment you touch the
+ * toggle — same control, a completely different run.
  *
  * Conversion mirrors the epochs↔steps maths the Duration readout already
- * shows, so the resolved run length doesn't move when the unit does. Both
- * directions floor to at least 1: a cadence of 0 means "never" to the
+ * shows. It rounds, since a step cadence rarely lands on a whole epoch, but
+ * both directions floor to at least 1: a cadence of 0 means "never" to the
  * backends, which is a silent way to turn sampling or saving off.
  *
  * With no dataset attached there's no images-per-epoch to convert through, so
  * the stored values are left alone and only the unit changes.
  */
-function switchCadenceUnit(form: FormState, next: DurationMode) {
+function switchCadenceUnit(
+  form: FormState,
+  pair: CadencePair,
+  next: DurationMode,
+) {
   const { totalEffective } = datasetTotals(form);
-  const canConvert = totalEffective > 0 && form.batchSize > 0;
+  const canConvert =
+    totalEffective > 0 && form.batchSize > 0 && form[pair.mode] !== next;
 
-  for (const pair of CADENCE_PAIRS) {
-    if (canConvert && form[pair.mode] !== next) {
-      if (next === 'steps') {
-        form[pair.steps] = Math.max(
-          1,
-          Math.ceil((totalEffective * form[pair.epochs]) / form.batchSize),
-        );
-      } else {
-        form[pair.epochs] = Math.max(
-          1,
-          Math.floor((form[pair.steps] * form.batchSize) / totalEffective),
-        );
-      }
+  if (canConvert) {
+    if (next === 'steps') {
+      form[pair.steps] = Math.max(
+        1,
+        Math.ceil((totalEffective * form[pair.epochs]) / form.batchSize),
+      );
+    } else {
+      form[pair.epochs] = Math.max(
+        1,
+        Math.floor((form[pair.steps] * form.batchSize) / totalEffective),
+      );
     }
-    form[pair.mode] = next;
   }
+
+  form[pair.mode] = next;
 }
 
 const initialState: TrainingConfigState = {
@@ -131,9 +135,14 @@ const trainingConfigSlice = createSlice({
     ) => {
       const field = action.payload.field as string;
 
-      // Switching any one epochs/steps toggle switches all of them.
-      if (isCadenceModeField(field)) {
-        switchCadenceUnit(state.form, action.payload.value as DurationMode);
+      // An epochs/steps toggle converts its own value on the way across.
+      const cadence = findCadencePair(field);
+      if (cadence) {
+        switchCadenceUnit(
+          state.form,
+          cadence,
+          action.payload.value as DurationMode,
+        );
         return;
       }
 
