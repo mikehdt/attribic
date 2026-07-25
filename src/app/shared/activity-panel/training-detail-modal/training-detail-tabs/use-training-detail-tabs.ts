@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import type { TrainingJob } from '@/app/store/jobs';
 
-import { deriveSecPerStep, formatEta } from '../../helpers';
+import { deriveSecPerStep, formatEta, isSamplingPhase } from '../../helpers';
 import {
   buildSamplesGrid,
   type SampleRow,
@@ -36,6 +36,20 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
   // host modals key their width off the same predicate.
   const showSamplesTab = showsSamplesView(job, grid);
 
+  // The trainer has paused stepping to render images. The step counter is
+  // frozen for the duration, so every countdown derived from it is meaningless
+  // until training resumes — the event in flight is stamped "Generating"
+  // instead of an ETA it can't honour.
+  const isGenerating =
+    job?.progress?.status === 'training' && isSamplingPhase(job.progress.phase);
+
+  // Whether the newest real row is the one being written right now — samples
+  // land one prompt at a time, so a half-filled top row *is* the live event.
+  const newestRowInFlight =
+    isGenerating &&
+    grid.rows.length > 0 &&
+    grid.rows[0].cells.some((cell) => cell === null);
+
   // Placeholder row of dashed cells, prepended above the newest real row while a
   // run is live. Two jobs in one:
   //   • Before any sample exists — startup, still preparing, or training but no
@@ -54,6 +68,22 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
     if (!isLive) return null;
 
     const hasRows = grid.rows.length > 0;
+
+    // Mid-generation the placeholder stops being a forecast and becomes the
+    // event itself — shown until its first image lands, at which point the real
+    // row takes over the "Generating" stamp (see `newestRowInFlight`). None of
+    // the "is there a further step to point at" gating applies: this event is
+    // happening, even when it's the run's last.
+    if (isGenerating) {
+      if (newestRowInFlight) return null;
+      return {
+        key: 'upcoming',
+        label: 'Generating',
+        isEpoch: false,
+        upcoming: true,
+        cells: grid.columns.map(() => null),
+      };
+    }
 
     // With real rows on screen, only surface the placeholder as a genuine
     // "Next" announcement: training must be stepping, the newest row fully
@@ -86,15 +116,20 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
       upcoming: true,
       cells: grid.columns.map(() => null),
     };
-  }, [job, grid]);
+  }, [job, grid, isGenerating, newestRowInFlight]);
 
-  const displayGrid = useMemo(
-    () =>
-      upcomingRow
-        ? { columns: grid.columns, rows: [upcomingRow, ...grid.rows] }
-        : grid,
-    [grid, upcomingRow],
-  );
+  // Display-only overlay on the grid: the in-flight row is renamed and any
+  // placeholder prepended. `grid` itself keeps its step/epoch labels and stable
+  // keys, so the lightbox's lookups are untouched by the rename.
+  const displayGrid = useMemo(() => {
+    const rows = newestRowInFlight
+      ? [{ ...grid.rows[0], label: 'Generating' }, ...grid.rows.slice(1)]
+      : grid.rows;
+    if (!upcomingRow) {
+      return newestRowInFlight ? { columns: grid.columns, rows } : grid;
+    }
+    return { columns: grid.columns, rows: [upcomingRow, ...rows] };
+  }, [grid, upcomingRow, newestRowInFlight]);
 
   // Callers key this hook's component by job id, so tab/lightbox state resets
   // per run; within a run it survives live progress updates. When a run has no

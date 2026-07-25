@@ -24,6 +24,10 @@ type LossChartProps = {
   checkpointSteps?: number[];
   /** Steps confirmed written by the trainer. */
   savedCheckpoints?: number[];
+  /** Predicted sample-generation positions (reached and upcoming). */
+  sampleSteps?: number[];
+  /** Steps that have actually produced sample images on disk. */
+  generatedSampleSteps?: number[];
   /**
    * Rolling checkpoint window from the run's config. When > 0 the trainer
    * keeps only the last N saves, so earlier ones are drawn as pruned.
@@ -51,7 +55,36 @@ const X_TICK_FRACTIONS = [0, 0.25, 0.5, 0.75, 1];
 // and contrast against the chart surfaces in both light and dark mode:
 // loss emerald-600, smoothed trend amber-600, LR schedule sky-600,
 // saved checkpoints violet (slate once pruned by the rolling save window),
-// epoch boundaries light slate.
+// epoch boundaries light slate, sample markers pink.
+
+/**
+ * Height of the marker lane reserved above the plot for sample dots, so they
+ * never collide with a loss curve that runs up against the top of its domain.
+ * Only added when the run actually samples.
+ */
+const SAMPLE_LANE = { detail: 9, compact: 5 };
+const SAMPLE_DOT_RADIUS = { detail: 2.5, compact: 1.5 };
+
+/**
+ * Thin out markers that would overlap, keeping the earliest of any cluster —
+ * a dense sampling cadence on a narrow chart should read as a sparse rhythm
+ * rather than a solid smear. Input must be ascending.
+ */
+function spaceOutMarkers(
+  steps: number[],
+  xScale: (step: number) => number,
+  minGap: number,
+): number[] {
+  const kept: number[] = [];
+  let lastX = -Infinity;
+  for (const step of steps) {
+    const x = xScale(step);
+    if (x - lastX < minGap) continue;
+    kept.push(step);
+    lastX = x;
+  }
+  return kept;
+}
 
 const LossChartComponent = ({
   lossHistory,
@@ -60,6 +93,8 @@ const LossChartComponent = ({
   totalEpochs = 0,
   checkpointSteps = [],
   savedCheckpoints = [],
+  sampleSteps = [],
+  generatedSampleSteps = [],
   maxSavesToKeep = 0,
   provider,
   lrCurve = null,
@@ -70,6 +105,22 @@ const LossChartComponent = ({
 }: LossChartProps) => {
   const isDetail = variant === 'detail';
   const padding = isDetail ? DETAIL_PADDING : COMPACT_PADDING;
+
+  // Sample markers sit in their own lane above the plot, which only exists for
+  // runs that sample — everything below is measured from `plotTop`, not the
+  // raw padding, so a non-sampling run keeps the full height for the curve.
+  const hasSampleLane =
+    sampleSteps.length > 0 || generatedSampleSteps.length > 0;
+  const laneHeight = hasSampleLane
+    ? isDetail
+      ? SAMPLE_LANE.detail
+      : SAMPLE_LANE.compact
+    : 0;
+  const plotTop = padding.top + laneHeight;
+  const sampleDotRadius = isDetail
+    ? SAMPLE_DOT_RADIUS.detail
+    : SAMPLE_DOT_RADIUS.compact;
+  const sampleDotY = padding.top + laneHeight / 2;
 
   // Hide the leading warmup spike so it doesn't squash the rest of the curve.
   const visibleHistory = useMemo(
@@ -91,7 +142,7 @@ const LossChartComponent = ({
     totalSteps,
     width,
     height,
-    paddingTop: padding.top,
+    paddingTop: plotTop,
     paddingRight: padding.right,
     paddingBottom: padding.bottom,
     paddingLeft: padding.left,
@@ -168,7 +219,7 @@ const LossChartComponent = ({
     }
   }
 
-  const lineTop = padding.top;
+  const lineTop = plotTop;
   const lineBottom = height - padding.bottom;
 
   // The run's end is itself the final checkpoint — a violet line always sits on
@@ -179,6 +230,27 @@ const LossChartComponent = ({
   const atRightEdge = (step: number) => Math.abs(xScale(step) - rightEdgeX) < 4;
   const finalCheckpointSaved = savedCheckpoints.some(atRightEdge);
 
+  // Sample markers: images already on disk read solid, predictions ahead of us
+  // read faded — the point is seeing when the next one lands, so the upcoming
+  // pass is spaced out from the earliest (i.e. the next one is never the dot
+  // that gets thinned away). Predicted-but-passed positions with no image are
+  // dropped, same as unconfirmed checkpoints.
+  const markerGap = sampleDotRadius * 2 + 1.5;
+  const generatedDots = spaceOutMarkers(
+    [...generatedSampleSteps].sort((a, b) => a - b),
+    xScale,
+    markerGap,
+  );
+  const upcomingDots = spaceOutMarkers(
+    sampleSteps
+      .filter(
+        (step) => step > currentStep && !generatedSampleSteps.includes(step),
+      )
+      .sort((a, b) => a - b),
+    xScale,
+    markerGap,
+  );
+
   const lastPoint = visibleHistory[visibleHistory.length - 1];
 
   // LR schedule background: curve points spread across the full plot width,
@@ -188,7 +260,7 @@ const LossChartComponent = ({
     lrCurve && lrCurve.length >= 2
       ? lrCurve.map((v, i) => {
           const x = padding.left + (i / (lrCurve.length - 1)) * innerWidth;
-          const y = padding.top + (1 - v) * innerHeight;
+          const y = plotTop + (1 - v) * innerHeight;
           return `${x},${y}`;
         })
       : null;
@@ -390,6 +462,27 @@ const LossChartComponent = ({
           className="fill-emerald-600 stroke-slate-100 dark:stroke-slate-900"
         />
       )}
+
+      {/* Sample markers, in the reserved lane above the plot: faded for a
+          predicted generation still ahead, solid once the images exist. */}
+      {upcomingDots.map((step) => (
+        <circle
+          key={`sample-upcoming-${step}`}
+          cx={xScale(step)}
+          cy={sampleDotY}
+          r={sampleDotRadius}
+          className="fill-pink-500/30 dark:fill-pink-400/30"
+        />
+      ))}
+      {generatedDots.map((step) => (
+        <circle
+          key={`sample-${step}`}
+          cx={xScale(step)}
+          cy={sampleDotY}
+          r={sampleDotRadius}
+          className="fill-pink-500 dark:fill-pink-400"
+        />
+      ))}
     </svg>
   );
 };

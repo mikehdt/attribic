@@ -6,6 +6,7 @@ import { ProgressBar } from '../../progress-bar/progress-bar';
 import {
   deriveExpectedCheckpointCount,
   deriveSampleEventCount,
+  deriveSampleImageSteps,
   deriveSavedCount,
   deriveSecPerStep,
   formatDuration,
@@ -104,6 +105,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   // clamped so an unpredicted extra event (e.g. a baseline sample at step 0)
   // can't push the numerator past the denominator.
   const sampleSteps = progress.sampleSteps ?? [];
+  const generatedSampleSteps = deriveSampleImageSteps(progress);
   const sampledCount = deriveSampleEventCount(progress);
   const expectedSamples =
     sampleSteps.length > 0 ? Math.max(sampleSteps.length, sampledCount) : 0;
@@ -111,8 +113,13 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
     secPerStep !== null && hasStepInfo
       ? (sampleSteps.find((s) => s > currentStep) ?? null)
       : null;
+  // Suppressed while the trainer is actually generating: stepping is paused for
+  // the duration, so a countdown to the next sample would sit frozen on a
+  // number it can't be counting down to. Returns once training resumes.
   const nextSampleEta =
-    secPerStep !== null && nextSampleStep !== null
+    secPerStep !== null &&
+    nextSampleStep !== null &&
+    !isSamplingPhase(progress.phase)
       ? formatEta(Math.round((nextSampleStep - currentStep) * secPerStep))
       : null;
 
@@ -135,6 +142,8 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             totalEpochs={progress.totalEpochs}
             checkpointSteps={checkpointSteps}
             savedCheckpoints={savedCheckpoints}
+            sampleSteps={sampleSteps}
+            generatedSampleSteps={generatedSampleSteps}
             maxSavesToKeep={maxSavesToKeep}
             provider={config?.provider}
             lrCurve={lrCurve}
@@ -179,6 +188,18 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
               Epoch
             </span>
           )}
+          {generatedSampleSteps.length > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-pink-500 dark:bg-pink-400" />
+              Sample
+            </span>
+          )}
+          {sampleSteps.some((s) => s > currentStep) && (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-pink-500/30 dark:bg-pink-400/30" />
+              Upcoming sample
+            </span>
+          )}
         </div>
       </div>
 
@@ -188,7 +209,9 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             <span className="text-xs text-slate-400 uppercase">
               {isPreparing ? 'Caching speed' : 'Speed'}
             </span>
-            <span className="text-xs text-slate-400">s/it</span>
+            <span className="text-xs text-slate-400">
+              <span className="text-slate-600">lower is better -</span> s/it
+            </span>
           </div>
           <div className="mt-1 rounded border border-slate-300 bg-slate-100 p-2 dark:border-slate-600 dark:bg-slate-900">
             <SpeedChart

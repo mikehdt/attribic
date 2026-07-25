@@ -293,6 +293,39 @@ export function deriveSampleEventCount(
 }
 
 /**
+ * Distinct steps that have produced sample images, ascending — the x positions
+ * of the loss chart's solid sample markers.
+ *
+ * Epoch-cadence runs (Kohya) encode the epoch in the filename and leave step at
+ * 0, so those are mapped onto the step axis with the same ceil-based
+ * steps-per-epoch math the chart's epoch gridlines use. Without a step count to
+ * convert against they're dropped rather than piled up on the y-axis.
+ */
+export function deriveSampleImageSteps(
+  progress: TrainingProgress | null,
+): number[] {
+  const samples = progress?.samples ?? [];
+  if (samples.length === 0) return [];
+
+  const totalSteps = progress?.totalSteps ?? 0;
+  const totalEpochs = progress?.totalEpochs ?? 0;
+  const stepsPerEpoch =
+    totalSteps > 0 && totalEpochs > 0
+      ? Math.max(1, Math.ceil(totalSteps / totalEpochs))
+      : 0;
+
+  const steps = new Set<number>();
+  for (const sample of samples) {
+    if (sample.epoch == null) {
+      steps.add(sample.step);
+    } else if (stepsPerEpoch > 0) {
+      steps.add(Math.min(sample.epoch * stepsPerEpoch, totalSteps));
+    }
+  }
+  return [...steps].sort((a, b) => a - b);
+}
+
+/**
  * Whether a phase label reports the trainer generating sample/preview images
  * between training steps. The two backends word it differently — Kohya emits
  * "Generating samples", ai-toolkit "Generating images - x/y" — so match both,
@@ -306,11 +339,13 @@ export function isSamplingPhase(phase: string | null | undefined): boolean {
 /**
  * A consistent label for the sampling phase, so ai-toolkit's "Generating
  * images - 3/4" reads the same as Kohya's "Generating samples" while keeping
- * any "x/y" count the backend supplies.
+ * any "x/y" count the backend supplies. Deliberately the same word the samples
+ * grid stamps on the event in flight, so the Phase stat and the grid row read
+ * as the one thing happening.
  */
 export function formatSamplingLabel(phase: string): string {
   const count = phase.match(/(\d+\s*\/\s*\d+)/);
-  return count ? `Generating samples ${count[1]}` : 'Generating samples';
+  return count ? `Generating ${count[1]}` : 'Generating';
 }
 
 /**

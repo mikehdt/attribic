@@ -12,6 +12,7 @@ import {
 import { ProgressBar } from '../progress-bar/progress-bar';
 import { ActionButton } from './action-button';
 import {
+  deriveSampleImageSteps,
   deriveSavedCount,
   formatDuration,
   formatEta,
@@ -113,6 +114,10 @@ export function TrainingJobCard({
       : null;
 
   const checkpointPositions = progress?.checkpointSteps ?? [];
+  const generatedSampleSteps = useMemo(
+    () => deriveSampleImageSteps(progress),
+    [progress],
+  );
   const savedCount = deriveSavedCount(progress);
   const lrCurve = useLrScheduleCurve(config, progress?.totalSteps ?? 0);
   const maxSavesToKeep =
@@ -203,6 +208,8 @@ export function TrainingJobCard({
               totalEpochs={progress?.totalEpochs ?? 0}
               checkpointSteps={checkpointPositions}
               savedCheckpoints={progress?.savedCheckpoints ?? []}
+              sampleSteps={progress?.sampleSteps ?? []}
+              generatedSampleSteps={generatedSampleSteps}
               maxSavesToKeep={maxSavesToKeep}
               provider={config?.provider}
               lrCurve={lrCurve}

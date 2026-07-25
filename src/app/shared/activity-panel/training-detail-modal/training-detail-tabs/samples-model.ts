@@ -13,8 +13,12 @@ export type SampleColumn = {
 export type SampleRow = {
   /** Stable key for the grouped sampling event. */
   key: string;
-  /** Row stamp, e.g. "Step 500" or "Epoch 3". */
-  label: string;
+  /**
+   * Row stamp, e.g. "Step 500", "Epoch 3", "Generating" for the event the
+   * trainer is mid-way through, or "~4m" on the upcoming placeholder. Absent
+   * when there's nothing meaningful to stamp (a placeholder with no ETA yet).
+   */
+  label?: string;
   /** True when the run samples on an epoch cadence (label reads "Epoch N"). */
   isEpoch: boolean;
   /** A predicted future event: every cell renders as a placeholder. */

@@ -630,7 +630,12 @@ class AiToolkitUiProvider(TrainingProvider):
                 info: str = row.get("info", "") or ""
                 speed: str = row.get("speed_string", "") or ""
 
-                if info and info != last_status_label:
+                # Latched here for the log tail, but the running branch below
+                # also gates its yield on it — so capture the comparison before
+                # it's consumed, or a phase change with a frozen step (which is
+                # exactly what "Generating images" is) never gets pushed.
+                info_changed = bool(info) and info != last_status_label
+                if info_changed:
                     log_tail.append(info)
                     del log_tail[:-50]
                     last_status_label = info
@@ -731,7 +736,7 @@ class AiToolkitUiProvider(TrainingProvider):
                         samples,
                     )
 
-                    if step != last_step or info != last_status_label or newly_saved:
+                    if step != last_step or info_changed or newly_saved:
                         last_step = step
                         # Prefer ai-toolkit's structured metrics DB; fall
                         # back to the (usually empty for ui_trainer)
