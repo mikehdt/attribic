@@ -319,7 +319,12 @@ export function startTraining(
   config: Record<string, unknown>,
   formSnapshot?: FormState,
 ): AppThunk {
-  return async (dispatch) => {
+  return async (dispatch, getState) => {
+    // Snapshot the loaded project up front, before any await: the user can
+    // load or clear a project while the sidecar handshake is in flight, and
+    // the run belongs to whatever was loaded when they pressed start.
+    const loadedProject = getState().trainingConfig.loadedProject;
+
     // No client-side GPU-busy gate — the sidecar owns a shared queue
     // across training + tagging, so additional jobs enqueue behind whatever
     // is currently running rather than being rejected.
@@ -402,6 +407,9 @@ export function startTraining(
       error: null,
       config: snapshotClientConfig(config),
       progress: null,
+      project: loadedProject
+        ? { name: loadedProject.name, version: loadedProject.version }
+        : undefined,
       formSnapshot,
     };
     dispatch(addJob(job));

@@ -49,6 +49,15 @@ export type TrainingJob = JobBase & {
   config: TrainingJobConfig;
   progress: TrainingProgress | null;
   /**
+   * The saved training project the run was launched from, snapshotted at
+   * launch so the detail modal can name it. A copy rather than a live lookup:
+   * the project can be renamed, re-versioned, or deleted after the run, and
+   * the header should say what it was trained from. Absent for ephemeral runs
+   * (no project loaded), runs rehydrated from the sidecar, and history entries
+   * archived before this field existed.
+   */
+  project?: { name: string; version: number };
+  /**
    * The launch form exactly as it was submitted, kept so a past run's settings
    * can be loaded back into the config form. `config` is a lossy summary built
    * for the progress UI (no datasets, single resolution, no expert fields), so

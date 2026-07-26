@@ -13,11 +13,13 @@ import { useTrainingDetailTabs } from './use-training-detail-tabs';
  * Tabbed shell around {@link TrainingDetailContent}: an Overview tab (the
  * unchanged detail body) and a Samples tab (the previews grid + in-place
  * lightbox). Shared by the live activity-panel modal and the run-history modal
- * so both get the tabs from one place. The Samples tab appears as soon as a
- * live run has sampling configured — before any image exists, it renders the
- * prompt columns and an upcoming-event placeholder row so it's visible the
- * setting took. Runs without sampling render exactly the Overview body with no
- * tab control, so the modal looks as before.
+ * so both get the tabs from one place. The header names the saved training
+ * project the run came from, falling back to the run name alone for ephemeral
+ * runs and for older history entries that predate `job.project`. The Samples
+ * tab appears as soon as a live run has sampling configured — before any image
+ * exists, it renders the prompt columns and an upcoming-event placeholder row
+ * so it's visible the setting took. Runs without sampling render exactly the
+ * Overview body with no tab control, so the modal looks as before.
  */
 export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
   const {
@@ -47,11 +49,24 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
       ? progress.completedAt - progress.startedAt
       : null;
 
+  const runName = config?.outputName || 'Training run';
+
   const modalHeader = (
     <div className="mb-2">
-      <h2 className="text-sm font-medium text-(--foreground)">
-        {config?.outputName || 'Training run'}
+      <h2 className="text-md font-medium text-(--foreground)">
+        {job.project ? (
+          <>
+            {job.project.name}{' '}
+            <span className="text-(--foreground)/50">
+              v{job.project.version}
+            </span>{' '}
+            &ndash; {runName}
+          </>
+        ) : (
+          runName
+        )}
       </h2>
+
       <p className="text-xs text-slate-400">
         {TRAINING_PROVIDER_LABELS[config?.provider ?? 'mock']}
         {isCompleted && elapsed != null
