@@ -1,17 +1,7 @@
 'use client';
 
+import { formatMemory, formatPercent, formatTemperature } from './format';
 import { useStats } from './use-stats';
-
-const formatPercent = (value: number | null) =>
-  value == null ? '—' : `${Math.round(value)}%`;
-
-const formatGb = (mb: number | null) =>
-  mb == null ? '—' : `${(mb / 1024).toFixed(1)}`;
-
-const formatMemory = (usedMb: number | null, totalMb: number | null) =>
-  usedMb == null || totalMb == null
-    ? '—'
-    : `${formatGb(usedMb)}/${formatGb(totalMb)} GB`;
 
 function StatItem({ label, value }: { label: string; value: string }) {
   return (
@@ -44,7 +34,7 @@ export function Stats({ enabled = true }: { enabled?: boolean }) {
     stats.memoryUsedMb != null &&
       `RAM ${formatMemory(stats.memoryUsedMb, stats.memoryTotalMb)}`,
     gpu?.name,
-    gpu?.temperatureC != null && `${Math.round(gpu.temperatureC)}°C`,
+    gpu?.temperatureC != null && formatTemperature(gpu.temperatureC),
   ]
     .filter(Boolean)
     .join(' · ');

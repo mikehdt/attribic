@@ -128,9 +128,12 @@ Two problems with leaving files where the trainers drop them:
 
 **Proposal: move samples into a per-run archive when the run goes terminal.**
 
-- Location: `<loras>/.run-samples/<jobId>/`, normalised names
+- Location: `<training>/jobs/<jobId>/samples/`, normalised names
   `s{step:06d}-p{promptIndex:02d}[-e{epoch}].{ext}` (metadata survives in the
-  name; no manifest file needed).
+  name; no manifest file needed). This is the run's existing job folder — the
+  one JobManager already creates for the generated TOML and metadata — so
+  everything one run produced stays together, and the loras folder is left to
+  the LoRA files and whatever the backends scatter beside them.
 - Trigger: the job-persistence middleware already upserts terminal training
   runs into the history slice — at that moment it also fires
   `POST /api/training/samples/archive` with `{jobId, paths}` (the structured
@@ -155,7 +158,7 @@ in the shared dir. The cost is that samples are no longer where the raw
 trainer left them — acceptable since our UI becomes the way you look at them.
 
 **Open question — orphans.** History lives in localStorage; if the browser
-store is cleared, `.run-samples/<jobId>/` folders orphan. Options: (a) ignore
+store is cleared, `jobs/<jobId>/samples/` folders orphan. Options: (a) ignore
 — it's a local app, folders are small and findable; (b) on history restore,
 list archive dirs and sweep any not present in the store. I'd start with (a)
 and note it; sidecar-side history (already deferred to the queueing
@@ -169,14 +172,19 @@ resolver (`getLoraOutputRoot`), so behaviour is consistent.
 
 ## 4. Serving — one confined route
 
-New route: `GET /api/training/samples/[...path]`, rooted at the loras dir
-(same resolver as above), with the same `isWithin` confinement as
-`/api/images` (`api/images/[...path]/route.ts:10–13`). It covers all three
-locations because they're all under the root:
+New route: `GET /api/training/samples/[...path]`, with the same `isWithin`
+confinement as `/api/images` (`api/images/[...path]/route.ts:10–13`). It picks
+its root off the leading segment, because archived samples and live ones sit
+under sibling roots:
 
-- live ai-toolkit: `<name>/samples/<file>`
-- live Kohya: `sample/<file>`
-- archive: `.run-samples/<jobId>/<file>`
+- live ai-toolkit: `<name>/samples/<file>` → loras root
+- live Kohya: `sample/<file>` → loras root
+- archive: `jobs/<jobId>/samples/<file>` → training root
+
+Neither root contains the other, so a path can't be read against the wrong one.
+The cost is that `jobs` becomes a reserved top-level name at the loras root.
+The rule is mirrored in three places — the serving route, the archive route's
+`resolveSample`, and `training-sidecar/sample_archive.py` — keep them in step.
 
 Filenames are timestamped/immutable → `Cache-Control: immutable` is safe.
 No thumbnail generation: a run yields dozens of ~1MP images at most; lazy

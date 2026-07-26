@@ -17,6 +17,7 @@ import os
 import re
 import signal
 import sys
+import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Optional
@@ -29,7 +30,7 @@ from models import (
     StartJobRequest,
 )
 from providers.base import TrainingProvider
-from sample_archive import copy_into_run_archive, is_settled
+from sample_archive import SETTLE_SECONDS, copy_into_run_archive, is_settled
 
 # sd-scripts' main training bar looks like:
 #   steps:   5%|▌         | 150/3000 [00:30<09:30,  2.30it/s, avr_loss=0.0912]
@@ -60,6 +61,11 @@ SAMPLING_PHASE = "Generating samples"
 SAMPLE_ANNOUNCE_PATTERN = re.compile(
     r"generating sample images at step\D*(\d+)", re.IGNORECASE
 )
+
+# How often the sampler's own tqdm bar may trigger a sample scan during a
+# pause. Matched to the settle window: scanning faster can't claim anything new,
+# since a file has to sit untouched that long before it's considered written.
+SAMPLE_SCAN_INTERVAL_S = SETTLE_SECONDS
 
 # sd-scripts writes samples as
 #   {output_name}_{num_suffix}_{promptIdx:02d}_{timestamp}{_seed}.png
@@ -390,9 +396,7 @@ def _collect_new_samples(
         seen.add(path)
         entry = _parse_sample(path, output_name)
         if entry is not None:
-            samples.append(
-                copy_into_run_archive(output_path, job_id, path, entry)
-            )
+            samples.append(copy_into_run_archive(job_id, path, entry))
 
 
 class KohyaProvider(TrainingProvider):
@@ -937,6 +941,10 @@ class KohyaProvider(TrainingProvider):
         # Kept so the ~10/s tqdm redraws only produce an event when the count
         # actually moves. Reset at the start of each sampling pause.
         last_sample_bar: Optional[tuple[int, int]] = None
+        # When the sampler's bar last triggered a sample scan. Bounds the cost
+        # of scanning from inside the pause (see the sampler-bar branch below)
+        # to roughly once per settle window rather than once per diffusion step.
+        last_sample_scan = 0.0
         # Last training step counts seen, so the terminal COMPLETED event can
         # report the bar as full (N/N) rather than dropping back to 0/0.
         current_step = 0
@@ -1083,6 +1091,27 @@ class KohyaProvider(TrainingProvider):
                         bar = (int(match.group(1)), int(match.group(2)))
                         if bar != last_sample_bar:
                             last_sample_bar = bar
+                            # Claim whatever the previous image left on disk.
+                            # Without this the only scan points inside a pause
+                            # are the sampler's announce lines, and an image
+                            # written moments earlier always fails the settle
+                            # gate at exactly that instant — so it stayed
+                            # unclaimed for the rest of the pause. The UI reads
+                            # the leftmost empty cell as "rendering now", so the
+                            # next image's bar was drawn in the finished image's
+                            # cell: one cell appearing to generate twice while
+                            # the first image never showed up until the pause
+                            # ended. Scanning here closes that window.
+                            now = time.monotonic()
+                            if now - last_sample_scan >= SAMPLE_SCAN_INTERVAL_S:
+                                last_sample_scan = now
+                                _collect_new_samples(
+                                    request.output_path,
+                                    request.output_name,
+                                    seen_samples,
+                                    samples,
+                                    job_id,
+                                )
                             yield JobProgress(
                                 job_id=job_id,
                                 status=JobStatus.TRAINING,

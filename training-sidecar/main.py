@@ -33,6 +33,7 @@ from ai_toolkit_server import AiToolkitServer
 from providers.ai_toolkit_ui import AiToolkitUiProvider
 from providers.kohya import KohyaProvider
 from providers.mock import MockProvider
+from sample_archive import configure as configure_sample_archive
 from system_stats import collect as collect_system_stats
 from system_stats import prime as prime_system_stats
 from ws_manager import WebSocketManager
@@ -146,8 +147,12 @@ async def lifespan(app: FastAPI):
     global job_manager, caption_manager, sidecar_config
 
     sidecar_config = load_config()
+    jobs_dir = sidecar_config.training_dir / "jobs"
+    # Providers copy each sample into its run's job folder as they claim it;
+    # point the archiver at the same dir JobManager writes job configs to.
+    configure_sample_archive(jobs_dir)
     job_manager = JobManager(
-        jobs_dir=sidecar_config.training_dir / "jobs",
+        jobs_dir=jobs_dir,
         ws_manager=ws_manager,
         registry=job_registry,
     )

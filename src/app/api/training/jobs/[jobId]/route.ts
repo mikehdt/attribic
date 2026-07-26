@@ -18,13 +18,16 @@ const isSafeJobId = (id: string): boolean =>
 /**
  * DELETE /api/training/jobs/<jobId> — remove a run's working files from
  * `.training/jobs`: the generated config folder (`<jobId>/`, holding the
- * provider's toml/yaml plus sample-prompt txt) and the crash-recovery state
- * snapshot (`<jobId>.json`).
+ * provider's toml/yaml, sample-prompt txt, and the run's archived `samples/`)
+ * and the crash-recovery state snapshot (`<jobId>.json`).
  *
- * Fired fire-and-forget when a run leaves Run History, alongside the archived
- * sample deletion. Idempotent: nonexistent paths still succeed. Only ever
- * called for terminal runs — a live job's config is still in use by its
- * training subprocess.
+ * Since samples are archived into the job folder, this recursive delete takes
+ * a run's images with it — the sample deletion fired alongside is the narrower
+ * `samples/`-only path, and whichever lands first makes the other a no-op.
+ *
+ * Fired fire-and-forget when a run leaves Run History. Idempotent: nonexistent
+ * paths still succeed. Only ever called for terminal runs — a live job's config
+ * is still in use by its training subprocess.
  */
 export async function DELETE(
   _request: Request,

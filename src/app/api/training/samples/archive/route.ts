@@ -3,13 +3,33 @@ import path from 'node:path';
 
 import { NextResponse } from 'next/server';
 
-import { getLoraOutputRoot } from '@/app/services/training/training-root';
+import {
+  getLoraOutputRoot,
+  getTrainingJobsDir,
+  getTrainingRoot,
+} from '@/app/services/training/training-root';
 import type { SampleImage } from '@/app/services/training/types';
 
 /** True if `target` resolves to a path at or below `root`. */
 const isWithin = (root: string, target: string): boolean => {
   const rel = path.relative(root, target);
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+};
+
+/**
+ * Resolve a sample's recorded path against the root it belongs to, returning
+ * both so the caller can confine against the right one. `jobs/…` means the
+ * sidecar already archived it into the run's job folder (training root);
+ * anything else is still where the trainer wrote it (loras root). Same rule as
+ * the serving route — keep the three copies of it in step.
+ */
+const resolveSample = (relPath: string): { root: string; abs: string } => {
+  const root = path.resolve(
+    relPath.split(/[\\/]/)[0] === 'jobs'
+      ? getTrainingRoot()
+      : getLoraOutputRoot(),
+  );
+  return { root, abs: path.resolve(root, relPath) };
 };
 
 /** A single safe path segment: no separators/traversal, not empty, not all dots. */
@@ -49,14 +69,14 @@ const sweepSource = (root: string, sourcePath: unknown): void => {
  * samples live in a per-run archive folder, so Run History owns them and
  * Kohya's shared `sample/` dir stays clean.
  *
- * The sidecar now copies each sample into `<root>/.run-samples/<jobId>/` as
+ * The sidecar now copies each sample into `<training>/jobs/<jobId>/samples/` as
  * soon as it sees it, so the common case here is the tidy-up: the entry is
  * already archived and we delete the trainer's original (`sourcePath`). The
- * move path below still runs for runs collected before that existed, and for
- * any sample whose live copy failed.
+ * move path below still runs for any sample whose live copy failed.
  *
  * Body: `{ jobId, samples }` (camelCase — client↔Next). Each sample is confined
- * to the loras root, then moved into `<root>/.run-samples/<jobId>/` with a
+ * to its own root (see `resolveSample`), then moved into
+ * `<training>/jobs/<jobId>/samples/` with a
  * normalised name. Missing sources and confinement failures are omitted from
  * the response; a file that exists but can't be moved (e.g. a transient AV
  * lock) keeps its original entry so the sample isn't dropped from the run.
@@ -80,11 +100,13 @@ export async function POST(request: Request) {
     const jobId = body.jobId;
     const samples = body.samples as SampleImage[];
 
-    // Same resolver the serving/GET route uses, so the archive lands under the
-    // exact root those paths are later resolved against.
+    // The trainers' originals are always loras-relative, so `sourcePath` is
+    // swept against this root regardless of where the sample itself now lives.
     const root = path.resolve(getLoraOutputRoot());
 
-    const archiveDir = path.resolve(root, '.run-samples', jobId);
+    // Same resolver the serving/GET route uses for `jobs/…` paths, so the
+    // archive lands under the exact root those paths are later read against.
+    const archiveDir = path.resolve(getTrainingJobsDir(), jobId, 'samples');
     // Created lazily on the first actual move, so a request whose samples are
     // all missing/skipped doesn't litter the disk with empty folders.
     let dirReady = false;
@@ -94,8 +116,9 @@ export async function POST(request: Request) {
     for (const sample of samples) {
       if (!sample || typeof sample.path !== 'string') continue;
 
-      let source = path.resolve(root, sample.path);
-      if (!isWithin(root, source)) continue; // failed confinement → skip
+      const resolved = resolveSample(sample.path);
+      let source = resolved.abs;
+      if (!isWithin(resolved.root, source)) continue; // failed confinement → skip
 
       if (!fs.existsSync(source)) {
         // The recorded file is gone. If the sidecar copied this sample and the
@@ -122,7 +145,7 @@ export async function POST(request: Request) {
       if (path.dirname(source) === archiveDir) {
         sweepSource(root, sample.sourcePath);
         archived.push({
-          path: `.run-samples/${jobId}/${path.basename(source)}`,
+          path: `jobs/${jobId}/samples/${path.basename(source)}`,
           step: sample.step,
           epoch: sample.epoch,
           promptIndex: sample.promptIndex,
@@ -171,7 +194,7 @@ export async function POST(request: Request) {
       // The move consumed whichever file we started from, so nothing is left
       // to sweep later.
       archived.push({
-        path: `.run-samples/${jobId}/${name}`,
+        path: `jobs/${jobId}/samples/${name}`,
         step: sample.step,
         epoch: sample.epoch,
         promptIndex: sample.promptIndex,

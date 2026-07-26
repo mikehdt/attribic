@@ -251,9 +251,7 @@ def _collect_new_samples(
         seen.add(path)
         entry = _parse_sample(path, output_name)
         if entry is not None:
-            samples.append(
-                copy_into_run_archive(output_path, job_id, path, entry)
-            )
+            samples.append(copy_into_run_archive(job_id, path, entry))
 
 
 def _loss_log_path(output_path: str, output_name: str) -> Path:

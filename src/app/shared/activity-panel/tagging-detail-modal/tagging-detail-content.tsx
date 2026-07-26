@@ -74,7 +74,7 @@ function LastResult({ job }: { job: TaggingJob }) {
         )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="max-h-48 overflow-y-auto text-sm text-(--foreground)">
+        <p className="h-48 overflow-y-auto text-sm text-(--foreground)">
           {text || (
             <span className="text-slate-400">
               No text returned for this image

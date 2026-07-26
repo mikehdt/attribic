@@ -4,6 +4,12 @@ import type { TrainingJob } from '@/app/store/jobs';
 
 import { ProgressBar } from '../../progress-bar/progress-bar';
 import {
+  formatMemory,
+  formatPercent,
+  formatTemperature,
+} from '../../stats/format';
+import { useStats } from '../../stats/use-stats';
+import {
   deriveExpectedCheckpointCount,
   deriveSampleEventCount,
   deriveSampleImageSteps,
@@ -24,6 +30,52 @@ import { showsSamplesView } from './training-detail-tabs/samples-model';
 import { useTrainingDetailView } from './use-training-detail-view';
 
 /**
+ * One host-load box: headline utilisation, an optional right-aligned
+ * temperature, and the matching memory figure underneath.
+ *
+ * These are **machine-wide** numbers, not this run's — the GPU figures include
+ * anything else on the card, and the queue shares one GPU between training and
+ * captioning. They answer "is it working, and how close to the VRAM ceiling",
+ * not "what did this job use".
+ */
+function HostStat({
+  label,
+  percent,
+  temperatureC,
+  memoryLabel,
+  usedMb,
+  totalMb,
+}: {
+  label: string;
+  percent: number | null;
+  temperatureC?: number | null;
+  memoryLabel: string;
+  usedMb: number | null;
+  totalMb: number | null;
+}) {
+  return (
+    <Stat
+      label={label}
+      value={
+        <span className="flex flex-col gap-0.5">
+          <span className="flex items-baseline">
+            {formatPercent(percent)}
+            {temperatureC != null && (
+              <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+                {formatTemperature(temperatureC)}
+              </span>
+            )}
+          </span>
+          <span className="text-xs font-normal text-slate-400">
+            {memoryLabel} {formatMemory(usedMb, totalMb)}
+          </span>
+        </span>
+      }
+    />
+  );
+}
+
+/**
  * The body of a training job's detail view: loss graph, per-stat parameters,
  * and recent log. Rendered inside a `Modal` by the activity panel's
  * `TrainingDetailModal` (live job) and inline by the run-history modal
@@ -32,6 +84,15 @@ import { useTrainingDetailView } from './use-training-detail-view';
 export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const { progress, config, lrCurve, isPreparing, logRef, handleLogScroll } =
     useTrainingDetailView(job);
+
+  // Only measure while the run is live. The history modal renders this same
+  // body for archived snapshots, where current machine load says nothing about
+  // the run being looked at — and nothing should be polling nvidia-smi for it.
+  // Called before the early return below to keep the hook order stable.
+  const stats = useStats(
+    job?.status === 'running' || job?.status === 'preparing',
+  );
+  const hostGpu = stats?.gpus[0] ?? null;
 
   if (!job || !progress) return null;
 
@@ -368,6 +429,30 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             ) : null
           }
         />
+
+        {/* Host load, last so the run's own figures stay first. Absent until
+            the first poll lands, and omitted entirely once the run is over. */}
+        {stats && (
+          <>
+            <HostStat
+              label="CPU"
+              percent={stats.cpuPercent}
+              memoryLabel="RAM"
+              usedMb={stats.memoryUsedMb}
+              totalMb={stats.memoryTotalMb}
+            />
+            {hostGpu && (
+              <HostStat
+                label="GPU"
+                percent={hostGpu.utilization}
+                temperatureC={hostGpu.temperatureC}
+                memoryLabel="VRAM"
+                usedMb={hostGpu.memoryUsedMb}
+                totalMb={hostGpu.memoryTotalMb}
+              />
+            )}
+          </>
+        )}
       </div>
 
       <div>

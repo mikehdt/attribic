@@ -4,7 +4,11 @@ import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getImageMimeType, isSupportedImageExtension } from '@/app/constants';
-import { getLoraOutputRoot } from '@/app/services/training/training-root';
+import {
+  getLoraOutputRoot,
+  getTrainingJobsDir,
+  getTrainingRoot,
+} from '@/app/services/training/training-root';
 
 /** True if `target` resolves to a path at or below `root`. */
 const isWithin = (root: string, target: string): boolean => {
@@ -16,8 +20,27 @@ const isWithin = (root: string, target: string): boolean => {
 const isSafeJobId = (id: string): boolean =>
   /^[A-Za-z0-9._-]+$/.test(id) && !/^\.+$/.test(id);
 
-/** Resolve the loras output root the same way the GET/archive routes do. */
+/** Resolve the loras output root the same way the archive route does. */
 const resolveSamplesRoot = (): string => path.resolve(getLoraOutputRoot());
+
+/**
+ * Sample paths come in two flavours, and the leading segment says which root
+ * they belong to:
+ *
+ * - `jobs/<jobId>/samples/<file>` — archived into the run's own job folder by
+ *   the sidecar, so it resolves against the **training root**.
+ * - anything else (`sample/<file>`, `<name>/samples/<file>`) — still where the
+ *   trainer wrote it, so it resolves against the **loras root**.
+ *
+ * The two roots are siblings under the projects folder, so neither contains the
+ * other and a path can't be read against the wrong one. The cost is that `jobs`
+ * is a reserved top-level name at the loras root; nothing writes one there.
+ * Mirrored in `training-sidecar/sample_archive.py` — keep the two in step.
+ */
+const resolveSampleRootFor = (segments: string[]): string =>
+  segments[0] === 'jobs'
+    ? path.resolve(getTrainingRoot())
+    : resolveSamplesRoot();
 
 export async function GET(
   request: NextRequest,
@@ -26,10 +49,10 @@ export async function GET(
   try {
     const { path: pathSegments } = await params;
 
-    // Confine everything to the loras output root — the same resolver the
-    // training request builder uses, so this always matches where samples
-    // actually land.
-    const samplesRoot = resolveSamplesRoot();
+    // Confine everything to whichever root this path belongs to — both are
+    // resolvers the training system itself uses, so this always matches where
+    // samples actually land.
+    const samplesRoot = resolveSampleRootFor(pathSegments);
     const resolvedPath = path.resolve(samplesRoot, ...pathSegments);
 
     if (!isWithin(samplesRoot, resolvedPath)) {
@@ -68,10 +91,13 @@ export async function GET(
 }
 
 /**
- * DELETE /api/training/samples/<jobId> — recursively remove a run's archive
- * folder (`<root>/.run-samples/<jobId>`). Fired fire-and-forget when a run
- * leaves Run History. Exactly one path segment (the jobId); anything else is a
- * 400. Idempotent: a nonexistent folder still succeeds.
+ * DELETE /api/training/samples/<jobId> — remove a run's sample images. Fired
+ * fire-and-forget when a run leaves Run History. Exactly one path segment (the
+ * jobId); anything else is a 400. Idempotent: a nonexistent folder still
+ * succeeds.
+ *
+ * Only `samples/` goes. The rest of `<training>/jobs/<jobId>/` is the sidecar's
+ * — generated TOML and run metadata — and isn't this route's to delete.
  */
 export async function DELETE(
   request: NextRequest,
@@ -84,19 +110,15 @@ export async function DELETE(
       return new NextResponse('Bad request', { status: 400 });
     }
 
-    const samplesRoot = resolveSamplesRoot();
-    const archiveDir = path.resolve(
-      samplesRoot,
-      '.run-samples',
-      pathSegments[0],
-    );
+    const jobsRoot = path.resolve(getTrainingJobsDir());
+    const samplesDir = path.resolve(jobsRoot, pathSegments[0], 'samples');
 
-    if (!isWithin(samplesRoot, archiveDir)) {
+    if (!isWithin(jobsRoot, samplesDir)) {
       return new NextResponse('Access denied', { status: 403 });
     }
 
     // force:true makes a missing folder a no-op, so deletion is idempotent.
-    fs.rmSync(archiveDir, { recursive: true, force: true });
+    fs.rmSync(samplesDir, { recursive: true, force: true });
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {
