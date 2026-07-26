@@ -1,9 +1,8 @@
 """ai-toolkit training provider that drives the UI's HTTP API.
 
-Instead of spawning `run.py` directly and scraping stderr (see
-`ai_toolkit.py` for that approach — kept around as a template for the
-future Kohya / Musubi providers), this provider talks to ai-toolkit's
-own web server. Benefits:
+Instead of spawning `run.py` directly and scraping stderr — the approach the
+Kohya provider still uses — this provider talks to ai-toolkit's own web
+server. Benefits:
 
   * structured progress (step / status / info / speed_string) via
     `GET /api/jobs?id=...` for the training loop itself
@@ -39,17 +38,17 @@ import httpx
 
 from ai_toolkit_server import AiToolkitServer
 from models import JobProgress, JobStatus, SampleImage, StartJobRequest
-from providers.ai_toolkit import (
+from providers.ai_toolkit_common import (
     SUPPORTED_MODELS,
-    _find_model,
-    _first_resolution,
-    _resolve_sample_sampler,
-    _resolve_save_every_steps,
-    _split_csv,
-    _steps_per_epoch,
+    find_model,
+    first_resolution,
+    resolve_sample_sampler,
+    resolve_save_every_steps,
+    split_csv,
+    steps_per_epoch,
 )
 from providers.base import TrainingProvider
-from sample_archive import copy_into_run_archive, is_settled
+from sample_archive import collect_new_samples
 
 POLL_INTERVAL_SECONDS = 1.0
 TERMINAL_STATUSES = {"completed", "stopped", "error"}
@@ -229,29 +228,17 @@ def _collect_new_samples(
     job_id: Optional[str] = None,
     require_settled: bool = True,
 ) -> None:
-    """Diff the samples dir against `seen`, appending freshly-written samples.
-
-    Each new file is copied into the run's archive folder as it's claimed, so
-    the run owns its images immediately rather than at terminal (see
-    `sample_archive`). A file that's still being written is left unclaimed for
-    the next poll — except on the final sweep, which runs after the trainer's
-    process has exited (so nothing can still be mid-write) and is the last
-    chance to claim anything: pass `require_settled=False` there.
-
-    Mutates `seen` (so each file is claimed once) and `samples` (the running
-    ordered list forwarded on JobProgress).
-    """
-    current = _scan_samples(output_path, output_name)
-    new_files = current - seen
-    if not new_files:
-        return
-    for path in sorted(new_files):
-        if require_settled and not is_settled(path):
-            continue  # mid-write — re-examined next poll
-        seen.add(path)
-        entry = _parse_sample(path, output_name)
-        if entry is not None:
-            samples.append(copy_into_run_archive(job_id, path, entry))
+    """Claim freshly-written ai-toolkit samples. See `sample_archive`."""
+    collect_new_samples(
+        scan=_scan_samples,
+        parse=_parse_sample,
+        output_path=output_path,
+        output_name=output_name,
+        seen=seen,
+        samples=samples,
+        job_id=job_id,
+        require_settled=require_settled,
+    )
 
 
 def _loss_log_path(output_path: str, output_name: str) -> Path:
@@ -910,26 +897,26 @@ class AiToolkitUiProvider(TrainingProvider):
 
 
 # ---------------------------------------------------------------------------
-# Config builder (mirrors providers/ai_toolkit.py but emits ui_trainer)
+# Config builder (emits a ui_trainer job config)
 # ---------------------------------------------------------------------------
 
 
 def _resolve_sample_every_steps(hp: dict, defaults: dict) -> int:
     """Resolve the sampling cadence in *steps* — ai-toolkit's native unit.
 
-    Mirrors `_resolve_save_every_steps`: the Node side sends
+    Mirrors `resolve_save_every_steps`: the Node side sends
     `sample_every_n_steps` for step cadence or `sample_every_n_epochs` for
     epoch cadence (the inactive unit zeroed). ai-toolkit's `sample_every` is
     steps-only, so an epoch cadence is converted with the same steps-per-epoch
     math the save cadence and duration epoch-faking already use
-    (`_steps_per_epoch`). With no epoch count `_steps_per_epoch` returns the
+    (`steps_per_epoch`). With no epoch count `steps_per_epoch` returns the
     total step count, so epoch cadence on a steps-only duration samples once
     at the end; the step value (default 250) is only the last-resort fallback.
     """
     sample_every_steps = int(hp.get("sample_every_n_steps", 0) or 0)
     sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
     if sample_every_epochs > 0:
-        converted = _steps_per_epoch(
+        converted = steps_per_epoch(
             sample_every_epochs,
             int(hp.get("epochs", 0) or 0),
             int(hp.get("steps", defaults.get("steps", 2000)) or 0),
@@ -947,7 +934,7 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
     ai-toolkit's worker injects `sqlite_db_path` itself before spawning,
     so we don't need to set that here.
     """
-    model_def = _find_model(request.base_model)
+    model_def = find_model(request.base_model)
     if model_def is None:
         raise ValueError(f"Unknown model: {request.base_model}")
 
@@ -999,18 +986,18 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                         **(
                             {
                                 "network_kwargs": {
-                                    "only_if_contains": _split_csv(
+                                    "only_if_contains": split_csv(
                                         hp.get("layer_targeting", "")
                                     )
                                 }
                             }
-                            if _split_csv(hp.get("layer_targeting", ""))
+                            if split_csv(hp.get("layer_targeting", ""))
                             else {}
                         ),
                     },
                     "save": {
                         "dtype": "float16",
-                        "save_every": _resolve_save_every_steps(
+                        "save_every": resolve_save_every_steps(
                             hp,
                             hp.get("epochs", 10),
                             hp.get("steps", defaults.get("steps", 2000)),
@@ -1151,12 +1138,12 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                     **(
                         {
                             "sample": {
-                                "sampler": _resolve_sample_sampler(hp, defaults),
+                                "sampler": resolve_sample_sampler(hp, defaults),
                                 "sample_every": _resolve_sample_every_steps(
                                     hp, defaults
                                 ),
-                                "width": _first_resolution(hp, defaults),
-                                "height": _first_resolution(hp, defaults),
+                                "width": first_resolution(hp, defaults),
+                                "height": first_resolution(hp, defaults),
                                 "prompts": request.sample_prompts,
                                 "seed": 42,
                                 "walk_seed": True,

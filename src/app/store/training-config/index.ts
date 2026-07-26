@@ -12,6 +12,11 @@ import {
   type PayloadAction,
 } from '@reduxjs/toolkit';
 
+import { valuesDiffer } from '@/app/services/training/field-compare';
+import {
+  getSectionFields,
+  type TrainingFieldName,
+} from '@/app/services/training/field-registry';
 import {
   ADAPTIVE_OPTIMIZERS,
   getModelById,
@@ -38,6 +43,66 @@ import type {
   SectionName,
   TrainingConfigState,
 } from './types';
+
+/**
+ * Fields a section owns in the UI but that per-section reset deliberately
+ * leaves alone. These identify the run rather than configure it — silently
+ * swapping the base model, backend, output name or attached datasets out from
+ * under someone who asked to reset a section's *settings* would be a much
+ * bigger action than the button advertises. (`datasets`/`extraFolders` are
+ * additionally handled by the bespoke augmentation merge in `resetSection`.)
+ */
+const RESET_EXEMPT_FIELDS = new Set<TrainingFieldName>([
+  'modelId',
+  'selectedProvider',
+  'outputName',
+  'datasets',
+  'extraFolders',
+]);
+
+/**
+ * Fields excluded from change detection. `networkDimAlphaLinked` is a UI
+ * preference for whether the dim and alpha inputs move together — it changes
+ * nothing about the run, so it must not light up the section's change dot.
+ * The identity fields above are likewise not "settings that differ from the
+ * baseline"; dataset augmentation has its own comparison.
+ */
+const CHANGE_EXEMPT_FIELDS = new Set<TrainingFieldName>([
+  ...RESET_EXEMPT_FIELDS,
+  'networkDimAlphaLinked',
+  'modelPaths',
+]);
+
+/**
+ * Copy a section's registry fields from `ref` onto `form`. Arrays are cloned
+ * so the two forms don't end up sharing a reference — `ref` is frequently the
+ * baseline snapshot, which must stay independent of subsequent edits.
+ */
+function copySectionFields(
+  form: FormState,
+  ref: FormState,
+  section: SectionName,
+): void {
+  for (const field of getSectionFields(section)) {
+    if (RESET_EXEMPT_FIELDS.has(field)) continue;
+    const value = ref[field];
+    (form as Record<string, unknown>)[field] = Array.isArray(value)
+      ? [...value]
+      : value;
+  }
+}
+
+/** Whether any of a section's comparable fields differ between two forms. */
+function sectionFieldsDiffer(
+  form: FormState,
+  ref: FormState,
+  section: SectionName,
+): boolean {
+  return getSectionFields(section).some(
+    (field) =>
+      !CHANGE_EXEMPT_FIELDS.has(field) && valuesDiffer(form[field], ref[field]),
+  );
+}
 
 /**
  * Images the run sees per epoch, before and after per-folder repeats.
@@ -148,8 +213,8 @@ const trainingConfigSlice = createSlice({
 
       // Cast through unknown — the generic narrowing isn't preserved when
       // RTK infers action types, but the runtime assignment is safe.
-      (state.form as Record<string, unknown>)[field] =
-        action.payload.value as unknown;
+      (state.form as Record<string, unknown>)[field] = action.payload
+        .value as unknown;
     },
 
     /**
@@ -236,123 +301,41 @@ const trainingConfigSlice = createSlice({
         pristineFormState(state.form.modelId, state.appModelDefaults);
       const { form } = state;
 
-      switch (action.payload) {
-        case 'whatToTrain':
-          form.modelPaths = { ...ref.modelPaths };
-          break;
+      // Datasets carry per-folder augmentation that has to be matched up by
+      // folder rather than copied wholesale — handled below. Every other
+      // section is a flat copy of its registry fields.
+      if (action.payload !== 'dataset') {
+        copySectionFields(form, ref, action.payload);
+        return;
+      }
 
-        case 'dataset': {
-          // For each folder in the current form, apply baseline augments
-          // when the folder exists in the reference; otherwise apply the
-          // model's default augments. Datasets/folders themselves aren't
-          // added or removed by section reset.
-          const fallback = defaultFolderAugmentation(
-            getDefaults(state.form.modelId),
-          );
-          const refFolderMap = new Map<string, FolderAugmentation>();
-          for (const ds of ref.datasets) {
-            for (const f of ds.folders) {
-              refFolderMap.set(`${ds.folderName}/${f.name}`, extractAugment(f));
-            }
+      {
+        // For each folder in the current form, apply baseline augments
+        // when the folder exists in the reference; otherwise apply the
+        // model's default augments. Datasets/folders themselves aren't
+        // added or removed by section reset.
+        const fallback = defaultFolderAugmentation(
+          getDefaults(state.form.modelId),
+        );
+        const refFolderMap = new Map<string, FolderAugmentation>();
+        for (const ds of ref.datasets) {
+          for (const f of ds.folders) {
+            refFolderMap.set(`${ds.folderName}/${f.name}`, extractAugment(f));
           }
-          const refExtraMap = new Map<string, FolderAugmentation>();
-          for (const ef of ref.extraFolders) {
-            refExtraMap.set(ef.path, extractAugment(ef));
-          }
-          for (const ds of form.datasets) {
-            for (const f of ds.folders) {
-              const key = `${ds.folderName}/${f.name}`;
-              Object.assign(f, refFolderMap.get(key) ?? fallback);
-            }
-          }
-          for (const ef of form.extraFolders) {
-            Object.assign(ef, refExtraMap.get(ef.path) ?? fallback);
-          }
-          break;
         }
-
-        case 'learning':
-          form.durationMode = ref.durationMode;
-          form.epochs = ref.epochs;
-          form.steps = ref.steps;
-          form.batchSize = ref.batchSize;
-          form.learningRate = ref.learningRate;
-          form.optimizer = ref.optimizer;
-          form.scheduler = ref.scheduler;
-          form.warmupSteps = ref.warmupSteps;
-          form.numRestarts = ref.numRestarts;
-          form.weightDecay = ref.weightDecay;
-          form.maxGradNorm = ref.maxGradNorm;
-          form.trainTextEncoder = ref.trainTextEncoder;
-          form.backboneLR = ref.backboneLR;
-          form.textEncoderLR = ref.textEncoderLR;
-          form.ema = ref.ema;
-          form.lossType = ref.lossType;
-          form.timestepType = ref.timestepType;
-          form.timestepBias = ref.timestepBias;
-          form.discreteFlowShift = ref.discreteFlowShift;
-          form.minSnrGamma = ref.minSnrGamma;
-          form.noiseOffset = ref.noiseOffset;
-          form.emaDecay = ref.emaDecay;
-          form.seed = ref.seed;
-          form.optimizerArgs = ref.optimizerArgs;
-          form.contentOrStyle = ref.contentOrStyle;
-          form.diffOutputPreservation = ref.diffOutputPreservation;
-          form.diffOutputPreservationMultiplier =
-            ref.diffOutputPreservationMultiplier;
-          form.diffOutputPreservationClass = ref.diffOutputPreservationClass;
-          break;
-
-        case 'loraShape':
-          form.networkType = ref.networkType;
-          form.networkDim = ref.networkDim;
-          form.networkAlpha = ref.networkAlpha;
-          form.networkDimAlphaLinked = ref.networkDimAlphaLinked;
-          form.networkDropout = ref.networkDropout;
-          form.scaleWeightNorms = ref.scaleWeightNorms;
-          form.networkArgs = ref.networkArgs;
-          form.lokrFactor = ref.lokrFactor;
-          form.layerTargeting = ref.layerTargeting;
-          break;
-
-        case 'performance':
-          form.resolution = [...ref.resolution];
-          form.mixedPrecision = ref.mixedPrecision;
-          form.transformerQuantization = ref.transformerQuantization;
-          form.textEncoderQuantization = ref.textEncoderQuantization;
-          form.cacheTextEmbeddings = ref.cacheTextEmbeddings;
-          form.unloadTextEncoder = ref.unloadTextEncoder;
-          form.gradientAccumulationSteps = ref.gradientAccumulationSteps;
-          form.gradientCheckpointing = ref.gradientCheckpointing;
-          form.cacheLatents = ref.cacheLatents;
-          form.bucketResoSteps = ref.bucketResoSteps;
-          form.bucketNoUpscale = ref.bucketNoUpscale;
-          form.nativeResolution = ref.nativeResolution;
-          form.blocksToSwap = ref.blocksToSwap;
-          form.lowVram = ref.lowVram;
-          break;
-
-        case 'sampling':
-          form.samplingEnabled = ref.samplingEnabled;
-          form.samplePrompts = [...ref.samplePrompts];
-          form.sampleMode = ref.sampleMode;
-          form.sampleEveryEpochs = ref.sampleEveryEpochs;
-          form.sampleEverySteps = ref.sampleEverySteps;
-          form.sampleSteps = ref.sampleSteps;
-          form.guidanceScale = ref.guidanceScale;
-          form.sampleSampler = ref.sampleSampler;
-          break;
-
-        case 'saving':
-          form.saveEnabled = ref.saveEnabled;
-          form.saveMode = ref.saveMode;
-          form.saveEveryEpochs = ref.saveEveryEpochs;
-          form.saveEverySteps = ref.saveEverySteps;
-          form.saveFormat = ref.saveFormat;
-          form.maxSavesToKeep = ref.maxSavesToKeep;
-          form.saveState = ref.saveState;
-          form.resumeState = ref.resumeState;
-          break;
+        const refExtraMap = new Map<string, FolderAugmentation>();
+        for (const ef of ref.extraFolders) {
+          refExtraMap.set(ef.path, extractAugment(ef));
+        }
+        for (const ds of form.datasets) {
+          for (const f of ds.folders) {
+            const key = `${ds.folderName}/${f.name}`;
+            Object.assign(f, refFolderMap.get(key) ?? fallback);
+          }
+        }
+        for (const ef of form.extraFolders) {
+          Object.assign(ef, refExtraMap.get(ef.path) ?? fallback);
+        }
       }
     },
 
@@ -735,89 +718,19 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
       return folderChanged(ef, refAugment);
     });
 
-  const samplingDiffers =
-    form.samplingEnabled !== ref.samplingEnabled ||
-    form.sampleMode !== ref.sampleMode ||
-    form.sampleEveryEpochs !== ref.sampleEveryEpochs ||
-    form.sampleEverySteps !== ref.sampleEverySteps ||
-    form.sampleSteps !== ref.sampleSteps ||
-    form.guidanceScale !== ref.guidanceScale ||
-    form.sampleSampler !== ref.sampleSampler ||
-    JSON.stringify(form.samplePrompts) !== JSON.stringify(ref.samplePrompts);
-
-  const savingDiffers =
-    form.saveEnabled !== ref.saveEnabled ||
-    form.saveMode !== ref.saveMode ||
-    form.saveEveryEpochs !== ref.saveEveryEpochs ||
-    form.saveEverySteps !== ref.saveEverySteps ||
-    form.saveFormat !== ref.saveFormat ||
-    form.maxSavesToKeep !== ref.maxSavesToKeep ||
-    form.saveState !== ref.saveState ||
-    form.resumeState !== ref.resumeState;
-
   return {
+    // Model and backend selection are the run's identity, not settings that
+    // can drift from a baseline — there's no reset affordance to light up.
     whatToTrain: false,
     dataset: anyFolderChanged,
-    learning:
-      form.learningRate !== ref.learningRate ||
-      form.optimizer !== ref.optimizer ||
-      form.scheduler !== ref.scheduler ||
-      form.epochs !== ref.epochs ||
-      form.batchSize !== ref.batchSize ||
-      form.warmupSteps !== ref.warmupSteps ||
-      form.numRestarts !== ref.numRestarts ||
-      form.weightDecay !== ref.weightDecay ||
-      form.maxGradNorm !== ref.maxGradNorm ||
-      form.trainTextEncoder !== ref.trainTextEncoder ||
-      form.backboneLR !== ref.backboneLR ||
-      form.textEncoderLR !== ref.textEncoderLR ||
-      form.ema !== ref.ema ||
-      form.lossType !== ref.lossType ||
-      form.timestepType !== ref.timestepType ||
-      form.timestepBias !== ref.timestepBias ||
-      form.discreteFlowShift !== ref.discreteFlowShift ||
-      form.minSnrGamma !== ref.minSnrGamma ||
-      form.noiseOffset !== ref.noiseOffset ||
-      form.emaDecay !== ref.emaDecay ||
-      form.seed !== ref.seed ||
-      form.optimizerArgs !== ref.optimizerArgs ||
-      form.contentOrStyle !== ref.contentOrStyle ||
-      form.diffOutputPreservation !== ref.diffOutputPreservation ||
-      form.diffOutputPreservationMultiplier !==
-        ref.diffOutputPreservationMultiplier ||
-      form.diffOutputPreservationClass !== ref.diffOutputPreservationClass,
-    loraShape:
-      form.networkDim !== ref.networkDim ||
-      form.networkAlpha !== ref.networkAlpha ||
-      form.networkType !== ref.networkType ||
-      form.networkDropout !== ref.networkDropout ||
-      form.scaleWeightNorms !== ref.scaleWeightNorms ||
-      form.networkArgs !== ref.networkArgs ||
-      form.lokrFactor !== ref.lokrFactor ||
-      form.layerTargeting !== ref.layerTargeting,
-    performance:
-      // resolution is an array, so it needs an element-wise compare rather
-      // than the `!==` used for the scalar fields below.
-      form.resolution.length !== ref.resolution.length ||
-      form.resolution.some((r, i) => r !== ref.resolution[i]) ||
-      form.mixedPrecision !== ref.mixedPrecision ||
-      form.transformerQuantization !== ref.transformerQuantization ||
-      form.textEncoderQuantization !== ref.textEncoderQuantization ||
-      form.cacheTextEmbeddings !== ref.cacheTextEmbeddings ||
-      form.unloadTextEncoder !== ref.unloadTextEncoder ||
-      form.gradientAccumulationSteps !== ref.gradientAccumulationSteps ||
-      form.gradientCheckpointing !== ref.gradientCheckpointing ||
-      form.cacheLatents !== ref.cacheLatents ||
-      form.bucketResoSteps !== ref.bucketResoSteps ||
-      form.bucketNoUpscale !== ref.bucketNoUpscale ||
-      form.nativeResolution !== ref.nativeResolution ||
-      form.blocksToSwap !== ref.blocksToSwap ||
-      form.lowVram !== ref.lowVram,
+    learning: sectionFieldsDiffer(form, ref, 'learning'),
+    loraShape: sectionFieldsDiffer(form, ref, 'loraShape'),
+    performance: sectionFieldsDiffer(form, ref, 'performance'),
     // Sampling and saving are opt-in for ephemeral configs (no "has changes"
     // indicator when the user just hasn't touched them). Once a project is
     // loaded, any deviation from the baseline does count.
-    sampling: isLoaded && samplingDiffers,
-    saving: isLoaded && savingDiffers,
+    sampling: isLoaded && sectionFieldsDiffer(form, ref, 'sampling'),
+    saving: isLoaded && sectionFieldsDiffer(form, ref, 'saving'),
   };
 });
 

@@ -1,0 +1,265 @@
+"""Shared ai-toolkit model registry and config helpers.
+
+The base-model catalogue and the handful of hyperparameter-resolution helpers
+below are backend knowledge rather than provider plumbing, so they live apart
+from the provider that consumes them (`ai_toolkit_ui`). They were previously
+carried by a CLI-driven `AiToolkitProvider` that the sidecar stopped
+registering when the UI-server provider replaced it; that class is gone, and
+these are what outlived it.
+"""
+
+from typing import Optional
+
+# --- Model definitions ---
+
+SUPPORTED_MODELS = [
+    {
+        "id": "flux-dev",
+        "name": "Flux.1 Dev",
+        "architecture": "flux",
+        "model_path": "black-forest-labs/FLUX.1-dev",
+        "config": {"arch": "flux", "quantize": True},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768, 1024],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 20,
+        },
+    },
+    {
+        "id": "flux-schnell",
+        "name": "Flux.1 Schnell",
+        "architecture": "flux",
+        "model_path": "black-forest-labs/FLUX.1-schnell",
+        "config": {"arch": "flux", "quantize": True},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768, 1024],
+            "steps": 1500,
+            "guidance_scale": 1,
+            "sample_steps": 4,
+        },
+    },
+    {
+        # Node catalogue id is "flux2"; ai-toolkit arch is the 9B Klein variant
+        # (extensions_built_in/diffusion_models/flux2/flux2_klein_model.py).
+        # Klein-base is NOT guidance-distilled, so CFG is on for samples
+        # (guidance_scale > 1), unlike flux-dev.
+        "id": "flux2",
+        "name": "Flux.2 Klein 9B",
+        "architecture": "flux2_klein_9b",
+        "model_path": "black-forest-labs/FLUX.2-klein-base-9B",
+        "config": {"arch": "flux2_klein_9b", "quantize": True},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 30,
+        },
+    },
+    {
+        "id": "sdxl",
+        "name": "Stable Diffusion XL",
+        "architecture": "sdxl",
+        "model_path": "stabilityai/stable-diffusion-xl-base-1.0",
+        "config": {"arch": "sdxl"},
+        "train_defaults": {
+            "noise_scheduler": "ddpm",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+            "guidance_scale": 7,
+            "sample_steps": 25,
+        },
+    },
+    # Illustrious XL / NoobAI XL are SDXL-architecture finetunes — same arch and
+    # training config as sdxl above. The client always sends the local
+    # checkpoint as `model_path`, so the HF fallback just mirrors sdxl's.
+    {
+        "id": "illustrious-xl",
+        "name": "Illustrious XL",
+        "architecture": "sdxl",
+        "model_path": "stabilityai/stable-diffusion-xl-base-1.0",
+        "config": {"arch": "sdxl"},
+        "train_defaults": {
+            "noise_scheduler": "ddpm",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+            "guidance_scale": 7,
+            "sample_steps": 25,
+        },
+    },
+    {
+        "id": "noob-ai-xl",
+        "name": "NoobAI XL",
+        "architecture": "sdxl",
+        "model_path": "stabilityai/stable-diffusion-xl-base-1.0",
+        "config": {"arch": "sdxl"},
+        "train_defaults": {
+            "noise_scheduler": "ddpm",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 3000,
+            "guidance_scale": 7,
+            "sample_steps": 25,
+        },
+    },
+    {
+        "id": "zimage-turbo",
+        "name": "Z-Image Turbo",
+        "architecture": "zimage",
+        "model_path": "Tongyi-MAI/Z-Image-Turbo",
+        "config": {"arch": "zimage"},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768, 1024],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 8,
+        },
+    },
+    {
+        "id": "wan22-14b",
+        "name": "Wan 2.2 14B",
+        "architecture": "wan22_14b",
+        "model_path": "ai-toolkit/Wan2.2-T2V-A14B-Diffusers-bf16",
+        "config": {"arch": "wan22_14b"},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 2e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 20,
+        },
+    },
+    {
+        "id": "ltx2",
+        "name": "LTX-Video 2",
+        "architecture": "ltx2",
+        "model_path": "Lightricks/LTX-Video-0.9.7-dev",
+        "config": {"arch": "ltx2"},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 20,
+        },
+    },
+    {
+        # Node catalogue id is "ltx23"; ai-toolkit arch is "ltx2.3"
+        # (LTX23Model in extensions_built_in/diffusion_models/ltx2/ltx2.py).
+        "id": "ltx23",
+        "name": "LTX-Video 2.3",
+        "architecture": "ltx2.3",
+        "model_path": "Lightricks/LTX-2",
+        "config": {"arch": "ltx2.3"},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768],
+            "steps": 2000,
+            "guidance_scale": 4,
+            "sample_steps": 30,
+        },
+    },
+]
+
+def find_model(model_id: str) -> Optional[dict]:
+    for m in SUPPORTED_MODELS:
+        if m["id"] == model_id:
+            return m
+    return None
+
+# --- Config helpers ---
+
+def steps_per_epoch(save_every_n_epochs: int, epochs: int, total_steps: int) -> int:
+    """Convert save-every-N-epochs to save-every-N-steps."""
+    if epochs <= 0:
+        return total_steps
+    steps_per_epoch = total_steps // epochs
+    return max(1, steps_per_epoch * save_every_n_epochs)
+
+
+def resolve_save_every_steps(hp: dict, epochs: int, total_steps: int) -> int:
+    """Resolve the checkpoint cadence in *steps* — ai-toolkit's native unit.
+
+    The Node side sends `save_every_n_steps` when the user picked step-based
+    saving, or `save_every_n_epochs` for epoch-based; whichever is non-zero
+    wins (steps take precedence). When both are 0 (saving disabled) the cadence
+    is pushed past the end of training so no intermediate checkpoints are
+    written.
+    """
+    save_every_steps = int(hp.get("save_every_n_steps", 0) or 0)
+    if save_every_steps > 0:
+        return save_every_steps
+    save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
+    if save_every_epochs > 0:
+        return steps_per_epoch(save_every_epochs, epochs, total_steps)
+    return max(1, total_steps) + 1
+
+
+def resolve_sample_sampler(hp: dict, defaults: dict) -> str:
+    """Resolve the sampler used for training-time sample images.
+
+    ai-toolkit's `sample.sampler` is fed straight into `toolkit.sampler.get_sampler`
+    (see toolkit/stable_diffusion_model.py), which instantiates a diffusers
+    scheduler class by name. For flow-matching architectures (Flux, Z-Image,
+    Wan, LTX — anything with a "flowmatch" `noise_scheduler` model default)
+    that *must* stay "flowmatch" (CustomFlowMatchEulerDiscreteScheduler) —
+    picking a classic diffusion sampler like "euler_a" would build a
+    non-flow-matching scheduler for a flow-matching transformer and produce
+    garbage samples. Only non-flow-matching archs (SDXL family, "ddpm") honor
+    the user's `sample_sampler` choice.
+    """
+    model_scheduler = defaults.get("noise_scheduler", "flowmatch")
+    if model_scheduler == "flowmatch":
+        return "flowmatch"
+    return hp.get("sample_sampler", model_scheduler)
+
+
+def split_csv(raw) -> list[str]:
+    """Split a comma-separated UI string into a trimmed, non-empty list.
+
+    Used for expert-tier `layer_targeting` → network_kwargs.only_if_contains.
+    """
+    if not raw:
+        return []
+    return [part.strip() for part in str(raw).split(",") if part.strip()]
+
+
+def first_resolution(hp: dict, defaults: dict) -> int:
+    """Get the first (largest) resolution value for sample generation."""
+    res = hp.get("resolution", defaults.get("resolution", [1024]))
+    if isinstance(res, list):
+        return max(res) if res else 1024
+    return int(res)

@@ -1,5 +1,6 @@
 import { memo } from 'react';
 
+import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
 import { parseNativeResolution } from '@/app/services/training/native-resolution';
 import type { TrainingProvider } from '@/app/services/training/types';
@@ -10,10 +11,12 @@ import { Input } from '@/app/shared/input/input';
 import type { TrainingViewMode } from '@/app/store/preferences';
 
 import { FieldTitle } from '../field-title';
+import { NumberField } from '../number-field';
 import type {
   FormState,
   SectionName,
 } from '../training-config-form/use-training-config-form';
+import { SectionHeaderExtra } from './section-header-extra';
 import { SectionResetButton } from './section-reset-button';
 
 type PerformanceSectionProps = {
@@ -38,7 +41,7 @@ type PerformanceSectionProps = {
   lowVram: boolean;
   hasChanges: boolean;
   defaults: TrainingDefaults;
-  visibleFields: Set<string>;
+  visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
     field: K,
@@ -135,17 +138,10 @@ const PerformanceSectionComponent = ({
     <CollapsibleSection
       title="Performance"
       headerExtra={
-        <>
-          {hasChanges && (
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
-          )}
-          {hiddenChangesCount ? (
-            <span className="text-xs text-amber-500/70">
-              {hiddenChangesCount} hidden{' '}
-              {hiddenChangesCount === 1 ? 'setting' : 'settings'} customised
-            </span>
-          ) : undefined}
-        </>
+        <SectionHeaderExtra
+          hasChanges={hasChanges}
+          hiddenChangesCount={hiddenChangesCount}
+        />
       }
       headerActions={(expanded) =>
         hasChanges && expanded ? (
@@ -156,7 +152,7 @@ const PerformanceSectionComponent = ({
       <div className="space-y-3">
         {/* Precision + Quantization row */}
         <div className="grid grid-cols-3 gap-x-4 gap-y-3">
-          {visibleFields.has('mixedPrecision' satisfies keyof FormState) && (
+          {visibleFields.has('mixedPrecision') && (
             <div>
               <FieldTitle
                 field="mixedPrecision"
@@ -182,9 +178,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has(
-            'transformerQuantization' satisfies keyof FormState,
-          ) && (
+          {visibleFields.has('transformerQuantization') && (
             <div>
               <FieldTitle
                 field="transformerQuantization"
@@ -210,9 +204,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has(
-            'textEncoderQuantization' satisfies keyof FormState,
-          ) && (
+          {visibleFields.has('textEncoderQuantization') && (
             <div>
               <FieldTitle
                 field="textEncoderQuantization"
@@ -240,7 +232,7 @@ const PerformanceSectionComponent = ({
         </div>
 
         {/* Resolution */}
-        {visibleFields.has('resolution' satisfies keyof FormState) && (
+        {visibleFields.has('resolution') && (
           <div>
             <FieldTitle
               field="resolution"
@@ -286,7 +278,7 @@ const PerformanceSectionComponent = ({
         {/* Native resolution (Kohya-only). Read-only text in Simple mode, and
             hidden there entirely when unset — nothing worth saying about an
             override that isn't in play. Interactive from Intermediate up. */}
-        {visibleFields.has('nativeResolution' satisfies keyof FormState) &&
+        {visibleFields.has('nativeResolution') &&
           !(isSimple && !nativeActive) && (
             <div>
               <FieldTitle
@@ -338,108 +330,70 @@ const PerformanceSectionComponent = ({
           )}
 
         {/* Gradient Accumulation + Bucket Resolution Steps */}
-        {(visibleFields.has(
-          'gradientAccumulationSteps' satisfies keyof FormState,
-        ) ||
-          visibleFields.has('bucketResoSteps' satisfies keyof FormState) ||
-          visibleFields.has('blocksToSwap' satisfies keyof FormState)) && (
+        {(visibleFields.has('gradientAccumulationSteps') ||
+          visibleFields.has('bucketResoSteps') ||
+          visibleFields.has('blocksToSwap')) && (
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
-            {visibleFields.has(
-              'gradientAccumulationSteps' satisfies keyof FormState,
-            ) && (
-              <div>
-                <FieldTitle
-                  field="gradientAccumulationSteps"
-                  label="Gradient Accumulation Steps"
-                  value={gradientAccumulationSteps}
-                  defaults={defaults}
-                  onFieldChange={onFieldChange}
-                />
-                <Input
-                  type="number"
-                  min={1}
-                  max={16}
-                  value={gradientAccumulationSteps}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (val > 0)
-                      onFieldChange('gradientAccumulationSteps', val);
-                  }}
-                  className="w-24"
-                />
-                {gradientAccumulationSteps > 1 && (
-                  <p className="mt-1 text-xs text-slate-400">
-                    Effective batch size:{' '}
-                    <span className="font-medium">
-                      {batchSize * gradientAccumulationSteps}
-                    </span>{' '}
-                    ({batchSize} &times; {gradientAccumulationSteps})
-                  </p>
-                )}
-              </div>
+            {visibleFields.has('gradientAccumulationSteps') && (
+              <NumberField
+                field="gradientAccumulationSteps"
+                label="Gradient Accumulation Steps"
+                value={gradientAccumulationSteps}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+                kind="int"
+                min={1}
+                max={16}
+                className="w-24 tabular-nums"
+                hint={
+                  gradientAccumulationSteps > 1 ? (
+                    <>
+                      Effective batch size:{' '}
+                      <span className="font-medium">
+                        {batchSize * gradientAccumulationSteps}
+                      </span>{' '}
+                      ({batchSize} &times; {gradientAccumulationSteps})
+                    </>
+                  ) : undefined
+                }
+              />
             )}
 
-            {visibleFields.has('bucketResoSteps' satisfies keyof FormState) && (
-              <div>
-                <FieldTitle
-                  field="bucketResoSteps"
-                  label="Bucket Resolution Steps"
-                  value={bucketResoSteps}
-                  defaults={defaults}
-                  onFieldChange={onFieldChange}
-                />
-                <Input
-                  type="number"
-                  min={1}
-                  value={bucketResoSteps}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (val > 0) onFieldChange('bucketResoSteps', val);
-                  }}
-                  placeholder="64"
-                  className="w-24"
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Bucket size increment for multi-resolution training
-                </p>
-              </div>
+            {visibleFields.has('bucketResoSteps') && (
+              <NumberField
+                field="bucketResoSteps"
+                label="Bucket Resolution Steps"
+                value={bucketResoSteps}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+                kind="int"
+                min={1}
+                placeholder="64"
+                className="w-24 tabular-nums"
+                hint="Bucket size increment for multi-resolution training"
+              />
             )}
 
-            {visibleFields.has('blocksToSwap' satisfies keyof FormState) && (
-              <div>
-                <FieldTitle
-                  field="blocksToSwap"
-                  label="Blocks to Swap"
-                  value={blocksToSwap}
-                  defaults={defaults}
-                  onFieldChange={onFieldChange}
-                />
-                <Input
-                  type="number"
-                  min={0}
-                  value={blocksToSwap}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val >= 0)
-                      onFieldChange('blocksToSwap', val);
-                  }}
-                  placeholder="0"
-                  className="w-24"
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Offloads N transformer blocks to CPU to cut VRAM; slows
-                  training.
-                </p>
-              </div>
+            {visibleFields.has('blocksToSwap') && (
+              <NumberField
+                field="blocksToSwap"
+                label="Blocks to Swap"
+                value={blocksToSwap}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+                kind="int"
+                min={0}
+                placeholder="0"
+                className="w-24 tabular-nums"
+                hint="Offloads N transformer blocks to CPU to cut VRAM; slows training."
+              />
             )}
           </div>
         )}
 
         {/* Checkboxes */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-          {visibleFields.has(
-            'cacheTextEmbeddings' satisfies keyof FormState,
-          ) && (
+          {visibleFields.has('cacheTextEmbeddings') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={cacheTextEmbeddings}
@@ -455,7 +409,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has('unloadTextEncoder' satisfies keyof FormState) && (
+          {visibleFields.has('unloadTextEncoder') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={unloadTextEncoder}
@@ -471,9 +425,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has(
-            'gradientCheckpointing' satisfies keyof FormState,
-          ) && (
+          {visibleFields.has('gradientCheckpointing') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={gradientCheckpointing}
@@ -489,7 +441,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has('cacheLatents' satisfies keyof FormState) && (
+          {visibleFields.has('cacheLatents') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={cacheLatents}
@@ -503,7 +455,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has('bucketNoUpscale' satisfies keyof FormState) && (
+          {visibleFields.has('bucketNoUpscale') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={bucketNoUpscale}
@@ -519,7 +471,7 @@ const PerformanceSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has('lowVram' satisfies keyof FormState) && (
+          {visibleFields.has('lowVram') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={lowVram}
@@ -538,5 +490,4 @@ const PerformanceSectionComponent = ({
   );
 };
 
-/** Informational preview of Kohya bucketing for a given base resolution. */
 export const PerformanceSection = memo(PerformanceSectionComponent);

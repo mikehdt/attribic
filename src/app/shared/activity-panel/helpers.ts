@@ -151,7 +151,7 @@ export function formatLoss(loss: number): string {
  * that squash the rest of the curve. Dropping them lets the meaningful part of
  * the run use the full plot range.
  */
-export const SETTLE_STEPS = 16;
+const SETTLE_STEPS = 16;
 
 /**
  * Drop the leading settling-noise points from a step-indexed series so the

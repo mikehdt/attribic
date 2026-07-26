@@ -1,6 +1,7 @@
 import { Link2Icon, Unlink2Icon } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
+import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
 import { Button } from '@/app/shared/button/button';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
@@ -14,6 +15,7 @@ import type {
   FormState,
   SectionName,
 } from '../training-config-form/use-training-config-form';
+import { SectionHeaderExtra } from './section-header-extra';
 import { SectionResetButton } from './section-reset-button';
 
 type LoraShapeSectionProps = {
@@ -28,7 +30,7 @@ type LoraShapeSectionProps = {
   layerTargeting: string;
   hasChanges: boolean;
   defaults: TrainingDefaults;
-  visibleFields: Set<string>;
+  visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
     field: K,
@@ -123,17 +125,10 @@ const LoraShapeSectionComponent = ({
     <CollapsibleSection
       title="LoRA Shape"
       headerExtra={
-        <>
-          {hasChanges && (
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
-          )}
-          {hiddenChangesCount ? (
-            <span className="text-xs text-amber-500/70">
-              {hiddenChangesCount} hidden{' '}
-              {hiddenChangesCount === 1 ? 'setting' : 'settings'} customised
-            </span>
-          ) : undefined}
-        </>
+        <SectionHeaderExtra
+          hasChanges={hasChanges}
+          hiddenChangesCount={hiddenChangesCount}
+        />
       }
       headerActions={(expanded) =>
         hasChanges && expanded ? (
@@ -143,12 +138,12 @@ const LoraShapeSectionComponent = ({
     >
       <div className="space-y-3">
         {/* Type + Dropout row */}
-        {(visibleFields.has('networkType' satisfies keyof FormState) ||
-          visibleFields.has('networkDropout' satisfies keyof FormState) ||
-          visibleFields.has('lokrFactor' satisfies keyof FormState) ||
-          visibleFields.has('scaleWeightNorms' satisfies keyof FormState)) && (
+        {(visibleFields.has('networkType') ||
+          visibleFields.has('networkDropout') ||
+          visibleFields.has('lokrFactor') ||
+          visibleFields.has('scaleWeightNorms')) && (
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
-            {visibleFields.has('networkType' satisfies keyof FormState) && (
+            {visibleFields.has('networkType') && (
               <div>
                 <FormTitle>Type</FormTitle>
                 <Dropdown
@@ -165,7 +160,7 @@ const LoraShapeSectionComponent = ({
               </div>
             )}
 
-            {visibleFields.has('networkDropout' satisfies keyof FormState) && (
+            {visibleFields.has('networkDropout') && (
               <div>
                 <FieldTitle
                   field="networkDropout"
@@ -192,9 +187,7 @@ const LoraShapeSectionComponent = ({
               </div>
             )}
 
-            {visibleFields.has(
-              'scaleWeightNorms' satisfies keyof FormState,
-            ) && (
+            {visibleFields.has('scaleWeightNorms') && (
               <div>
                 <FieldTitle
                   field="scaleWeightNorms"
@@ -220,7 +213,7 @@ const LoraShapeSectionComponent = ({
               </div>
             )}
 
-            {visibleFields.has('lokrFactor' satisfies keyof FormState) && (
+            {visibleFields.has('lokrFactor') && (
               <div>
                 <FieldTitle
                   field="lokrFactor"
@@ -251,7 +244,7 @@ const LoraShapeSectionComponent = ({
 
         {/* Rank + Alpha sliders */}
         <div className="flex items-end gap-2">
-          {visibleFields.has('networkDim' satisfies keyof FormState) && (
+          {visibleFields.has('networkDim') && (
             <div className="flex-1">
               <FieldTitle
                 field="networkDim"
@@ -273,8 +266,8 @@ const LoraShapeSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has('networkDim' satisfies keyof FormState) &&
-            visibleFields.has('networkAlpha' satisfies keyof FormState) && (
+          {visibleFields.has('networkDim') &&
+            visibleFields.has('networkAlpha') && (
               <div className="pb-0.5">
                 <Button
                   variant="ghost"
@@ -298,7 +291,7 @@ const LoraShapeSectionComponent = ({
               </div>
             )}
 
-          {visibleFields.has('networkAlpha' satisfies keyof FormState) && (
+          {visibleFields.has('networkAlpha') && (
             <div className="flex-1">
               <FieldTitle
                 field="networkAlpha"
@@ -325,7 +318,7 @@ const LoraShapeSectionComponent = ({
           Higher rank = more expressive, but uses more VRAM and can overfit
         </p>
 
-        {visibleFields.has('layerTargeting' satisfies keyof FormState) && (
+        {visibleFields.has('layerTargeting') && (
           <div>
             <FieldTitle
               field="layerTargeting"
@@ -348,7 +341,7 @@ const LoraShapeSectionComponent = ({
           </div>
         )}
 
-        {visibleFields.has('networkArgs' satisfies keyof FormState) && (
+        {visibleFields.has('networkArgs') && (
           <div>
             <FieldTitle
               field="networkArgs"

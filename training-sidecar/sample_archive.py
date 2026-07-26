@@ -34,6 +34,7 @@ for any sample this copy couldn't claim. Keep the two in step.
 
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Optional
 
@@ -131,3 +132,43 @@ def copy_into_run_archive(
         prompt_index=sample.prompt_index,
         source_path=sample.path,
     )
+
+
+def collect_new_samples(
+    *,
+    scan: Callable[[str, str], set[str]],
+    parse: Callable[[str, str], Optional[SampleImage]],
+    output_path: str,
+    output_name: str,
+    seen: set[str],
+    samples: list[SampleImage],
+    job_id: Optional[str] = None,
+    require_settled: bool = True,
+) -> None:
+    """Diff a provider's sample folder against `seen`, claiming what's new.
+
+    Each new file is copied into the run's archive folder as it's claimed, so
+    the run owns its images immediately rather than at terminal — which matters
+    most for Kohya, whose `sample/` folder is shared by every run. A file that's
+    still being written is left unclaimed for the next sweep, except on the
+    final sweep, which runs after the trainer has exited (so nothing can still
+    be mid-write) and is the last chance to claim anything: pass
+    `require_settled=False` there.
+
+    Backends differ only in where samples land and how their filenames encode
+    step/epoch/prompt, so those two steps arrive as `scan` and `parse`; the
+    claim-once-and-archive logic around them is identical and lives here.
+
+    Mutates both `seen` (so a file is claimed once) and `samples` (the running
+    ordered list forwarded on JobProgress).
+    """
+    new_files = scan(output_path, output_name) - seen
+    if not new_files:
+        return
+    for path in sorted(new_files):
+        if require_settled and not is_settled(path):
+            continue  # mid-write — re-examined next sweep
+        seen.add(path)
+        entry = parse(path, output_name)
+        if entry is not None:
+            samples.append(copy_into_run_archive(job_id, path, entry))

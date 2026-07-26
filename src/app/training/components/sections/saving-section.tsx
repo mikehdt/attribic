@@ -1,6 +1,7 @@
 import { FolderOpenIcon, InfoIcon } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
+import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
@@ -16,6 +17,7 @@ import type {
   FormState,
   SectionName,
 } from '../training-config-form/use-training-config-form';
+import { SectionHeaderExtra } from './section-header-extra';
 import { SectionResetButton } from './section-reset-button';
 
 type SavingSectionProps = {
@@ -29,7 +31,7 @@ type SavingSectionProps = {
   saveState: boolean;
   resumeState: string;
   defaults: TrainingDefaults;
-  visibleFields: Set<string>;
+  visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
     field: K,
@@ -92,12 +94,7 @@ const SavingSectionComponent = ({
     <CollapsibleSection
       title="Saving"
       headerExtra={
-        hiddenChangesCount ? (
-          <span className="text-xs text-amber-500/70">
-            {hiddenChangesCount} hidden{' '}
-            {hiddenChangesCount === 1 ? 'setting' : 'settings'} customised
-          </span>
-        ) : undefined
+        <SectionHeaderExtra hiddenChangesCount={hiddenChangesCount} />
       }
       headerActions={(expanded) =>
         saveEnabled && expanded ? (
@@ -108,7 +105,7 @@ const SavingSectionComponent = ({
       <div className="space-y-3">
         {/* Output Name + Format row */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-          {visibleFields.has('outputName' satisfies keyof FormState) && (
+          {visibleFields.has('outputName') && (
             <div>
               <FormTitle>Output Name</FormTitle>
               <Input
@@ -121,7 +118,7 @@ const SavingSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has('saveFormat' satisfies keyof FormState) && (
+          {visibleFields.has('saveFormat') && (
             <div>
               <FieldTitle
                 field="saveFormat"
@@ -143,8 +140,8 @@ const SavingSectionComponent = ({
         </div>
 
         {/* Save Checkpoints */}
-        {(visibleFields.has('saveEveryEpochs' satisfies keyof FormState) ||
-          visibleFields.has('saveEverySteps' satisfies keyof FormState)) && (
+        {(visibleFields.has('saveEveryEpochs') ||
+          visibleFields.has('saveEverySteps')) && (
           <>
             <Checkbox
               isSelected={saveEnabled}
@@ -180,9 +177,7 @@ const SavingSectionComponent = ({
                   </InputTray>
                 </div>
 
-                {visibleFields.has(
-                  'maxSavesToKeep' satisfies keyof FormState,
-                ) ? (
+                {visibleFields.has('maxSavesToKeep') ? (
                   <div>
                     <FieldTitle
                       field="maxSavesToKeep"
@@ -224,7 +219,7 @@ const SavingSectionComponent = ({
         )}
 
         {/* Save Training State */}
-        {visibleFields.has('saveState' satisfies keyof FormState) && (
+        {visibleFields.has('saveState') && (
           <div className="flex items-center gap-2">
             <Checkbox
               isSelected={saveState}
@@ -239,7 +234,7 @@ const SavingSectionComponent = ({
         )}
 
         {/* Resume From State */}
-        {visibleFields.has('resumeState' satisfies keyof FormState) && (
+        {visibleFields.has('resumeState') && (
           <div>
             <FormTitle>Resume From State</FormTitle>
             <InputTray size="md" width="full">

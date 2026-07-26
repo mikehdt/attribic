@@ -9,7 +9,7 @@ takes a single checkpoint and resolves the rest.
 Training is launched with `accelerate launch <arch>_train_network.py ...` as a
 subprocess. Progress is scraped from sd-scripts' tqdm output (which, like
 ai-toolkit, goes to stderr), following the same stream-merge pattern as
-`providers/ai_toolkit.py`.
+`providers/ai_toolkit_ui.py`.
 """
 
 import asyncio
@@ -30,7 +30,7 @@ from models import (
     StartJobRequest,
 )
 from providers.base import TrainingProvider
-from sample_archive import SETTLE_SECONDS, copy_into_run_archive, is_settled
+from sample_archive import SETTLE_SECONDS, collect_new_samples
 
 # sd-scripts' main training bar looks like:
 #   steps:   5%|▌         | 150/3000 [00:30<09:30,  2.30it/s, avr_loss=0.0912]
@@ -373,30 +373,17 @@ def _collect_new_samples(
     job_id: Optional[str] = None,
     require_settled: bool = True,
 ) -> None:
-    """Diff the sample dir against `seen`, appending freshly-written samples.
-
-    Each new file is copied into the run's archive folder as it's claimed, so
-    the run owns its images immediately rather than at terminal — which matters
-    most here, where `sample/` is shared by every Kohya run (see
-    `sample_archive`). A file that's still being written is left unclaimed for
-    the next sweep — except on the final sweep, which runs after sd-scripts has
-    exited (so nothing can still be mid-write) and is the last chance to claim
-    anything: pass `require_settled=False` there.
-
-    Mutates both `seen` (so a file is claimed once) and `samples` (the running
-    ordered list forwarded on JobProgress).
-    """
-    current = _scan_sample_files(output_path, output_name)
-    new_files = current - seen
-    if not new_files:
-        return
-    for path in sorted(new_files):
-        if require_settled and not is_settled(path):
-            continue  # mid-write — re-examined next sweep
-        seen.add(path)
-        entry = _parse_sample(path, output_name)
-        if entry is not None:
-            samples.append(copy_into_run_archive(job_id, path, entry))
+    """Claim freshly-written Kohya samples. See `sample_archive`."""
+    collect_new_samples(
+        scan=_scan_sample_files,
+        parse=_parse_sample,
+        output_path=output_path,
+        output_name=output_name,
+        seen=seen,
+        samples=samples,
+        job_id=job_id,
+        require_settled=require_settled,
+    )
 
 
 class KohyaProvider(TrainingProvider):
@@ -908,7 +895,7 @@ class KohyaProvider(TrainingProvider):
                         yield line
 
         # sd-scripts (via accelerate/tqdm) writes progress to stderr, so we
-        # merge both streams — see the equivalent note in ai_toolkit.py.
+        # merge both streams — see the equivalent note in ai_toolkit_ui.py.
         line_queue: asyncio.Queue = asyncio.Queue()
         EOF = object()
 

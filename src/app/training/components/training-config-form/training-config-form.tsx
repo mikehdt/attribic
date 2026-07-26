@@ -1,8 +1,10 @@
 import { memo, useCallback, useMemo } from 'react';
 
+import { valuesDiffer } from '@/app/services/training/field-compare';
 import {
   FIELD_REGISTRY,
   getVisibleFields,
+  type TrainingFieldName,
 } from '@/app/services/training/field-registry';
 import type { FormState } from '@/app/store/training-config/types';
 
@@ -114,26 +116,19 @@ const TrainingConfigFormComponent = ({
     state.diffOutputPreservation,
   ]);
 
-  // Compute hidden changes per section
+  // Fields customised away from their model default but not shown at the
+  // current tier — surfaced as a per-section "N hidden settings customised"
+  // note so the tier isn't hiding edits the run will still act on.
   const hiddenChanges = useMemo(() => {
     const perSection: Partial<Record<SectionName, number>> = {};
 
-    for (const [field, meta] of Object.entries(FIELD_REGISTRY)) {
+    for (const field of Object.keys(FIELD_REGISTRY) as TrainingFieldName[]) {
+      const meta = FIELD_REGISTRY[field];
       if (visibleFields.has(field)) continue;
       if (meta.defaultKey === null) continue;
 
-      const currentValue = state[field as keyof typeof state];
-      const defaultValue = defaults[meta.defaultKey];
-
-      // Compare values (handle arrays for resolution)
-      const isDifferent =
-        Array.isArray(currentValue) && Array.isArray(defaultValue)
-          ? JSON.stringify(currentValue) !== JSON.stringify(defaultValue)
-          : currentValue !== defaultValue;
-
-      if (isDifferent) {
-        const section = meta.group as SectionName;
-        perSection[section] = (perSection[section] ?? 0) + 1;
+      if (valuesDiffer(state[field], defaults[meta.defaultKey])) {
+        perSection[meta.group] = (perSection[meta.group] ?? 0) + 1;
       }
     }
 
@@ -150,84 +145,22 @@ const TrainingConfigFormComponent = ({
     const effectiveEpochs =
       state.durationMode === 'steps' ? calculatedEpochs : state.epochs;
 
+    // Spread the whole form rather than naming each field: the payload used to
+    // be a hand-maintained allowlist, which silently dropped any field added to
+    // FormState but forgotten here (nativeResolution went missing that way, so
+    // the trainer never saw it). The request builder picks the keys it wants by
+    // name, so extra UI-only keys ride along harmlessly.
     onStartTraining?.(
       {
-        modelId: state.modelId,
-        modelPaths: state.modelPaths,
+        ...state,
         provider: state.selectedProvider,
-        outputName: state.outputName,
-        datasets: state.datasets,
         // Which of steps/epochs the user actually asked for. Our epochs→steps
         // conversion is only an estimate (it can't know how the trainer's
         // aspect-ratio buckets round their partial batches), so a backend that
         // can count epochs itself should be told to do that rather than trust
         // the converted step total.
-        durationMode: state.durationMode,
         steps: effectiveSteps,
         epochs: effectiveEpochs,
-        learningRate: state.learningRate,
-        optimizer: state.optimizer,
-        scheduler: state.scheduler,
-        warmupSteps: state.warmupSteps,
-        numRestarts: state.numRestarts,
-        weightDecay: state.weightDecay,
-        maxGradNorm: state.maxGradNorm,
-        trainTextEncoder: state.trainTextEncoder,
-        backboneLR: state.backboneLR,
-        textEncoderLR: state.textEncoderLR,
-        ema: state.ema,
-        emaDecay: state.emaDecay,
-        lossType: state.lossType,
-        timestepType: state.timestepType,
-        timestepBias: state.timestepBias,
-        discreteFlowShift: state.discreteFlowShift,
-        minSnrGamma: state.minSnrGamma,
-        noiseOffset: state.noiseOffset,
-        batchSize: state.batchSize,
-        networkType: state.networkType,
-        networkDim: state.networkDim,
-        networkAlpha: state.networkAlpha,
-        networkDropout: state.networkDropout,
-        scaleWeightNorms: state.scaleWeightNorms,
-        resolution: state.resolution,
-        mixedPrecision: state.mixedPrecision,
-        transformerQuantization: state.transformerQuantization,
-        textEncoderQuantization: state.textEncoderQuantization,
-        cacheTextEmbeddings: state.cacheTextEmbeddings,
-        unloadTextEncoder: state.unloadTextEncoder,
-        gradientAccumulationSteps: state.gradientAccumulationSteps,
-        gradientCheckpointing: state.gradientCheckpointing,
-        cacheLatents: state.cacheLatents,
-        bucketResoSteps: state.bucketResoSteps,
-        bucketNoUpscale: state.bucketNoUpscale,
-        extraFolders: state.extraFolders,
-        seed: state.seed,
-        guidanceScale: state.guidanceScale,
-        sampleSteps: state.sampleSteps,
-        sampleSampler: state.sampleSampler,
-        saveEnabled: state.saveEnabled,
-        saveMode: state.saveMode,
-        saveEveryEpochs: state.saveEveryEpochs,
-        saveEverySteps: state.saveEverySteps,
-        saveFormat: state.saveFormat,
-        maxSavesToKeep: state.maxSavesToKeep,
-        saveState: state.saveState,
-        resumeState: state.resumeState,
-        networkArgs: state.networkArgs,
-        optimizerArgs: state.optimizerArgs,
-        blocksToSwap: state.blocksToSwap,
-        lokrFactor: state.lokrFactor,
-        contentOrStyle: state.contentOrStyle,
-        diffOutputPreservation: state.diffOutputPreservation,
-        diffOutputPreservationMultiplier:
-          state.diffOutputPreservationMultiplier,
-        diffOutputPreservationClass: state.diffOutputPreservationClass,
-        layerTargeting: state.layerTargeting,
-        lowVram: state.lowVram,
-        samplingEnabled: state.samplingEnabled,
-        sampleMode: state.sampleMode,
-        sampleEveryEpochs: state.sampleEveryEpochs,
-        sampleEverySteps: state.sampleEverySteps,
         samplePrompts: state.samplePrompts.map((s) => s.trim()).filter(Boolean),
       },
       state,

@@ -10,7 +10,12 @@ import type { TrainingProvider } from './types';
 
 export type ExpertiseTier = 'simple' | 'intermediate' | 'advanced' | 'expert';
 
-type ConceptualGroup =
+/**
+ * The form's conceptual sections. Each maps to one collapsible section in the
+ * UI, and is the unit that per-section reset and change-detection work on
+ * (aliased as `SectionName` in the training-config store).
+ */
+export type ConceptualGroup =
   | 'whatToTrain'
   | 'dataset'
   | 'learning'
@@ -44,9 +49,20 @@ type FieldMeta = {
  * in Simple mode, becoming interactive dropdowns in Intermediate+. This is
  * handled by the section components, not the registry.
  */
-export const FIELD_REGISTRY: Record<string, FieldMeta> = {
+/**
+ * Identity helper that keeps the registry's keys as literals (so
+ * `TrainingFieldName` is the exact field set) while typing every value as
+ * `FieldMeta` — a plain `Record<string, FieldMeta>` annotation would widen the
+ * keys to `string` and lose that.
+ */
+const defineFields = <T extends Record<string, FieldMeta>>(
+  fields: T,
+): { [K in keyof T]: FieldMeta } => fields;
+
+export const FIELD_REGISTRY = defineFields({
   // What to Train
   modelId: { tier: 'simple', group: 'whatToTrain', defaultKey: null },
+  selectedProvider: { tier: 'simple', group: 'whatToTrain', defaultKey: null },
   modelPaths: { tier: 'simple', group: 'whatToTrain', defaultKey: null },
   outputName: { tier: 'simple', group: 'saving', defaultKey: null },
   datasets: { tier: 'simple', group: 'dataset', defaultKey: null },
@@ -403,7 +419,30 @@ export const FIELD_REGISTRY: Record<string, FieldMeta> = {
   },
   saveState: { tier: 'advanced', group: 'saving', defaultKey: null },
   resumeState: { tier: 'advanced', group: 'saving', defaultKey: null },
-};
+});
+
+/**
+ * Every field the form knows about. Kept in step with `FormState` by a
+ * compile-time check in the training-config store — the registry is the single
+ * source of truth for which section a field belongs to, so a field missing
+ * from it silently drops out of per-section reset and change detection.
+ */
+export type TrainingFieldName = keyof typeof FIELD_REGISTRY;
+
+const SECTION_FIELDS = (() => {
+  const bySection = {} as Record<ConceptualGroup, TrainingFieldName[]>;
+  for (const [field, meta] of Object.entries(FIELD_REGISTRY)) {
+    (bySection[meta.group] ??= []).push(field as TrainingFieldName);
+  }
+  return bySection;
+})();
+
+/** The fields belonging to one form section, in registry order. */
+export function getSectionFields(
+  section: ConceptualGroup,
+): readonly TrainingFieldName[] {
+  return SECTION_FIELDS[section] ?? [];
+}
 
 const TIER_ORDER: ExpertiseTier[] = [
   'simple',
@@ -425,11 +464,11 @@ export function getVisibleFields(
   tier: ExpertiseTier,
   modelId: string,
   provider: TrainingProvider,
-): Set<string> {
+): Set<TrainingFieldName> {
   const model = getModelById(modelId);
   const hiddenByModel = new Set(model?.hiddenFields ?? []);
 
-  const visible = new Set<string>();
+  const visible = new Set<TrainingFieldName>();
   for (const [field, meta] of Object.entries(FIELD_REGISTRY)) {
     if (!isTierAtLeast(tier, meta.tier)) continue;
     if (meta.defaultKey && hiddenByModel.has(meta.defaultKey)) continue;
@@ -442,7 +481,7 @@ export function getVisibleFields(
     ) {
       continue;
     }
-    visible.add(field);
+    visible.add(field as TrainingFieldName);
   }
   return visible;
 }

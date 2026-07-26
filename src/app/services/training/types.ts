@@ -2,12 +2,11 @@ import type { ModelComponentType } from './models';
 
 // --- Provider & Backend ---
 
-export type TrainingProvider = 'ai-toolkit' | 'kohya' | 'musubi' | 'mock';
+export type TrainingProvider = 'ai-toolkit' | 'kohya' | 'mock';
 
 export const TRAINING_PROVIDER_LABELS: Record<TrainingProvider, string> = {
   'ai-toolkit': 'AI Toolkit (Ostris)',
   kohya: 'SD Scripts (Kohya)',
-  musubi: 'Musubi Tuner (Kohya)',
   mock: 'Mock (fake GPU, UI testing)',
 };
 
@@ -16,7 +15,6 @@ export const TRAINING_PROVIDER_SHORT_LABELS: Record<TrainingProvider, string> =
   {
     'ai-toolkit': 'AI Toolkit',
     kohya: 'Kohya',
-    musubi: 'Musubi',
     mock: 'Mock',
   };
 
@@ -24,10 +22,6 @@ export const TRAINING_PROVIDER_SHORT_LABELS: Record<TrainingProvider, string> =
 
 export type TrainingJobStatus =
   'pending' | 'preparing' | 'training' | 'completed' | 'failed' | 'cancelled';
-
-// --- Sidecar ---
-
-export type SidecarStatus = 'stopped' | 'starting' | 'ready' | 'error';
 
 // --- Progress (received via WebSocket) ---
 
@@ -139,7 +133,7 @@ export type TrainingProgress = {
 
 // --- Hyperparameters ---
 
-export type TrainingHyperparameters = {
+type TrainingHyperparameters = {
   learningRate: number;
   epochs: number;
   batchSize: number;
@@ -158,7 +152,7 @@ export type TrainingHyperparameters = {
 
 // --- Dataset ---
 
-export type TrainingDataset = {
+type TrainingDataset = {
   path: string;
   numRepeats: number;
 };
@@ -177,17 +171,4 @@ export type TrainingJobConfig = {
   datasets: TrainingDataset[];
   hyperparameters: TrainingHyperparameters;
   samplePrompts: string[];
-};
-
-// --- Per-Project Settings (stored in project config JSON) ---
-
-export type TrainingSettings = {
-  datasets?: TrainingDataset[];
-  provider?: TrainingProvider;
-  baseModel?: string;
-  outputPath?: string;
-  outputName?: string;
-  hyperparameters?: Partial<TrainingHyperparameters>;
-  samplePrompts?: string[];
-  lastPreset?: string;
 };

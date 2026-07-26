@@ -367,7 +367,7 @@ export const selectCompletedJobs = createSelector(selectAllJobs, (jobs) =>
 );
 
 /** The single active training job (there can be at most one). */
-export const selectActiveTrainingJob = createSelector(
+const selectActiveTrainingJob = createSelector(
   selectAllJobs,
   (jobs): TrainingJob | null => {
     const found = jobs.find(
@@ -447,13 +447,6 @@ const selectAnyActiveTaggingJob = createSelector(
     );
     return found ?? null;
   },
-);
-
-/** Whether the GPU is busy (training or tagging active — blocks other GPU work). */
-export const selectIsGpuBusy = createSelector(
-  selectActiveTrainingJob,
-  selectAnyActiveTaggingJob,
-  (training, tagging) => training !== null || tagging !== null,
 );
 
 /** The reason the GPU is busy, or null if idle. Used for guard error messages. */

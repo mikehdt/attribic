@@ -36,7 +36,6 @@ import {
   setSamplePrompt as setSamplePromptAction,
   updateFolderAugment as updateFolderAugmentAction,
 } from '@/app/store/training-config';
-import { defaultFolderAugmentation } from '@/app/store/training-config/defaults';
 import { refreshDatasetScans } from '@/app/store/training-config/thunks';
 import type {
   AppModelDefaults,
@@ -45,14 +44,13 @@ import type {
   DurationMode,
   ExtraFolder,
   FolderAugmentation,
-  FolderAugmentKey,
   FormState,
   ModelPaths,
   SectionName,
 } from '@/app/store/training-config/types';
 
-// Re-exports for backwards compatibility with existing consumers.
-export { defaultFolderAugmentation };
+// Convenience re-exports: the section components sit next to this hook and
+// read their prop types through it rather than reaching into the store.
 export type {
   AppModelDefaults,
   DatasetFolder,
@@ -60,7 +58,6 @@ export type {
   DurationMode,
   ExtraFolder,
   FolderAugmentation,
-  FolderAugmentKey,
   FormState,
   ModelPaths,
   SectionName,

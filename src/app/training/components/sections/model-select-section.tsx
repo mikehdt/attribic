@@ -3,6 +3,7 @@ import { memo, useCallback, useMemo } from 'react';
 import {
   type ExpertiseTier,
   isTierAtLeast,
+  type TrainingFieldName,
 } from '@/app/services/training/field-registry';
 import {
   getModelsByArchitecture,
@@ -21,9 +22,9 @@ import { ModelPathField } from '../model-path-field/model-path-field';
 import { useEnsureModelStatuses } from '../model-path-field/use-ensure-model-statuses';
 import type {
   AppModelDefaults,
-  FormState,
   ModelPaths,
 } from '../training-config-form/use-training-config-form';
+import { SectionHeaderExtra } from './section-header-extra';
 
 const ExperimentalBadge = () => (
   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900 dark:text-amber-300">
@@ -40,7 +41,7 @@ type ModelSelectSectionProps = {
   onProviderChange: (provider: TrainingProvider) => void;
   onModelPathChange: (component: ModelComponentType, path: string) => void;
   currentModel: ModelDefinition;
-  visibleFields: Set<string>;
+  visibleFields: Set<TrainingFieldName>;
   viewMode: ExpertiseTier;
   hiddenChangesCount?: number;
 };
@@ -148,16 +149,11 @@ const ModelSelectSectionComponent = ({
     <CollapsibleSection
       title="Model"
       headerExtra={
-        hiddenChangesCount ? (
-          <span className="text-xs text-amber-500/70">
-            {hiddenChangesCount} hidden{' '}
-            {hiddenChangesCount === 1 ? 'setting' : 'settings'} customised
-          </span>
-        ) : undefined
+        <SectionHeaderExtra hiddenChangesCount={hiddenChangesCount} />
       }
     >
       <div className="space-y-3">
-        {visibleFields.has('modelId' satisfies keyof FormState) && (
+        {visibleFields.has('modelId') && (
           <div>
             <div className="flex">
               <div className="w-1/2">
@@ -219,7 +215,7 @@ const ModelSelectSectionComponent = ({
 
         {/* Model component paths. Simple view summarises set files and only
             keeps unset ones interactive; Intermediate+ shows every field. */}
-        {visibleFields.has('modelPaths' satisfies keyof FormState) &&
+        {visibleFields.has('modelPaths') &&
           (isSimple ? (
             <>
               {setComponents.length > 0 && (

@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo } from 'react';
 
+import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import {
   ADAPTIVE_OPTIMIZERS,
   OPTIMIZER_OPTIONS,
@@ -17,12 +18,14 @@ import { Slider } from '@/app/shared/slider/slider';
 import type { TrainingViewMode } from '@/app/store/preferences';
 
 import { FieldTitle } from '../../field-title';
+import { NumberField } from '../../number-field';
 import { SchedulerSparkline } from '../../scheduler-sparkline';
 import type {
   DurationMode,
   FormState,
   SectionName,
 } from '../../training-config-form/use-training-config-form';
+import { SectionHeaderExtra } from '../section-header-extra';
 import { SectionResetButton } from '../section-reset-button';
 import { getLrLabel, lrToSlider, sliderToLr } from './lr-slider-utils';
 
@@ -63,7 +66,7 @@ type LearningSectionProps = {
   modelName: string;
   hasChanges: boolean;
   defaults: TrainingDefaults;
-  visibleFields: Set<string>;
+  visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
   viewMode: TrainingViewMode;
   onFieldChange: <K extends keyof FormState>(
@@ -196,9 +199,9 @@ const LearningSectionComponent = ({
   }, []);
 
   const showDuration =
-    visibleFields.has('durationMode' satisfies keyof FormState) ||
-    visibleFields.has('epochs' satisfies keyof FormState) ||
-    visibleFields.has('steps' satisfies keyof FormState);
+    visibleFields.has('durationMode') ||
+    visibleFields.has('epochs') ||
+    visibleFields.has('steps');
 
   const sliderPosition = lrToSlider(learningRate);
   const lrLabel = getLrLabel(learningRate);
@@ -251,17 +254,10 @@ const LearningSectionComponent = ({
     <CollapsibleSection
       title="Learning"
       headerExtra={
-        <>
-          {hasChanges && (
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
-          )}
-          {hiddenChangesCount ? (
-            <span className="text-xs text-amber-500/70">
-              {hiddenChangesCount} hidden{' '}
-              {hiddenChangesCount === 1 ? 'setting' : 'settings'} customised
-            </span>
-          ) : undefined}
-        </>
+        <SectionHeaderExtra
+          hasChanges={hasChanges}
+          hiddenChangesCount={hiddenChangesCount}
+        />
       }
       headerActions={(expanded) =>
         hasChanges && expanded ? (
@@ -341,7 +337,7 @@ const LearningSectionComponent = ({
           )}
 
           {/* Learning Rate — slider + editable numeric box in every tier */}
-          {visibleFields.has('learningRate' satisfies keyof FormState) && (
+          {visibleFields.has('learningRate') && (
             <div>
               <FieldTitle
                 field="learningRate"
@@ -369,7 +365,7 @@ const LearningSectionComponent = ({
           )}
 
           {/* Optimizer — read-only in Simple, dropdown in Intermediate+ */}
-          {visibleFields.has('optimizer' satisfies keyof FormState) && (
+          {visibleFields.has('optimizer') && (
             <div>
               <FieldTitle
                 field="optimizer"
@@ -416,7 +412,7 @@ const LearningSectionComponent = ({
           )}
 
           {/* Scheduler — read-only in Simple, dropdown in Intermediate+ */}
-          {visibleFields.has('scheduler' satisfies keyof FormState) && (
+          {visibleFields.has('scheduler') && (
             <div>
               <FieldTitle
                 field="scheduler"
@@ -472,54 +468,36 @@ const LearningSectionComponent = ({
           )}
 
           {/* Warmup + Restarts row */}
-          {(visibleFields.has('warmupSteps' satisfies keyof FormState) ||
-            visibleFields.has('numRestarts' satisfies keyof FormState)) && (
+          {(visibleFields.has('warmupSteps') ||
+            visibleFields.has('numRestarts')) && (
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {visibleFields.has('warmupSteps' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="warmupSteps"
-                    label="Warmup Steps"
-                    value={warmupSteps}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    value={warmupSteps}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (val >= 0) onFieldChange('warmupSteps', val);
-                    }}
-                    placeholder={String(defaults.warmupSteps)}
-                    className="w-24"
-                  />
-                </div>
+              {visibleFields.has('warmupSteps') && (
+                <NumberField
+                  field="warmupSteps"
+                  label="Warmup Steps"
+                  value={warmupSteps}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  kind="int"
+                  min={0}
+                  placeholder={String(defaults.warmupSteps)}
+                  className="w-24"
+                />
               )}
 
-              {visibleFields.has('numRestarts' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="numRestarts"
-                    label="Restarts"
-                    value={numRestarts}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="number"
-                    min={1}
-                    value={numRestarts}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (val >= 1) onFieldChange('numRestarts', val);
-                    }}
-                    placeholder={String(defaults.numRestarts)}
-                    className="w-24"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">Cosine cycles</p>
-                </div>
+              {visibleFields.has('numRestarts') && (
+                <NumberField
+                  field="numRestarts"
+                  label="Restarts"
+                  value={numRestarts}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  kind="int"
+                  min={1}
+                  placeholder={String(defaults.numRestarts)}
+                  className="w-24"
+                  hint="Cosine cycles"
+                />
               )}
             </div>
           )}
@@ -527,115 +505,76 @@ const LearningSectionComponent = ({
 
         {/* Right column: compact scalars + advanced/expert extras */}
         <div className="space-y-3">
-          {(visibleFields.has('batchSize' satisfies keyof FormState) ||
-            visibleFields.has('seed' satisfies keyof FormState) ||
-            visibleFields.has('weightDecay' satisfies keyof FormState) ||
-            visibleFields.has('maxGradNorm' satisfies keyof FormState)) && (
+          {(visibleFields.has('batchSize') ||
+            visibleFields.has('seed') ||
+            visibleFields.has('weightDecay') ||
+            visibleFields.has('maxGradNorm')) && (
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {visibleFields.has('batchSize' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="batchSize"
-                    label="Batch Size"
-                    value={batchSize}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="number"
-                    min={1}
-                    max={8}
-                    value={batchSize}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (val > 0) onFieldChange('batchSize', val);
-                    }}
-                    className="w-full"
-                  />
-                  {batchSize > 1 && (
-                    <p className="mt-1 text-xs text-amber-500">
-                      Higher batch sizes use significantly more VRAM
-                    </p>
-                  )}
-                </div>
+              {visibleFields.has('batchSize') && (
+                <NumberField
+                  field="batchSize"
+                  label="Batch Size"
+                  value={batchSize}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  kind="int"
+                  min={1}
+                  max={8}
+                  className="w-full tabular-nums"
+                  hint={
+                    batchSize > 1 ? (
+                      <span className="text-amber-500">
+                        Higher batch sizes use significantly more VRAM
+                      </span>
+                    ) : undefined
+                  }
+                />
               )}
 
-              {visibleFields.has('seed' satisfies keyof FormState) && (
-                <div>
-                  <FormTitle>Seed</FormTitle>
-                  <Input
-                    type="number"
-                    min={-1}
-                    value={seed}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val) && val >= -1) onFieldChange('seed', val);
-                    }}
-                    className="w-full"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">
-                    -1 for random, fixed for reproducibility. Seeds the training
-                    run, not sample generation.
-                  </p>
-                </div>
+              {visibleFields.has('seed') && (
+                <NumberField
+                  field="seed"
+                  label="Seed"
+                  value={seed}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  kind="int"
+                  min={-1}
+                  className="w-full tabular-nums"
+                  hint="-1 for random, fixed for reproducibility. Seeds the training run, not sample generation."
+                />
               )}
 
-              {visibleFields.has('weightDecay' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="weightDecay"
-                    label="Weight Decay"
-                    value={weightDecay}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="text"
-                    value={weightDecay}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val >= 0)
-                        onFieldChange('weightDecay', val);
-                    }}
-                    placeholder={String(defaults.weightDecay)}
-                    className="w-full tabular-nums"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">
-                    L2 regularisation (0 = disabled)
-                  </p>
-                </div>
+              {visibleFields.has('weightDecay') && (
+                <NumberField
+                  field="weightDecay"
+                  label="Weight Decay"
+                  value={weightDecay}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  min={0}
+                  placeholder={String(defaults.weightDecay)}
+                  hint="L2 regularisation (0 = disabled)"
+                />
               )}
 
-              {visibleFields.has('maxGradNorm' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="maxGradNorm"
-                    label="Max Gradient Norm"
-                    value={maxGradNorm}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="text"
-                    value={maxGradNorm}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val >= 0)
-                        onFieldChange('maxGradNorm', val);
-                    }}
-                    placeholder={String(defaults.maxGradNorm)}
-                    className="w-full tabular-nums"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">
-                    Clip gradients (0 = disabled, 1.0 standard)
-                  </p>
-                </div>
+              {visibleFields.has('maxGradNorm') && (
+                <NumberField
+                  field="maxGradNorm"
+                  label="Max Gradient Norm"
+                  value={maxGradNorm}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  min={0}
+                  placeholder={String(defaults.maxGradNorm)}
+                  hint="Clip gradients (0 = disabled, 1.0 standard)"
+                />
               )}
             </div>
           )}
 
           {/* Train Text Encoder checkbox */}
-          {visibleFields.has('trainTextEncoder' satisfies keyof FormState) && (
+          {visibleFields.has('trainTextEncoder') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={trainTextEncoder}
@@ -652,60 +591,38 @@ const LearningSectionComponent = ({
           )}
 
           {/* Backbone LR + Text Encoder LR row */}
-          {(visibleFields.has('backboneLR' satisfies keyof FormState) ||
-            visibleFields.has('textEncoderLR' satisfies keyof FormState)) && (
+          {(visibleFields.has('backboneLR') ||
+            visibleFields.has('textEncoderLR')) && (
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {visibleFields.has('backboneLR' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="backboneLR"
-                    label="Backbone LR"
-                    value={backboneLR}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="text"
-                    value={backboneLR}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val >= 0)
-                        onFieldChange('backboneLR', val);
-                    }}
-                    placeholder={String(defaults.backboneLR)}
-                    className="w-full tabular-nums"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">0 = use main LR</p>
-                </div>
+              {visibleFields.has('backboneLR') && (
+                <NumberField
+                  field="backboneLR"
+                  label="Backbone LR"
+                  value={backboneLR}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  min={0}
+                  placeholder={String(defaults.backboneLR)}
+                  hint="0 = use main LR"
+                />
               )}
 
-              {visibleFields.has('textEncoderLR' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="textEncoderLR"
-                    label="Text Encoder LR"
-                    value={textEncoderLR}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="text"
-                    value={textEncoderLR}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val >= 0)
-                        onFieldChange('textEncoderLR', val);
-                    }}
-                    placeholder={String(defaults.textEncoderLR)}
-                    className="w-full tabular-nums"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">0 = use main LR</p>
-                </div>
+              {visibleFields.has('textEncoderLR') && (
+                <NumberField
+                  field="textEncoderLR"
+                  label="Text Encoder LR"
+                  value={textEncoderLR}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  min={0}
+                  placeholder={String(defaults.textEncoderLR)}
+                  hint="0 = use main LR"
+                />
               )}
             </div>
           )}
 
-          {visibleFields.has('ema' satisfies keyof FormState) && (
+          {visibleFields.has('ema') && (
             <div className="flex items-center gap-2">
               <Checkbox
                 isSelected={ema}
@@ -719,41 +636,27 @@ const LearningSectionComponent = ({
             </div>
           )}
 
-          {visibleFields.has('emaDecay' satisfies keyof FormState) && (
-            <div>
-              <FieldTitle
-                field="emaDecay"
-                label="EMA Decay"
-                value={emaDecay}
-                defaults={defaults}
-                onFieldChange={onFieldChange}
-              />
-              <Input
-                type="text"
-                value={emaDecay}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val) && val > 0 && val < 1)
-                    onFieldChange('emaDecay', val);
-                }}
-                placeholder={String(defaults.emaDecay)}
-                className="w-32 tabular-nums"
-              />
-              <p className="mt-1 text-xs text-slate-400">
-                Higher = slower-moving average (0.99 typical)
-              </p>
-            </div>
+          {visibleFields.has('emaDecay') && (
+            <NumberField
+              field="emaDecay"
+              label="EMA Decay"
+              value={emaDecay}
+              defaults={defaults}
+              onFieldChange={onFieldChange}
+              validate={(v) => v > 0 && v < 1}
+              placeholder={String(defaults.emaDecay)}
+              className="w-32 tabular-nums"
+              hint="Higher = slower-moving average (0.99 typical)"
+            />
           )}
 
           {/* Loss + Timestep row */}
-          {(visibleFields.has('lossType' satisfies keyof FormState) ||
-            visibleFields.has('timestepType' satisfies keyof FormState) ||
-            visibleFields.has('timestepBias' satisfies keyof FormState) ||
-            visibleFields.has(
-              'discreteFlowShift' satisfies keyof FormState,
-            )) && (
+          {(visibleFields.has('lossType') ||
+            visibleFields.has('timestepType') ||
+            visibleFields.has('timestepBias') ||
+            visibleFields.has('discreteFlowShift')) && (
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {visibleFields.has('lossType' satisfies keyof FormState) && (
+              {visibleFields.has('lossType') && (
                 <div>
                   <FieldTitle
                     field="lossType"
@@ -773,7 +676,7 @@ const LearningSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has('timestepType' satisfies keyof FormState) && (
+              {visibleFields.has('timestepType') && (
                 <div>
                   <FieldTitle
                     field="timestepType"
@@ -791,7 +694,7 @@ const LearningSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has('timestepBias' satisfies keyof FormState) && (
+              {visibleFields.has('timestepBias') && (
                 <div>
                   <FieldTitle
                     field="timestepBias"
@@ -814,95 +717,55 @@ const LearningSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has(
-                'discreteFlowShift' satisfies keyof FormState,
-              ) && (
-                <div>
-                  <FieldTitle
-                    field="discreteFlowShift"
-                    label="Flow Shift"
-                    value={discreteFlowShift}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="text"
-                    value={discreteFlowShift}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val > 0)
-                        onFieldChange('discreteFlowShift', val);
-                    }}
-                    placeholder={String(defaults.discreteFlowShift)}
-                    className="w-full tabular-nums"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">
-                    Flow-matching shift; higher biases training toward noisier
-                    timesteps.
-                  </p>
-                </div>
+              {visibleFields.has('discreteFlowShift') && (
+                <NumberField
+                  field="discreteFlowShift"
+                  label="Flow Shift"
+                  value={discreteFlowShift}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  validate={(v) => v > 0}
+                  placeholder={String(defaults.discreteFlowShift)}
+                  hint="Flow-matching shift; higher biases training toward noisier timesteps."
+                />
               )}
             </div>
           )}
 
           {/* Min-SNR + Noise Offset row (DDPM loss-shaping controls) */}
-          {(visibleFields.has('minSnrGamma' satisfies keyof FormState) ||
-            visibleFields.has('noiseOffset' satisfies keyof FormState)) && (
+          {(visibleFields.has('minSnrGamma') ||
+            visibleFields.has('noiseOffset')) && (
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {visibleFields.has('minSnrGamma' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="minSnrGamma"
-                    label="Min-SNR Gamma"
-                    value={minSnrGamma}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="text"
-                    value={minSnrGamma}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val >= 0)
-                        onFieldChange('minSnrGamma', val);
-                    }}
-                    placeholder={String(defaults.minSnrGamma)}
-                    className="w-full tabular-nums"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">
-                    Loss weighting; 5 recommended when enabled (0 = disabled)
-                  </p>
-                </div>
+              {visibleFields.has('minSnrGamma') && (
+                <NumberField
+                  field="minSnrGamma"
+                  label="Min-SNR Gamma"
+                  value={minSnrGamma}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  min={0}
+                  placeholder={String(defaults.minSnrGamma)}
+                  hint="Loss weighting; 5 recommended when enabled (0 = disabled)"
+                />
               )}
 
-              {visibleFields.has('noiseOffset' satisfies keyof FormState) && (
-                <div>
-                  <FieldTitle
-                    field="noiseOffset"
-                    label="Noise Offset"
-                    value={noiseOffset}
-                    defaults={defaults}
-                    onFieldChange={onFieldChange}
-                  />
-                  <Input
-                    type="text"
-                    value={noiseOffset}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val >= 0)
-                        onFieldChange('noiseOffset', val);
-                    }}
-                    placeholder={String(defaults.noiseOffset)}
-                    className="w-full tabular-nums"
-                  />
-                  <p className="mt-1 text-xs text-slate-400">0 = disabled</p>
-                </div>
+              {visibleFields.has('noiseOffset') && (
+                <NumberField
+                  field="noiseOffset"
+                  label="Noise Offset"
+                  value={noiseOffset}
+                  defaults={defaults}
+                  onFieldChange={onFieldChange}
+                  min={0}
+                  placeholder={String(defaults.noiseOffset)}
+                  hint="0 = disabled"
+                />
               )}
             </div>
           )}
 
           {/* Content vs style bias */}
-          {visibleFields.has('contentOrStyle' satisfies keyof FormState) && (
+          {visibleFields.has('contentOrStyle') && (
             <div>
               <FieldTitle
                 field="contentOrStyle"
@@ -929,9 +792,7 @@ const LearningSectionComponent = ({
           )}
 
           {/* Differential output preservation */}
-          {visibleFields.has(
-            'diffOutputPreservation' satisfies keyof FormState,
-          ) && (
+          {visibleFields.has('diffOutputPreservation') && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -957,46 +818,24 @@ const LearningSectionComponent = ({
                 </p>
               )}
 
-              {(visibleFields.has(
-                'diffOutputPreservationMultiplier' satisfies keyof FormState,
-              ) ||
-                visibleFields.has(
-                  'diffOutputPreservationClass' satisfies keyof FormState,
-                )) && (
+              {(visibleFields.has('diffOutputPreservationMultiplier') ||
+                visibleFields.has('diffOutputPreservationClass')) && (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  {visibleFields.has(
-                    'diffOutputPreservationMultiplier' satisfies keyof FormState,
-                  ) && (
-                    <div>
-                      <FieldTitle
-                        field="diffOutputPreservationMultiplier"
-                        label="DOP Multiplier"
-                        value={diffOutputPreservationMultiplier}
-                        defaults={defaults}
-                        onFieldChange={onFieldChange}
-                      />
-                      <Input
-                        type="text"
-                        value={diffOutputPreservationMultiplier}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          if (!isNaN(val) && val >= 0)
-                            onFieldChange(
-                              'diffOutputPreservationMultiplier',
-                              val,
-                            );
-                        }}
-                        placeholder={String(
-                          defaults.diffOutputPreservationMultiplier,
-                        )}
-                        className="w-full tabular-nums"
-                      />
-                    </div>
+                  {visibleFields.has('diffOutputPreservationMultiplier') && (
+                    <NumberField
+                      field="diffOutputPreservationMultiplier"
+                      label="DOP Multiplier"
+                      value={diffOutputPreservationMultiplier}
+                      defaults={defaults}
+                      onFieldChange={onFieldChange}
+                      min={0}
+                      placeholder={String(
+                        defaults.diffOutputPreservationMultiplier,
+                      )}
+                    />
                   )}
 
-                  {visibleFields.has(
-                    'diffOutputPreservationClass' satisfies keyof FormState,
-                  ) && (
+                  {visibleFields.has('diffOutputPreservationClass') && (
                     <div>
                       <FieldTitle
                         field="diffOutputPreservationClass"
@@ -1028,7 +867,7 @@ const LearningSectionComponent = ({
           )}
 
           {/* Raw optimizer args */}
-          {visibleFields.has('optimizerArgs' satisfies keyof FormState) && (
+          {visibleFields.has('optimizerArgs') && (
             <div>
               <FieldTitle
                 field="optimizerArgs"

@@ -9,6 +9,7 @@ import {
 import Image from 'next/image';
 import { memo, useCallback, useMemo, useState } from 'react';
 
+import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
@@ -21,9 +22,9 @@ import type {
   DatasetSource,
   ExtraFolder,
   FolderAugmentation,
-  FormState,
   SectionName,
 } from '../../training-config-form/use-training-config-form';
+import { SectionHeaderExtra } from '../section-header-extra';
 import { SectionResetButton } from '../section-reset-button';
 import { FolderRow } from './folder-row';
 
@@ -34,7 +35,7 @@ type DatasetSectionProps = {
   extraFolders: ExtraFolder[];
   selectedProvider: TrainingProvider;
   hasChanges: boolean;
-  visibleFields: Set<string>;
+  visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
   onAddDataset: (
     folderName: string,
@@ -132,17 +133,10 @@ const DatasetSectionComponent = ({
     <CollapsibleSection
       title="Dataset"
       headerExtra={
-        <>
-          {hasChanges && (
-            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
-          )}
-          {hiddenChangesCount ? (
-            <span className="text-xs text-amber-500/70">
-              {hiddenChangesCount} hidden{' '}
-              {hiddenChangesCount === 1 ? 'setting' : 'settings'} customised
-            </span>
-          ) : undefined}
-        </>
+        <SectionHeaderExtra
+          hasChanges={hasChanges}
+          hiddenChangesCount={hiddenChangesCount}
+        />
       }
       headerActions={(expanded) =>
         expanded ? (
@@ -178,9 +172,8 @@ const DatasetSectionComponent = ({
             </p>
             <p className="mt-1 text-xs text-slate-400">
               Add a tagging project
-              {visibleFields.has('extraFolders' satisfies keyof FormState) &&
-                ' or folder of images'}{' '}
-              to begin
+              {visibleFields.has('extraFolders') && ' or folder of images'} to
+              begin
             </p>
             <div className="mt-3 flex items-center justify-center gap-2">
               <ProjectPicker
@@ -191,7 +184,7 @@ const DatasetSectionComponent = ({
                 Add Project
               </ProjectPicker>
 
-              {visibleFields.has('extraFolders' satisfies keyof FormState) && (
+              {visibleFields.has('extraFolders') && (
                 <Button
                   variant="ghost"
                   size="md"
@@ -309,7 +302,7 @@ const DatasetSectionComponent = ({
                 Add Project
               </ProjectPicker>
 
-              {visibleFields.has('extraFolders' satisfies keyof FormState) && (
+              {visibleFields.has('extraFolders') && (
                 <Button
                   onClick={handleBrowseFolder}
                   variant="ghost"

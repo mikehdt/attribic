@@ -13,6 +13,11 @@ import type {
 } from '@/app/services/training/types';
 
 import type { AppThunk, RootState } from '../index';
+import { addJob, openPanel, removeJob, updateTrainingProgress } from '../jobs';
+import type { TrainingJob } from '../jobs/types';
+import { addToast } from '../toasts/reducers';
+import type { FormState } from '../training-config/types';
+import { dismissFromPanel } from '../training-history';
 
 // WebSocket handlers need a dispatch function that accepts thunks + actions.
 // Inside a thunk, `dispatch` is typed with an `unknown` extra-arg slot while
@@ -20,11 +25,6 @@ import type { AppThunk, RootState } from '../index';
 // assignment-compatible. Accept a loose dispatch here — we only use it to
 // forward known action creators.
 type ThunkDispatch = (action: unknown) => unknown;
-import { addJob, openPanel, removeJob, updateTrainingProgress } from '../jobs';
-import type { TrainingJob } from '../jobs/types';
-import { addToast } from '../toasts/reducers';
-import type { FormState } from '../training-config/types';
-import { dismissFromPanel } from '../training-history';
 
 // ---------------------------------------------------------------------------
 // Sidecar progress payload (snake_case — matches training-sidecar/models.py)
@@ -93,6 +93,17 @@ const ws: WsState = {
   sampleStepsByJob: new Map(),
   startedAtByJob: new Map(),
 };
+
+/**
+ * Drop a job's WS-router metadata. Called when a job is cleared from the
+ * panel — the maps are keyed by job id and would otherwise grow for the life
+ * of the page.
+ */
+function forgetJob(jobId: string) {
+  ws.checkpointStepsByJob.delete(jobId);
+  ws.sampleStepsByJob.delete(jobId);
+  ws.startedAtByJob.delete(jobId);
+}
 
 function closeSocket() {
   if (ws.socket) {
@@ -215,28 +226,49 @@ function ensureProgressSocket(dispatch: ThunkDispatch, port: number) {
 // Checkpoint step derivation (UI-only — sidecar doesn't report these)
 // ---------------------------------------------------------------------------
 
-function deriveCheckpointSteps(config: Record<string, unknown>): number[] {
-  const saveEnabled = (config.saveEnabled as boolean) ?? false;
-  if (!saveEnabled) return [];
-
-  const totalSteps = (config.steps as number) || 0;
-  const epochs = (config.epochs as number) || 0;
-  const saveMode = (config.saveMode as string) ?? 'epochs';
-  const saveEveryEpochs = (config.saveEveryEpochs as number) ?? 1;
-  const saveEverySteps = (config.saveEverySteps as number) ?? 100;
-
+/**
+ * Step positions a repeating cadence lands on across a run. Saving and
+ * sampling both express their cadence as "every N epochs" or "every N steps"
+ * over the same timeline, so they share this: only the config keys and the
+ * enablement rule differ.
+ */
+function deriveCadenceSteps({
+  mode,
+  everyEpochs,
+  everySteps,
+  totalSteps,
+  epochs,
+}: {
+  mode: string;
+  everyEpochs: number;
+  everySteps: number;
+  totalSteps: number;
+  epochs: number;
+}): number[] {
   const out: number[] = [];
-  if (saveMode === 'epochs' && saveEveryEpochs > 0 && epochs > 0) {
+  if (mode === 'epochs' && everyEpochs > 0 && epochs > 0) {
     const stepsPerEpoch = Math.max(1, Math.ceil(totalSteps / epochs));
-    for (let e = saveEveryEpochs; e <= epochs; e += saveEveryEpochs) {
+    for (let e = everyEpochs; e <= epochs; e += everyEpochs) {
       out.push(Math.min(e * stepsPerEpoch, totalSteps));
     }
-  } else if (saveMode === 'steps' && saveEverySteps > 0) {
-    for (let s = saveEverySteps; s <= totalSteps; s += saveEverySteps) {
+  } else if (mode === 'steps' && everySteps > 0) {
+    for (let s = everySteps; s <= totalSteps; s += everySteps) {
       out.push(s);
     }
   }
   return out;
+}
+
+function deriveCheckpointSteps(config: Record<string, unknown>): number[] {
+  if (!((config.saveEnabled as boolean) ?? false)) return [];
+
+  return deriveCadenceSteps({
+    mode: (config.saveMode as string) ?? 'epochs',
+    everyEpochs: (config.saveEveryEpochs as number) ?? 1,
+    everySteps: (config.saveEverySteps as number) ?? 100,
+    totalSteps: (config.steps as number) || 0,
+    epochs: (config.epochs as number) || 0,
+  });
 }
 
 /**
@@ -252,24 +284,13 @@ function deriveSampleSteps(config: Record<string, unknown>): number[] {
   );
   if (!samplingEnabled || prompts.length === 0) return [];
 
-  const totalSteps = (config.steps as number) || 0;
-  const epochs = (config.epochs as number) || 0;
-  const sampleMode = (config.sampleMode as string) ?? 'steps';
-  const sampleEveryEpochs = (config.sampleEveryEpochs as number) ?? 1;
-  const sampleEverySteps = (config.sampleEverySteps as number) ?? 250;
-
-  const out: number[] = [];
-  if (sampleMode === 'epochs' && sampleEveryEpochs > 0 && epochs > 0) {
-    const stepsPerEpoch = Math.max(1, Math.ceil(totalSteps / epochs));
-    for (let e = sampleEveryEpochs; e <= epochs; e += sampleEveryEpochs) {
-      out.push(Math.min(e * stepsPerEpoch, totalSteps));
-    }
-  } else if (sampleMode === 'steps' && sampleEverySteps > 0) {
-    for (let s = sampleEverySteps; s <= totalSteps; s += sampleEverySteps) {
-      out.push(s);
-    }
-  }
-  return out;
+  return deriveCadenceSteps({
+    mode: (config.sampleMode as string) ?? 'steps',
+    everyEpochs: (config.sampleEveryEpochs as number) ?? 1,
+    everySteps: (config.sampleEverySteps as number) ?? 250,
+    totalSteps: (config.steps as number) || 0,
+    epochs: (config.epochs as number) || 0,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -428,7 +449,12 @@ export function startTraining(
 export function cancelTraining(jobId: string): AppThunk {
   return async (dispatch) => {
     try {
-      await fetch('/api/training/cancel', { method: 'POST' });
+      // Cancel this job specifically. The sidecar falls back to its "focus"
+      // job (running one, else oldest queued) when no id is given, which
+      // cancels the wrong run as soon as more than one is queued.
+      await fetch(`/api/training/cancel?job_id=${encodeURIComponent(jobId)}`, {
+        method: 'POST',
+      });
     } catch (err) {
       console.warn('[training] cancel failed:', err);
     }
@@ -448,12 +474,17 @@ export function cancelTraining(jobId: string): AppThunk {
 export function clearTrainingJob(jobId: string): AppThunk {
   return async (dispatch) => {
     dispatch(removeJob(jobId));
+    forgetJob(jobId);
     // Terminal runs live in the durable history archive, which the activity
     // panel re-seeds from on refresh. Mark this one dismissed so it stays out
     // of the panel (it remains in the Run History view).
     dispatch(dismissFromPanel(jobId));
     try {
-      await fetch('/api/training/clear', { method: 'POST' });
+      // Scoped to this job — omitting the id clears every terminal job the
+      // sidecar is holding, taking unrelated finished runs with it.
+      await fetch(`/api/training/clear?job_id=${encodeURIComponent(jobId)}`, {
+        method: 'POST',
+      });
     } catch (err) {
       console.warn('[training] clear failed:', err);
     }
@@ -542,6 +573,7 @@ export function hydrateActiveTraining(): AppThunk {
       // Reconstruct a minimal TrainingJob. Sidecar config is snake_case —
       // pick out the fields used for rendering the job card.
       const cfg = active.config ?? {};
+      const hp = (cfg.hyperparameters as Record<string, unknown>) ?? {};
       const provider =
         (cfg.provider as TrainingProvider) ??
         (cfg.provider_type as TrainingProvider) ??
@@ -566,42 +598,22 @@ export function hydrateActiveTraining(): AppThunk {
           outputName: (cfg.output_name as string) ?? 'unnamed-lora',
           datasets: [],
           hyperparameters: {
-            learningRate:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.lr as number) ?? 1e-4,
-            epochs:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.epochs as number) ?? 0,
-            batchSize:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.batch_size as number) ?? 1,
+            learningRate: (hp.lr as number) ?? 1e-4,
+            epochs: (hp.epochs as number) ?? 0,
+            batchSize: (hp.batch_size as number) ?? 1,
             resolution: 1024,
-            networkDim:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.network_dim as number) ?? 16,
-            networkAlpha:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.network_alpha as number) ?? 16,
-            optimizer:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.optimizer as string) ?? 'adamw8bit',
-            scheduler:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.scheduler as string) ?? 'constant',
-            warmupSteps:
-              ((cfg.hyperparameters as Record<string, unknown>)
-                ?.warmup_steps as number) ?? 0,
+            networkDim: (hp.network_dim as number) ?? 16,
+            networkAlpha: (hp.network_alpha as number) ?? 16,
+            optimizer: (hp.optimizer as string) ?? 'adamw8bit',
+            scheduler: (hp.scheduler as string) ?? 'constant',
+            warmupSteps: (hp.warmup_steps as number) ?? 0,
             saveEveryNEpochs: 1,
             sampleEveryNSteps: 250,
             gradientAccumulationSteps: 1,
             mixedPrecision: 'bf16',
             extra: {
-              numRestarts:
-                ((cfg.hyperparameters as Record<string, unknown>)
-                  ?.num_restarts as number) ?? 1,
-              maxSavesToKeep:
-                ((cfg.hyperparameters as Record<string, unknown>)
-                  ?.max_saves_to_keep as number) ?? 0,
+              numRestarts: (hp.num_restarts as number) ?? 1,
+              maxSavesToKeep: (hp.max_saves_to_keep as number) ?? 0,
             },
           },
           // The persisted request carries the prompts — they drive the samples

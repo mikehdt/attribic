@@ -12,7 +12,7 @@ export type ModelArchitecture =
 export type ModelComponentType =
   'checkpoint' | 'vae' | 't5' | 'clip_l' | 'ae' | 'qwen';
 
-export type ModelComponent = {
+type ModelComponent = {
   type: ModelComponentType;
   label: string;
   required: boolean;

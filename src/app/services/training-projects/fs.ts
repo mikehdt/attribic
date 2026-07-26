@@ -25,7 +25,7 @@ import type {
 
 // --- Path helpers ---
 
-export function getTrainingProjectsRoot(): string {
+function getTrainingProjectsRoot(): string {
   return getTrainingProjectsDir();
 }
 

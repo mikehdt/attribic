@@ -1,5 +1,11 @@
-import type { ModelComponentType } from '@/app/services/training/models';
-import type { TrainingProvider } from '@/app/services/training/types';
+import type {
+  ConceptualGroup,
+  TrainingFieldName,
+} from '@/app/services/training/field-registry';
+import type {
+  ModelPaths,
+  TrainingProvider,
+} from '@/app/services/training/types';
 
 export type DatasetSource = {
   projectName: string;
@@ -45,16 +51,11 @@ export type ExtraFolder = {
   overrideRepeats: number | null;
 } & FolderAugmentation;
 
-export type FolderAugmentKey = keyof FolderAugmentation;
-
 export type DurationMode = 'epochs' | 'steps';
 
-export type ModelPaths = Partial<Record<ModelComponentType, string>>;
+export type { ModelPaths };
 
-export type AppModelDefaults = Record<
-  string,
-  Partial<Record<ModelComponentType, string>>
->;
+export type AppModelDefaults = Record<string, ModelPaths>;
 
 export type FormState = {
   modelId: string;
@@ -158,14 +159,31 @@ export type FormState = {
   lowVram: boolean;
 };
 
-export type SectionName =
-  | 'whatToTrain'
-  | 'dataset'
-  | 'learning'
-  | 'loraShape'
-  | 'performance'
-  | 'sampling'
-  | 'saving';
+/**
+ * A form section. Same set as the field registry's groups — aliased rather than
+ * redeclared so the two can't drift.
+ */
+export type SectionName = ConceptualGroup;
+
+/**
+ * Compile-time proof that `FIELD_REGISTRY` and `FormState` describe the same
+ * fields. Per-section reset and change detection are both derived from the
+ * registry, so a field present in one but not the other would silently opt out
+ * of resetting and of the "section has changes" indicator. Either half being
+ * non-`never` resolves to `false` here and fails to satisfy `true`.
+ */
+type Expect<T extends true> = T;
+// Deliberately unreferenced — the assertion is the whole point, and exporting
+// it just to satisfy the linter would put a meaningless type on the module's
+// public surface.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type FieldRegistryCoversFormState = Expect<
+  Exclude<keyof FormState, TrainingFieldName> extends never
+    ? Exclude<TrainingFieldName, keyof FormState> extends never
+      ? true
+      : false
+    : false
+>;
 
 /** Metadata describing the saved project currently loaded into the form. */
 export type LoadedProject = {

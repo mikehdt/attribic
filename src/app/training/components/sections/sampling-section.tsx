@@ -1,6 +1,7 @@
 import { PlusIcon, XIcon } from 'lucide-react';
 import { memo } from 'react';
 
+import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
@@ -15,6 +16,7 @@ import type {
   FormState,
   SectionName,
 } from '../training-config-form/use-training-config-form';
+import { SectionHeaderExtra } from './section-header-extra';
 import { SectionResetButton } from './section-reset-button';
 
 /**
@@ -32,7 +34,7 @@ import { SectionResetButton } from './section-reset-button';
  * choice — the sidecar overrides it for those archs since anything else
  * would build the wrong scheduler class for a flow-matching transformer.
  */
-export const SAMPLE_SAMPLER_ITEMS: DropdownItem<string>[] = [
+const SAMPLE_SAMPLER_ITEMS: DropdownItem<string>[] = [
   { value: 'euler_a', label: 'Euler Ancestral' },
   { value: 'euler', label: 'Euler' },
   { value: 'ddim', label: 'DDIM' },
@@ -54,7 +56,7 @@ type SamplingSectionProps = {
   calculatedSteps: number;
   calculatedEpochs: number;
   defaults: TrainingDefaults;
-  visibleFields: Set<string>;
+  visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
   onFieldChange: <K extends keyof FormState>(
     field: K,
@@ -165,12 +167,7 @@ const SamplingSectionComponent = ({
     <CollapsibleSection
       title="Sampling"
       headerExtra={
-        hiddenChangesCount ? (
-          <span className="text-xs text-amber-500/70">
-            {hiddenChangesCount} hidden{' '}
-            {hiddenChangesCount === 1 ? 'setting' : 'settings'} customised
-          </span>
-        ) : undefined
+        <SectionHeaderExtra hiddenChangesCount={hiddenChangesCount} />
       }
       headerActions={(expanded) =>
         samplingEnabled && expanded ? (
@@ -180,7 +177,7 @@ const SamplingSectionComponent = ({
     >
       <div className="space-y-3">
         {/* Enable Sampling */}
-        {visibleFields.has('samplingEnabled' satisfies keyof FormState) && (
+        {visibleFields.has('samplingEnabled') && (
           <Checkbox
             isSelected={samplingEnabled}
             onChange={() => onFieldChange('samplingEnabled', !samplingEnabled)}
@@ -192,7 +189,7 @@ const SamplingSectionComponent = ({
         {samplingEnabled && (
           <>
             {/* Sample Prompts — full width */}
-            {visibleFields.has('samplePrompts' satisfies keyof FormState) && (
+            {visibleFields.has('samplePrompts') && (
               <div>
                 <FormTitle>Sample Prompts</FormTitle>
                 <div className="space-y-1.5">
@@ -231,12 +228,8 @@ const SamplingSectionComponent = ({
 
             {/* Frequency + Steps + Guidance + Noise row */}
             <div className="grid grid-cols-4 gap-x-4 gap-y-3">
-              {(visibleFields.has(
-                'sampleEveryEpochs' satisfies keyof FormState,
-              ) ||
-                visibleFields.has(
-                  'sampleEverySteps' satisfies keyof FormState,
-                )) && (
+              {(visibleFields.has('sampleEveryEpochs') ||
+                visibleFields.has('sampleEverySteps')) && (
                 // Same tray treatment as the Saving section's "Save Every",
                 // so the two cadence controls read as the same kind of thing.
                 // Spans two columns — the tray needs the width.
@@ -266,7 +259,7 @@ const SamplingSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has('sampleSteps' satisfies keyof FormState) && (
+              {visibleFields.has('sampleSteps') && (
                 <div>
                   <FieldTitle
                     field="sampleSteps"
@@ -289,7 +282,7 @@ const SamplingSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has('guidanceScale' satisfies keyof FormState) && (
+              {visibleFields.has('guidanceScale') && (
                 <div>
                   <FieldTitle
                     field="guidanceScale"
@@ -311,7 +304,7 @@ const SamplingSectionComponent = ({
                 </div>
               )}
 
-              {visibleFields.has('sampleSampler' satisfies keyof FormState) && (
+              {visibleFields.has('sampleSampler') && (
                 <div>
                   <FieldTitle
                     field="sampleSampler"
