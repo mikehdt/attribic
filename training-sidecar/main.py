@@ -27,11 +27,14 @@ from models import (
     CaptionResponse,
     HealthResponse,
     StartJobRequest,
+    SystemStats,
 )
 from ai_toolkit_server import AiToolkitServer
 from providers.ai_toolkit_ui import AiToolkitUiProvider
 from providers.kohya import KohyaProvider
 from providers.mock import MockProvider
+from system_stats import collect as collect_system_stats
+from system_stats import prime as prime_system_stats
 from ws_manager import WebSocketManager
 
 # --- Globals initialised at startup ---
@@ -153,6 +156,10 @@ async def lifespan(app: FastAPI):
     )
     _register_providers(job_manager, sidecar_config)
 
+    # psutil's CPU reading is "since the last call", so burn one here — long
+    # before anything asks for stats — rather than serving a 0% first sample.
+    prime_system_stats()
+
     # Write PID file so Node.js can find us after a restart
     pid_path = sidecar_config.training_dir / "sidecar.pid"
     pid_path.write_text(str(os.getpid()), encoding="utf-8")
@@ -230,6 +237,17 @@ async def _stamp_activity(request, call_next):
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(active_job=job_manager.active_job_id)
+
+
+@app.get("/system/stats", response_model=SystemStats)
+async def system_stats():
+    """Host CPU / memory / GPU load.
+
+    Machine-wide, not per-job: the GPU figures include anything else using the
+    card, and with the queue sharing one GPU between training and captioning
+    they can't be attributed to a single run. Callers should label it as such.
+    """
+    return await collect_system_stats()
 
 
 @app.post("/heartbeat")

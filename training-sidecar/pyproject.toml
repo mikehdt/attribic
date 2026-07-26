@@ -10,6 +10,9 @@ dependencies = [
     "pydantic>=2.10,<3",
     "pyyaml>=6,<7",
     "httpx>=0.27,<1",
+    # Host CPU / memory sampling for the activity readouts (see system_stats).
+    # GPU figures come from shelling out to nvidia-smi, so no CUDA dependency.
+    "psutil>=6,<8",
     # VLM captioning backend — install on demand via the "vlm" extra once
     # we're ready to swap the mock provider. Keeping it optional means the
     # sidecar can run without a CUDA toolchain.

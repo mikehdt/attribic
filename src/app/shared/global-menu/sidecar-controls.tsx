@@ -1,6 +1,7 @@
 import { PlayIcon, PowerIcon, RefreshCwIcon } from 'lucide-react';
 
 import { MenuItem } from '@/app/shared/menu-item';
+import { Stats } from '@/app/shared/stats/stats';
 
 import { type SidecarStatus, useSidecarStatus } from './use-sidecar-status';
 
@@ -36,6 +37,14 @@ export const SidecarControls = ({ enabled }: SidecarControlsProps) => {
         <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
         Sidecar &middot; {meta.label}
       </div>
+
+      {/* Host load — only worth polling while the menu is open AND there's a
+          sidecar to ask; a stopped one has nothing to report. */}
+      {status === 'ready' && (
+        <div className="px-3 pb-2">
+          <Stats enabled={enabled && status === 'ready'} />
+        </div>
+      )}
 
       {canStart && (
         <MenuItem

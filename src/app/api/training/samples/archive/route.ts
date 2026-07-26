@@ -29,9 +29,31 @@ const archiveName = (sample: SampleImage, ext: string): string => {
 };
 
 /**
- * POST /api/training/samples/archive — move a terminal run's training samples
- * into a per-run archive folder so Run History owns them and Kohya's shared
- * `sample/` dir stays clean.
+ * Best-effort delete of a trainer's original for a sample the sidecar already
+ * copied into the archive. Confined to the loras root like everything else; a
+ * failure just leaves a duplicate behind, which is why nothing is reported.
+ */
+const sweepSource = (root: string, sourcePath: unknown): void => {
+  if (typeof sourcePath !== 'string' || sourcePath === '') return;
+  const source = path.resolve(root, sourcePath);
+  if (!isWithin(root, source)) return;
+  try {
+    fs.rmSync(source, { force: true });
+  } catch {
+    // Locked / already gone — a leftover duplicate is harmless.
+  }
+};
+
+/**
+ * POST /api/training/samples/archive — make sure a terminal run's training
+ * samples live in a per-run archive folder, so Run History owns them and
+ * Kohya's shared `sample/` dir stays clean.
+ *
+ * The sidecar now copies each sample into `<root>/.run-samples/<jobId>/` as
+ * soon as it sees it, so the common case here is the tidy-up: the entry is
+ * already archived and we delete the trainer's original (`sourcePath`). The
+ * move path below still runs for runs collected before that existed, and for
+ * any sample whose live copy failed.
  *
  * Body: `{ jobId, samples }` (camelCase — client↔Next). Each sample is confined
  * to the loras root, then moved into `<root>/.run-samples/<jobId>/` with a
@@ -72,18 +94,39 @@ export async function POST(request: Request) {
     for (const sample of samples) {
       if (!sample || typeof sample.path !== 'string') continue;
 
-      const source = path.resolve(root, sample.path);
+      let source = path.resolve(root, sample.path);
       if (!isWithin(root, source)) continue; // failed confinement → skip
-      if (!fs.existsSync(source)) continue; // missing (e.g. predates restart) → skip
 
-      // Already inside this run's archive folder (a re-archive of a moved
-      // run) — keep it exactly where and as it is.
+      if (!fs.existsSync(source)) {
+        // The recorded file is gone. If the sidecar copied this sample and the
+        // copy is what vanished, the trainer's original may still be there —
+        // fall back to it and archive it the long way below.
+        const fallback =
+          typeof sample.sourcePath === 'string' && sample.sourcePath !== ''
+            ? path.resolve(root, sample.sourcePath)
+            : null;
+        if (
+          !fallback ||
+          !isWithin(root, fallback) ||
+          !fs.existsSync(fallback)
+        ) {
+          continue; // genuinely missing (e.g. predates restart) → skip
+        }
+        source = fallback;
+      }
+
+      // Already inside this run's archive folder — the normal case now that
+      // the sidecar copies samples as it collects them. Keep it exactly where
+      // and as it is, and sweep the trainer's original, which is the whole
+      // reason this route still runs at terminal.
       if (path.dirname(source) === archiveDir) {
+        sweepSource(root, sample.sourcePath);
         archived.push({
           path: `.run-samples/${jobId}/${path.basename(source)}`,
           step: sample.step,
           epoch: sample.epoch,
           promptIndex: sample.promptIndex,
+          sourcePath: null,
         });
         continue;
       }
@@ -119,16 +162,20 @@ export async function POST(request: Request) {
             step: sample.step,
             epoch: sample.epoch,
             promptIndex: sample.promptIndex,
+            sourcePath: sample.sourcePath ?? null,
           });
           continue;
         }
       }
 
+      // The move consumed whichever file we started from, so nothing is left
+      // to sweep later.
       archived.push({
         path: `.run-samples/${jobId}/${name}`,
         step: sample.step,
         epoch: sample.epoch,
         promptIndex: sample.promptIndex,
+        sourcePath: null,
       });
     }
 

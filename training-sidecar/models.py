@@ -50,12 +50,19 @@ class SampleImage(BaseModel):
     using POSIX separators so the client can build a serving URL without
     knowing the machine's absolute layout. Step and prompt index are recovered
     from the filename; epoch is only set for Kohya epoch-cadence runs.
+
+    `path` normally points into the run's archive folder, since providers copy
+    each sample there as soon as they see it (see `sample_archive`), with
+    `source_path` holding the trainer's original so it can be swept when the
+    run ends. When the copy couldn't be made, `path` is the original and
+    `source_path` is None.
     """
 
     path: str
     step: int  # 0 if unknown
     epoch: int | None = None  # Kohya epoch-cadence runs only
     prompt_index: int
+    source_path: str | None = None
 
 
 class SampleProgress(BaseModel):
@@ -176,6 +183,35 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     version: str = "0.1.0"
     active_job: Optional[str] = None
+
+
+class GpuStats(BaseModel):
+    """One GPU's current load, as reported by nvidia-smi.
+
+    Every figure is optional because nvidia-smi answers `[N/A]` for anything a
+    given card or driver doesn't expose (temperature on some virtualised GPUs,
+    for instance).
+    """
+
+    index: int
+    name: str
+    utilization: Optional[float] = None  # percent
+    memory_used_mb: Optional[float] = None
+    memory_total_mb: Optional[float] = None
+    temperature_c: Optional[float] = None
+
+
+class SystemStats(BaseModel):
+    """Host load at a moment in time — machine-wide, not per-job.
+
+    Fields are optional so a host missing a source (no psutil, no NVIDIA GPU)
+    still gets a valid response with the parts it can measure.
+    """
+
+    cpu_percent: Optional[float] = None
+    memory_used_mb: Optional[float] = None
+    memory_total_mb: Optional[float] = None
+    gpus: list[GpuStats] = []
 
 
 class StartJobResponse(BaseModel):

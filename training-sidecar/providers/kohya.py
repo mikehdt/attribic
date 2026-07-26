@@ -29,6 +29,7 @@ from models import (
     StartJobRequest,
 )
 from providers.base import TrainingProvider
+from sample_archive import copy_into_run_archive, is_settled
 
 # sd-scripts' main training bar looks like:
 #   steps:   5%|▌         | 150/3000 [00:30<09:30,  2.30it/s, avr_loss=0.0912]
@@ -363,8 +364,18 @@ def _collect_new_samples(
     output_name: str,
     seen: set[str],
     samples: list[SampleImage],
+    job_id: Optional[str] = None,
+    require_settled: bool = True,
 ) -> None:
     """Diff the sample dir against `seen`, appending freshly-written samples.
+
+    Each new file is copied into the run's archive folder as it's claimed, so
+    the run owns its images immediately rather than at terminal — which matters
+    most here, where `sample/` is shared by every Kohya run (see
+    `sample_archive`). A file that's still being written is left unclaimed for
+    the next sweep — except on the final sweep, which runs after sd-scripts has
+    exited (so nothing can still be mid-write) and is the last chance to claim
+    anything: pass `require_settled=False` there.
 
     Mutates both `seen` (so a file is claimed once) and `samples` (the running
     ordered list forwarded on JobProgress).
@@ -373,11 +384,15 @@ def _collect_new_samples(
     new_files = current - seen
     if not new_files:
         return
-    seen |= new_files
     for path in sorted(new_files):
+        if require_settled and not is_settled(path):
+            continue  # mid-write — re-examined next sweep
+        seen.add(path)
         entry = _parse_sample(path, output_name)
         if entry is not None:
-            samples.append(entry)
+            samples.append(
+                copy_into_run_archive(output_path, job_id, path, entry)
+            )
 
 
 class KohyaProvider(TrainingProvider):
@@ -787,9 +802,15 @@ class KohyaProvider(TrainingProvider):
         return args
 
     async def start_training(
-        self, request: StartJobRequest, config_path: str, gpu_id: int = 0
+        self,
+        request: StartJobRequest,
+        config_path: str,
+        gpu_id: int = 0,
+        job_id: Optional[str] = None,
     ) -> AsyncGenerator[JobProgress, None]:
-        job_id = request.output_name  # Overridden by caller with the real job ID
+        # The manager passes its real id (and overwrites the one we set on each
+        # yielded progress anyway); output_name is the standalone fallback.
+        job_id = job_id or request.output_name
 
         model_def = _find_model(request.base_model)
         if model_def is None:
@@ -1023,6 +1044,7 @@ class KohyaProvider(TrainingProvider):
                     request.output_name,
                     seen_samples,
                     samples,
+                    job_id,
                 )
 
                 yield JobProgress(
@@ -1132,6 +1154,7 @@ class KohyaProvider(TrainingProvider):
                             request.output_name,
                             seen_samples,
                             samples,
+                            job_id,
                         )
                         yield JobProgress(
                             job_id=job_id,
@@ -1196,11 +1219,15 @@ class KohyaProvider(TrainingProvider):
         # last training-bar update, so catch any stragglers here. Runs on the
         # failure path too: progress updates replace client state wholesale, so
         # a terminal yield without `samples` would wipe everything collected.
+        # sd-scripts has exited by now, so nothing can be mid-write and this is
+        # the last chance to claim anything: skip the settle gate.
         _collect_new_samples(
             request.output_path,
             request.output_name,
             seen_samples,
             samples,
+            job_id,
+            require_settled=False,
         )
 
         if return_code == 0:

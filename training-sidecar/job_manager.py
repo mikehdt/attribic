@@ -462,7 +462,7 @@ class JobManager:
             config_path = await provider.generate_config(request, config_dir)
 
             async for progress in provider.start_training(
-                request, config_path, gpu_id=gpu_id
+                request, config_path, gpu_id=gpu_id, job_id=job_id
             ):
                 progress.job_id = job_id
                 await self._update_progress(progress)

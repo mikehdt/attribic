@@ -454,6 +454,26 @@ export async function getSidecarActiveJob(): Promise<string | null> {
 }
 
 /**
+ * Host CPU / memory / GPU load from the sidecar, or null when it isn't
+ * reachable. Never starts one — this backs a UI poll, and booting a Python
+ * server as a side effect of drawing a stats readout is never what was meant.
+ */
+export async function getSidecarSystemStats(): Promise<unknown | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+    const res = await fetch(`http://127.0.0.1:${state.port}/system/stats`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Kill the running sidecar — both the process we spawned and any orphan
  * recorded in the PID file (which is what we have after reconnecting across a
  * Node restart) — then wait until its port is free so a fresh spawn can bind.

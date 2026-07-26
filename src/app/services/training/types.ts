@@ -46,12 +46,18 @@ export type SpeedPoint = { step: number; secPerIt: number };
  * relative to the loras root (POSIX separators) so the client resolves it
  * against the samples serving route without any path math. Step and prompt
  * index come from the filename; epoch is only set for Kohya epoch-cadence runs.
+ *
+ * `path` normally points into the run's archive folder — the sidecar copies
+ * each sample there as soon as it sees it — with `sourcePath` holding the
+ * trainer's original so the archive route can sweep it once the run ends. When
+ * the copy couldn't be made, `path` is the original and `sourcePath` is null.
  */
 export type SampleImage = {
   path: string;
   step: number;
   epoch: number | null;
   promptIndex: number;
+  sourcePath?: string | null;
 };
 
 /**

@@ -32,7 +32,11 @@ class TrainingProvider(ABC):
 
     @abstractmethod
     async def start_training(
-        self, request: StartJobRequest, config_path: str, gpu_id: int = 0
+        self,
+        request: StartJobRequest,
+        config_path: str,
+        gpu_id: int = 0,
+        job_id: Optional[str] = None,
     ) -> AsyncGenerator[JobProgress, None]:
         """Start training and yield progress updates.
 
@@ -43,6 +47,11 @@ class TrainingProvider(ABC):
         either pass this to their underlying backend (ai-toolkit's
         `gpu_ids` / `device` fields) or export `CUDA_VISIBLE_DEVICES` when
         spawning a subprocess.
+
+        `job_id` is the manager's id for this run — the key the per-run sample
+        archive folder is named for (see `sample_archive`). Providers set their
+        own `JobProgress.job_id` and the manager overwrites it, so this is
+        passed separately rather than read back off the yielded progress.
         """
         ...
 

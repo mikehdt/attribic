@@ -51,6 +51,7 @@ type SidecarJobProgress = {
     step: number;
     epoch: number | null;
     prompt_index: number;
+    source_path?: string | null;
   }>;
   checkpoint_steps?: number[];
   sample_steps?: number[];
@@ -153,6 +154,7 @@ function buildProgress(
       step: s.step,
       epoch: s.epoch,
       promptIndex: s.prompt_index,
+      sourcePath: s.source_path ?? null,
     })),
     checkpointSteps,
     sampleSteps,

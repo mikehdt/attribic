@@ -49,6 +49,7 @@ from providers.ai_toolkit import (
     _steps_per_epoch,
 )
 from providers.base import TrainingProvider
+from sample_archive import copy_into_run_archive, is_settled
 
 POLL_INTERVAL_SECONDS = 1.0
 TERMINAL_STATUSES = {"completed", "stopped", "error"}
@@ -225,8 +226,17 @@ def _collect_new_samples(
     output_name: str,
     seen: set[str],
     samples: list[SampleImage],
+    job_id: Optional[str] = None,
+    require_settled: bool = True,
 ) -> None:
     """Diff the samples dir against `seen`, appending freshly-written samples.
+
+    Each new file is copied into the run's archive folder as it's claimed, so
+    the run owns its images immediately rather than at terminal (see
+    `sample_archive`). A file that's still being written is left unclaimed for
+    the next poll — except on the final sweep, which runs after the trainer's
+    process has exited (so nothing can still be mid-write) and is the last
+    chance to claim anything: pass `require_settled=False` there.
 
     Mutates `seen` (so each file is claimed once) and `samples` (the running
     ordered list forwarded on JobProgress).
@@ -235,11 +245,15 @@ def _collect_new_samples(
     new_files = current - seen
     if not new_files:
         return
-    seen |= new_files
     for path in sorted(new_files):
+        if require_settled and not is_settled(path):
+            continue  # mid-write — re-examined next poll
+        seen.add(path)
         entry = _parse_sample(path, output_name)
         if entry is not None:
-            samples.append(entry)
+            samples.append(
+                copy_into_run_archive(output_path, job_id, path, entry)
+            )
 
 
 def _loss_log_path(output_path: str, output_name: str) -> Path:
@@ -486,7 +500,11 @@ class AiToolkitUiProvider(TrainingProvider):
         return ""
 
     async def start_training(
-        self, request: StartJobRequest, config_path: str, gpu_id: int = 0
+        self,
+        request: StartJobRequest,
+        config_path: str,
+        gpu_id: int = 0,
+        job_id: Optional[str] = None,
     ) -> AsyncGenerator[JobProgress, None]:
         # The local job_id used by the parent JobManager is opaque to us;
         # ai-toolkit assigns its own id when we POST /api/jobs. We use
@@ -616,6 +634,7 @@ class AiToolkitUiProvider(TrainingProvider):
                         request.output_name,
                         seen_samples,
                         samples,
+                        job_id,
                     )
                     yield JobProgress(
                         job_id=local_job_id,
@@ -734,6 +753,7 @@ class AiToolkitUiProvider(TrainingProvider):
                         request.output_name,
                         seen_samples,
                         samples,
+                        job_id,
                     )
 
                     if step != last_step or info_changed or newly_saved:
@@ -829,12 +849,16 @@ class AiToolkitUiProvider(TrainingProvider):
                         seen_checkpoints = current_files
 
                     # One last sample sweep — samples generated during the final
-                    # save land after the last "running" poll.
+                    # save land after the last "running" poll. The trainer's pid
+                    # has exited by now, so nothing can be mid-write and this is
+                    # the last chance to claim anything: skip the settle gate.
                     _collect_new_samples(
                         request.output_path,
                         request.output_name,
                         seen_samples,
                         samples,
+                        job_id,
+                        require_settled=False,
                     )
 
                     error_text: Optional[str] = None

@@ -48,9 +48,13 @@ class MockProvider(TrainingProvider):
         return str(path)
 
     async def start_training(
-        self, request: StartJobRequest, config_path: str, gpu_id: int = 0
+        self,
+        request: StartJobRequest,
+        config_path: str,
+        gpu_id: int = 0,
+        job_id: Optional[str] = None,
     ) -> AsyncGenerator[JobProgress, None]:
-        job_id = request.output_name  # Caller overrides with real ID
+        job_id = job_id or request.output_name  # Caller overrides with real ID
         self._cancelled = False
 
         hp = request.hyperparameters
