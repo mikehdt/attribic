@@ -104,7 +104,9 @@ export function buildSamplesGrid(job: TrainingJob | null): SamplesGridModel {
         sortValue,
         row: {
           key,
-          label: isEpoch ? `Epoch ${sample.epoch}` : `Step ${sample.step}`,
+          label: isEpoch
+            ? `Epoch ${sample.epoch!.toLocaleString()}`
+            : `Step ${sample.step.toLocaleString()}`,
           isEpoch,
           eventValue: sortValue,
           cells: Array.from({ length: columnCount }, () => null),

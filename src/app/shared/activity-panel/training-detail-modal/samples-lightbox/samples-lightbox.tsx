@@ -127,7 +127,7 @@ export function SamplesLightbox({
       className="absolute inset-0 z-20 flex flex-col rounded-lg bg-white/95 backdrop-blur-sm outline-none dark:bg-slate-800/95"
     >
       <div className="flex items-center justify-between gap-3 border-b border-(--border-subtle) bg-slate-100 px-6 py-3 dark:bg-slate-800">
-        <div className="min-w-0 flex-1 justify-center">
+        <div className="min-w-0 flex-1 justify-center tabular-nums">
           <p className="text-sm font-medium text-slate-500">{row.label}</p>
           <p className="wrap-break-words text-sm text-(--foreground)">
             {column.label}

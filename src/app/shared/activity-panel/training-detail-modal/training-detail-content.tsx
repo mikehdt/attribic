@@ -210,7 +210,10 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
               {isPreparing ? 'Caching speed' : 'Speed'}
             </span>
             <span className="text-xs text-slate-400">
-              <span className="text-slate-600">lower is better -</span> s/it
+              <span className="text-slate-300 dark:text-slate-600">
+                lower is better -
+              </span>{' '}
+              s/it
             </span>
           </div>
           <div className="mt-1 rounded border border-slate-300 bg-slate-100 p-2 dark:border-slate-600 dark:bg-slate-900">
