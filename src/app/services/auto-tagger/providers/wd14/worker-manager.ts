@@ -172,3 +172,21 @@ export async function tagImageInWorker(
 
   return response.tags;
 }
+
+/**
+ * Release every cached ONNX session, freeing the GPU/CPU memory they hold.
+ *
+ * Goes through the same queue as tagging, so it can never evict a session
+ * out from under an in-flight inference — it lands once the worker is idle.
+ * The worker itself stays alive; it's cheap when idle and respawning costs
+ * more than it saves.
+ *
+ * Returns false when no worker is running: there is nothing to release, and
+ * spawning one purely to unload it would be pointless work.
+ */
+export async function unloadWorkerModels(): Promise<boolean> {
+  if (!worker) return false;
+
+  await enqueue({ type: 'unload' });
+  return true;
+}
