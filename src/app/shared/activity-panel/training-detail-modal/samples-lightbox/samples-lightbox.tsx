@@ -1,9 +1,9 @@
 import {
+  ArrowLeftIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
-  XIcon,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 
@@ -134,9 +134,14 @@ export function SamplesLightbox({
           </p>
         </div>
 
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          Close Lightbox
-          <XIcon />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          title="Back to Sample Images (Esc)"
+        >
+          <ArrowLeftIcon />
+          Back
         </Button>
       </div>
 
