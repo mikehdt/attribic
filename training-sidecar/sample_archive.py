@@ -17,9 +17,10 @@ sits in one place rather than scattered across the loras folder.
 Note this puts archived samples under a *different root* from the trainers'
 own output: emitted paths are relative to the training root
 (`jobs/<id>/samples/<file>`), while an unarchived sample's path stays relative
-to the loras root (`sample/<file>`, `<name>/samples/<file>`). The serving route
-picks the root off the leading segment, which makes `jobs` a reserved name at
-the loras root — see `src/app/api/training/samples/[...path]/route.ts`.
+to the loras root (`sample/<file>`, `<name>/samples/<file>`). The client tells
+the two apart by the leading `jobs/` segment when it builds a serving URL, which
+makes `jobs` a reserved name at the loras root — see `sampleUrl` in
+`src/app/shared/activity-panel/training-detail-modal/training-detail-tabs/samples-model.ts`.
 
 Copy rather than move: ai-toolkit's own UI serves its samples folder live, and
 moving files out from under it would blank that viewer mid-run. The originals
@@ -27,8 +28,8 @@ are swept afterwards by the archive route at terminal — which is why each
 entry keeps its `source_path`.
 
 The naming scheme (`s{step:06d}-p{prompt:02d}[-e{epoch}]{ext}`) is mirrored in
-`src/app/api/training/samples/archive/route.ts`, which still handles runs whose
-samples were collected before this copy existed. Keep the two in step.
+`src/app/api/training/samples/archive/route.ts`, which archives the long way
+for any sample this copy couldn't claim. Keep the two in step.
 """
 
 import shutil

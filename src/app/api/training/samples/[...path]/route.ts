@@ -7,7 +7,6 @@ import { getImageMimeType, isSupportedImageExtension } from '@/app/constants';
 import {
   getLoraOutputRoot,
   getTrainingJobsDir,
-  getTrainingRoot,
 } from '@/app/services/training/training-root';
 
 /** True if `target` resolves to a path at or below `root`. */
@@ -20,27 +19,41 @@ const isWithin = (root: string, target: string): boolean => {
 const isSafeJobId = (id: string): boolean =>
   /^[A-Za-z0-9._-]+$/.test(id) && !/^\.+$/.test(id);
 
-/** Resolve the loras output root the same way the archive route does. */
-const resolveSamplesRoot = (): string => path.resolve(getLoraOutputRoot());
-
 /**
- * Sample paths come in two flavours, and the leading segment says which root
- * they belong to:
+ * Resolve a request path to a file plus the root it must stay inside. The
+ * leading segment names the scope explicitly rather than the route inferring it
+ * from a disk-relative path:
  *
- * - `jobs/<jobId>/samples/<file>` — archived into the run's own job folder by
- *   the sidecar, so it resolves against the **training root**.
- * - anything else (`sample/<file>`, `<name>/samples/<file>`) — still where the
- *   trainer wrote it, so it resolves against the **loras root**.
+ * - `jobs/<jobId>/<file>` — archived into the run's own job folder by the
+ *   sidecar. The fixed `samples` subdir is added here, so it doesn't have to
+ *   appear in the URL under a route already called `samples`. Confined to that
+ *   one run's folder, not merely to the training root.
+ * - `loras/<path>` — still where the trainer wrote it (`sample/<file>`,
+ *   `<name>/samples/<file>`), so it resolves against the loras root.
  *
- * The two roots are siblings under the projects folder, so neither contains the
- * other and a path can't be read against the wrong one. The cost is that `jobs`
- * is a reserved top-level name at the loras root; nothing writes one there.
- * Mirrored in `training-sidecar/sample_archive.py` — keep the two in step.
+ * `samples-model.ts#sampleUrl` builds these from the stored paths; the stored
+ * form is unchanged and still means what `training-sidecar/sample_archive.py`
+ * says it does.
  */
-const resolveSampleRootFor = (segments: string[]): string =>
-  segments[0] === 'jobs'
-    ? path.resolve(getTrainingRoot())
-    : resolveSamplesRoot();
+const resolveRequest = (
+  segments: string[],
+): { root: string; target: string } | null => {
+  const [scope, ...rest] = segments;
+
+  if (scope === 'jobs') {
+    const [jobId, ...file] = rest;
+    if (!jobId || !isSafeJobId(jobId) || file.length === 0) return null;
+    const root = path.resolve(getTrainingJobsDir(), jobId, 'samples');
+    return { root, target: path.resolve(root, ...file) };
+  }
+
+  if (scope === 'loras' && rest.length > 0) {
+    const root = path.resolve(getLoraOutputRoot());
+    return { root, target: path.resolve(root, ...rest) };
+  }
+
+  return null;
+};
 
 export async function GET(
   request: NextRequest,
@@ -49,12 +62,12 @@ export async function GET(
   try {
     const { path: pathSegments } = await params;
 
-    // Confine everything to whichever root this path belongs to — both are
-    // resolvers the training system itself uses, so this always matches where
-    // samples actually land.
-    const samplesRoot = resolveSampleRootFor(pathSegments);
-    const resolvedPath = path.resolve(samplesRoot, ...pathSegments);
+    const resolved = resolveRequest(pathSegments);
+    if (!resolved) {
+      return new NextResponse('Not found', { status: 404 });
+    }
 
+    const { root: samplesRoot, target: resolvedPath } = resolved;
     if (!isWithin(samplesRoot, resolvedPath)) {
       return new NextResponse('Access denied', { status: 403 });
     }
@@ -91,10 +104,10 @@ export async function GET(
 }
 
 /**
- * DELETE /api/training/samples/<jobId> — remove a run's sample images. Fired
- * fire-and-forget when a run leaves Run History. Exactly one path segment (the
- * jobId); anything else is a 400. Idempotent: a nonexistent folder still
- * succeeds.
+ * DELETE /api/training/samples/jobs/<jobId> — remove a run's sample images.
+ * Fired fire-and-forget when a run leaves Run History. Same `jobs/<jobId>`
+ * scoping GET uses, one folder up from the file it serves; anything else is a
+ * 400. Idempotent: a nonexistent folder still succeeds.
  *
  * Only `samples/` goes. The rest of `<training>/jobs/<jobId>/` is the sidecar's
  * — generated TOML and run metadata — and isn't this route's to delete.
@@ -105,13 +118,14 @@ export async function DELETE(
 ) {
   try {
     const { path: pathSegments } = await params;
+    const [scope, jobId] = pathSegments;
 
-    if (pathSegments.length !== 1 || !isSafeJobId(pathSegments[0])) {
+    if (pathSegments.length !== 2 || scope !== 'jobs' || !isSafeJobId(jobId)) {
       return new NextResponse('Bad request', { status: 400 });
     }
 
     const jobsRoot = path.resolve(getTrainingJobsDir());
-    const samplesDir = path.resolve(jobsRoot, pathSegments[0], 'samples');
+    const samplesDir = path.resolve(jobsRoot, jobId, 'samples');
 
     if (!isWithin(jobsRoot, samplesDir)) {
       return new NextResponse('Access denied', { status: 403 });

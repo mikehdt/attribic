@@ -93,7 +93,9 @@ function archiveJobSamples(
  */
 function deleteRunArtifacts(jobId: string) {
   const id = encodeURIComponent(jobId);
-  void fetch(`/api/training/samples/${id}`, { method: 'DELETE' }).catch(() => {
+  void fetch(`/api/training/samples/jobs/${id}`, {
+    method: 'DELETE',
+  }).catch(() => {
     // Nonexistent folder / offline — deletion is best-effort.
   });
   void fetch(`/api/training/jobs/${id}`, { method: 'DELETE' }).catch(() => {

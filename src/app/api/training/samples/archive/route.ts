@@ -20,8 +20,8 @@ const isWithin = (root: string, target: string): boolean => {
  * Resolve a sample's recorded path against the root it belongs to, returning
  * both so the caller can confine against the right one. `jobs/…` means the
  * sidecar already archived it into the run's job folder (training root);
- * anything else is still where the trainer wrote it (loras root). Same rule as
- * the serving route — keep the three copies of it in step.
+ * anything else is still where the trainer wrote it (loras root). Same rule
+ * `sampleUrl` uses to scope a serving URL — keep the two in step.
  */
 const resolveSample = (relPath: string): { root: string; abs: string } => {
   const root = path.resolve(
@@ -72,7 +72,8 @@ const sweepSource = (root: string, sourcePath: unknown): void => {
  * The sidecar now copies each sample into `<training>/jobs/<jobId>/samples/` as
  * soon as it sees it, so the common case here is the tidy-up: the entry is
  * already archived and we delete the trainer's original (`sourcePath`). The
- * move path below still runs for any sample whose live copy failed.
+ * move path below is the fallback for any sample whose live copy failed — an OS
+ * error, or a run started before archiving was configured.
  *
  * Body: `{ jobId, samples }` (camelCase — client↔Next). Each sample is confined
  * to its own root (see `resolveSample`), then moved into

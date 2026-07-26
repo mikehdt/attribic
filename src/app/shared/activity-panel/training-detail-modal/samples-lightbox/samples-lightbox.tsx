@@ -10,11 +10,11 @@ import { useEffect, useRef } from 'react';
 import type { SampleImage } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 
+import { SampleImg } from '../sample-img/sample-img';
 import type {
   SampleColumn,
   SampleRow,
 } from '../training-detail-tabs/samples-model';
-import { sampleUrl } from '../training-detail-tabs/samples-model';
 
 type SamplesLightboxProps = {
   sample: SampleImage;
@@ -146,12 +146,12 @@ export function SamplesLightbox({
       </div>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center bg-white p-4 dark:bg-slate-900">
-        {/* eslint-disable-next-line @next/next/no-img-element -- local sample served straight off disk; the optimiser adds nothing for a throwaway preview */}
-        <img
+        <SampleImg
           key={sample.path}
-          src={sampleUrl(sample.path)}
+          path={sample.path}
           alt={`${column.label} — ${row.label}`}
           className="max-h-full max-w-full object-contain"
+          iconClassName="h-12 w-12"
         />
 
         <NavButton

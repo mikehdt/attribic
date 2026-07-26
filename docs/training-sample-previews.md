@@ -144,7 +144,7 @@ Two problems with leaving files where the trainers drop them:
   carries `progress.samples`, so the history detail view renders from the
   same data as the live view — just resolved against the archive dir.
 - **Deletion**: `deleteHistoryEntry` / `clearHistory` fire
-  `DELETE /api/training/samples/<jobId>` **and**
+  `DELETE /api/training/samples/jobs/<jobId>` **and**
   `DELETE /api/training/jobs/<jobId>` (fire-and-forget, tolerate 404) — the
   latter sweeps the run's `.training/jobs` working files: the generated config
   folder (`<jobId>/`, toml/yaml + sample-prompt txt) and the crash-recovery
@@ -173,15 +173,19 @@ resolver (`getLoraOutputRoot`), so behaviour is consistent.
 ## 4. Serving — one confined route
 
 New route: `GET /api/training/samples/[...path]`, with the same `isWithin`
-confinement as `/api/images` (`api/images/[...path]/route.ts:10–13`). It picks
-its root off the leading segment, because archived samples and live ones sit
-under sibling roots:
+confinement as `/api/images` (`api/images/[...path]/route.ts:10–13`). Archived
+samples and live ones sit under sibling roots, so the **first URL segment names
+the root** and the route never has to infer it:
 
-- live ai-toolkit: `<name>/samples/<file>` → loras root
-- live Kohya: `sample/<file>` → loras root
-- archive: `jobs/<jobId>/samples/<file>` → training root
+- archive: stored `jobs/<jobId>/samples/<file>` → `jobs/<jobId>/<file>`,
+  resolved under the training root. The fixed `samples` subdir is the route's to
+  add back — it would otherwise be the second "samples" in the URL — and the
+  request is confined to that one run's folder.
+- live ai-toolkit: stored `<name>/samples/<file>` → `loras/<name>/samples/<file>`
+- live Kohya: stored `sample/<file>` → `loras/sample/<file>`
 
-Neither root contains the other, so a path can't be read against the wrong one.
+`sampleUrl` (`samples-model.ts`) does the mapping; stored paths keep their
+disk-relative form, which is what the archive route and the sidecar work in.
 The cost is that `jobs` becomes a reserved top-level name at the loras root.
 The rule is mirrored in three places — the serving route, the archive route's
 `resolveSample`, and `training-sidecar/sample_archive.py` — keep them in step.

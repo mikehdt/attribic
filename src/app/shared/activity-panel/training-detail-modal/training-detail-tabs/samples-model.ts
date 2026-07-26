@@ -143,12 +143,27 @@ export function showsSamplesView(
   return grid.columns.length > 0 && (grid.rows.length > 0 || isLive);
 }
 
+/** A stored archived path: `jobs/<jobId>/samples/<file>`. */
+const ARCHIVED_PATH = /^jobs\/([^/]+)\/samples\/(.+)$/;
+
 /**
- * URL for a sample served by `/api/training/samples/[...path]`. The stored path
- * is loras-root-relative with POSIX separators — encode each segment but keep
- * the separators so the route's `[...path]` splits it back correctly.
+ * URL for a sample served by `/api/training/samples/[...path]`. The first URL
+ * segment names the root the rest resolves against, so the route never has to
+ * guess:
+ *
+ * - archived (`jobs/<id>/samples/<file>` under the training root) →
+ *   `jobs/<id>/<file>`, the fixed `samples` subdir being the route's to add
+ *   back — which is what kept "samples" in the URL twice.
+ * - anything else (`sample/<file>`, `<name>/samples/<file>`, still where the
+ *   trainer wrote it) → `loras/<path>`.
+ *
+ * Stored paths themselves are untouched: they're what the archive route and the
+ * sidecar work in, and persisted history is full of them.
  */
 export function sampleUrl(relativePath: string): string {
-  const encoded = relativePath.split('/').map(encodeURIComponent).join('/');
-  return `/api/training/samples/${encoded}`;
+  const archived = ARCHIVED_PATH.exec(relativePath);
+  const segments = archived
+    ? ['jobs', archived[1], ...archived[2].split('/')]
+    : ['loras', ...relativePath.split('/')];
+  return `/api/training/samples/${segments.map(encodeURIComponent).join('/')}`;
 }

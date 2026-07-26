@@ -1,11 +1,11 @@
 import type { SampleProgress } from '@/app/services/training/types';
 import { ProgressBar } from '@/app/shared/progress-bar/progress-bar';
 
+import { SampleImg } from '../sample-img/sample-img';
 import {
   type SampleColumn,
   type SampleRow,
   type SamplesGridModel,
-  sampleUrl,
 } from '../training-detail-tabs/samples-model';
 
 type SamplesGridProps = {
@@ -135,9 +135,9 @@ function GridRow({
                 aria-label={`Open sample for ${column.label} at ${row.label}`}
                 className="block w-full cursor-pointer overflow-hidden rounded border border-slate-300 bg-slate-100 transition-colors hover:border-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 dark:border-slate-600 dark:bg-slate-900"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element -- local sample served straight off disk; the optimiser adds nothing and no thumbnail generation is wanted */}
-                <img
-                  src={sampleUrl(sample.path)}
+                <SampleImg
+                  key={sample.path}
+                  path={sample.path}
                   alt={`${column.label} — ${row.label}`}
                   loading="lazy"
                   className="h-28 w-full object-contain"
