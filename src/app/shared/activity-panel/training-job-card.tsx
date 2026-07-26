@@ -1,7 +1,6 @@
 import { ImagesIcon, Maximize2Icon, XIcon } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 
-import { Stats } from '@/app/shared/stats/stats';
 import { useConfirmAction } from '@/app/shared/use-confirm-action';
 import { useAppDispatch } from '@/app/store/hooks';
 import { type TrainingJob } from '@/app/store/jobs';
@@ -337,14 +336,6 @@ export function TrainingJobCard({
               )}
             </div>
           )}
-
-        {/* Host load, polled only while this run is live — a finished card
-            shouldn't keep measuring the machine. System-wide, not per-job. */}
-        {isRunning && (
-          <div className="mt-1.5">
-            <Stats enabled={isRunning} />
-          </div>
-        )}
 
         {isCompleted && (
           <p className="mt-1.5 text-xs text-green-600 dark:text-green-400">
