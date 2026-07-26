@@ -160,6 +160,31 @@ body {
   background: var(--background);
 }
 
+/* Modal scroll containment.
+   The scroll lock puts overflow:hidden on <body>, but that only blocks direct
+   user scrolling — the body is still a scroll container with scrollable
+   overflow, and Firefox chains overscroll straight into it. So reaching the end
+   of any scrollable region in a modal scrolls the page behind it.
+   overscroll-behavior has to sit on the element whose boundary is reached, and
+   modals scroll at varying depths (the panel itself, or a nested max-h region),
+   hence matching on the utility class rather than listing components.
+
+   Scoped narrowly, because containment on the wrong element traps the wheel
+   there rather than letting it chain to the region that should scroll:
+   - not overflow-hidden, or every clipping wrapper (rounded thumbnails, cards,
+     progress bars) would terminate the chain;
+   - not the x-axis utilities, or a horizontal-only scroller nested in a
+     vertical one swallows vertical wheel events (samples-grid inside the
+     training detail samples tab);
+   - overscroll-behavior-y, not the shorthand, since only the page's vertical
+     scroll is being guarded. */
+#modal-portal-container [class*='overflow-auto'],
+#modal-portal-container [class*='overflow-y-auto'],
+#modal-portal-container [class*='overflow-scroll'],
+#modal-portal-container [class*='overflow-y-scroll'] {
+  overscroll-behavior-y: contain;
+}
+
 /* Icons */
 .lucide {
   stroke-width: 1.5px;

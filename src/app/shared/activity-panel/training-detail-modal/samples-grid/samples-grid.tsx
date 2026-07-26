@@ -94,8 +94,10 @@ function GeneratingCell({
       ) : (
         <ProgressBar size="xs" color="indigo" indeterminate />
       )}
-      <span className="text-sm text-violet-600 tabular-nums dark:text-violet-400">
-        {determinate ? `${progress.current}/${progress.total}` : 'Generating…'}
+      <span className="text-xs text-violet-600 tabular-nums dark:text-violet-400">
+        {determinate
+          ? `Step ${progress.current}/${progress.total}`
+          : 'Generating…'}
       </span>
     </div>
   );

@@ -79,8 +79,7 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
     <div className={lightbox ? 'min-h-[70vh]' : 'relative'}>
       {modalHeader}
 
-      {/* Sit the tab control left of the modal's absolute close button. */}
-      <div className="mb-4 pr-8">
+      <div className="mb-4">
         <SegmentedControl
           options={[
             { value: 'overview' as const, label: 'Overview' },
