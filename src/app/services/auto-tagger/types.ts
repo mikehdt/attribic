@@ -166,27 +166,36 @@ export const DEFAULT_VLM_OPTIONS: VlmOptions = {
   // - Example-based priming works better than negative instructions alone;
   //   VLMs are trained on markdown-heavy data and "please don't" loses.
   // - Strict rules go LAST because VLMs weight the end of the prompt more.
-  // - Explicit word target + multiple "stop after N paragraphs" instructions
-  //   are how we push back against the model's verbosity bias. The example
-  //   is deliberately short (~80 words) to anchor the expected length.
+  // - The blob is only ever *half* a hybrid caption: the tag block already
+  //   carries style, framing, counts and appearance. Anything the blob repeats
+  //   is specified twice, which splits the gradient between the tag and the
+  //   prose and starves character tokens of the features that define them.
+  //   So the blob's job is narrow — spatial arrangement and action, the two
+  //   things a flat tag list genuinely cannot express.
+  // - Negations are the big one. "No weapons are visible" puts `weapons` into
+  //   the conditioning vector; diffusion has no negation operator, so the
+  //   sentence does the opposite of what it reads like. VLMs volunteer these
+  //   constantly, and a bare "don't" doesn't stop it — hence the positive
+  //   reframe ("say nothing at all about it") plus an example that models it.
+  // - Kept short partly for small models: a 4B VLM handed a six-item checklist
+  //   and seven rules quietly drops half of them. Two asks, then the rules.
   prompt: [
-    'Write a training caption for this image. Describe the main subject, notable clothing or gear, pose or action, setting, art style, and overall composition. Include visible details that matter, but skip minor background filler and avoid repeating yourself.',
+    'Write a short, factual description of this image for a training caption. It sits alongside a list of tags that already cover art style, framing, and appearance, so describe only what tags cannot: where things are, how they relate to each other, and what they are doing.',
     '',
-    'Keep it to 2–3 short paragraphs, around 100–160 words total. Format as plain prose like this example:',
+    'One or two sentences, 25–50 words, plain prose. Like this example:',
     '',
-    'A close-up portrait of a young man with spiked dark brown hair and bright green eyes, facing slightly left with a determined expression. He wears a brown sleeveless vest over a grey shirt, with a golden chest plate featuring a glowing cyan emblem, and an orange scarf wrapped loosely around his neck. A leather strap crosses his shoulder.',
-    '',
-    'Behind him, stylised blue-purple mountains rise under a clear sky streaked with thin clouds. Soft rim lighting catches the edge of his hair and armour. The illustration is in anime style with clean lines, bold saturated colours, and dramatic lighting that emphasises the subject.',
+    'A man in a long coat stands at the left edge of a rooftop, facing right towards a seated figure leaning against the parapet. A metal ladder runs up the wall between them.',
     '',
     'STRICT RULES — your response MUST follow these:',
-    '- Maximum 3 short paragraphs. Do not add a fourth. Stop writing after the third paragraph.',
-    '- Target 100–160 words total. Stay focused, do not pad.',
-    '- No markdown, no **bold**, no *italics*, no bullet points, no lists, no # headings, no *, no -, no paragraph titles.',
-    '- No speculation about mood, narrative, or backstory beyond what the pose and expression directly show.',
-    '- Only plain prose describing what is visible. Then stop.',
+    '- One or two sentences. Stop after the second.',
+    '- Describe only what is present. If something is absent, say nothing at all about it — never write that anything is missing, empty, plain, bare, or not visible.',
+    '- State what you see directly. Do not write "suggesting", "possibly", "appears to", "as if", or "implying".',
+    '- Leave out art style, medium, lighting, colour palette and composition. Leave out hair, eye and clothing colour. The tags already cover all of these.',
+    '- Leave out mood, atmosphere, symbolism, and what the scene implies.',
+    '- Plain prose only. No markdown, no **bold**, no bullet points, no headings.',
   ].join('\n'),
-  maxTokens: 550,
-  temperature: 0.6,
+  maxTokens: 160,
+  temperature: 0.3,
   injectTriggerPhrases: true,
   triggerPhraseInsertMode: 'append',
   video: {

@@ -8,7 +8,7 @@ type HybridManagerProps = {
 };
 
 /**
- * Hybrid editor: a natural-language caption on top, booru-style tags below.
+ * Hybrid editor: a natural-language caption on top, imageboard-style tags below.
  *
  * Both sub-editors point at the same asset and edit independent slices of state
  * (captionText vs tagList). The save path composes them into a single `.txt`

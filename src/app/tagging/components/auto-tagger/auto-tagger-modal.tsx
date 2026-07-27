@@ -92,7 +92,7 @@ export function AutoTaggerModal({
             </p>
             <p className="mt-1">
               {title === 'Caption Images'
-                ? 'Install a VLM (vision-language) model in the Model Manager to caption images in this mode. Or switch the project to tag mode to use a booru-style tagger.'
+                ? 'Install a VLM (vision-language) model in the Model Manager to caption images in this mode. Or switch the project to tag mode to use an imageboard-style tagger.'
                 : 'Install an ONNX tagger (e.g. WD14) in the Model Manager to tag images in this mode. Or switch the project to caption mode to use a VLM.'}
             </p>
           </div>

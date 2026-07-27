@@ -1,5 +1,5 @@
 /**
- * Hybrid caption format — booru-style tags followed by a natural-language caption
+ * Hybrid caption format — imageboard-style tags followed by a natural-language caption
  * in a single `.txt` file, used by models like Anima that mix both.
  *
  * On-disk shape:

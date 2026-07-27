@@ -106,7 +106,7 @@ export function useAutoTagger({
 
   // Only show models compatible with the project's current mode:
   // - caption mode → VLM models (natural-language captioners)
-  // - tag mode → ONNX models (booru-style taggers)
+  // - tag mode → ONNX models (imageboard-style taggers)
   // - hybrid mode → both; the selected model's provider type decides whether a
   //   run fills the tag block (ONNX) or the caption (VLM). Results are routed
   //   independently downstream, so either is safe.
@@ -305,7 +305,7 @@ export function useAutoTagger({
       if (captionItems.length === 0) return tagItems;
 
       return [
-        { groupLabel: 'Booru-style Tagging', items: tagItems },
+        { groupLabel: 'Imageboard-style Tagging', items: tagItems },
         { groupLabel: 'Natural Language', items: captionItems },
       ];
     }, [modeFilteredReadyModels, captionMode]);

@@ -126,7 +126,7 @@ export function SamplesLightbox({
       // Modal's own close button (top-3/right-3, z-1); z-20 sits above it.
       className="absolute inset-0 z-20 flex flex-col rounded-lg bg-white/95 backdrop-blur-sm outline-none dark:bg-slate-800/95"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-(--border-subtle) bg-slate-100 px-6 py-3 dark:bg-slate-800">
+      <div className="z-10 flex items-center justify-between gap-3 border-b border-(--border-subtle) bg-slate-100 px-6 py-3 shadow-md shadow-slate-200 dark:bg-slate-800 dark:shadow-slate-900">
         <div className="min-w-0 flex-1 justify-center tabular-nums">
           <p className="text-sm font-medium text-slate-500">{row.label}</p>
           <p className="wrap-break-words text-sm text-(--foreground)">
@@ -211,9 +211,9 @@ function NavButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`absolute rounded-full border p-1.5 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+      className={`absolute rounded-full border p-1.5 shadow-sm backdrop-blur-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
         disabled
-          ? 'cursor-default border-slate-200/60 bg-white/20 text-slate-300/40 dark:border-slate-700/60 dark:bg-slate-900/20 dark:text-slate-600/40'
+          ? 'cursor-default border-slate-200/60 bg-white/20 text-slate-300/30 dark:border-slate-700/60 dark:bg-slate-900/20 dark:text-slate-600/30'
           : 'cursor-pointer border-slate-300 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
       } ${className}`}
     >
