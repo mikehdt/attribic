@@ -44,7 +44,7 @@ const CollapsibleSectionComponent = ({
             handleToggle();
           }
         }}
-        className={`flex w-full cursor-pointer items-center justify-between bg-(--surface) inset-shadow-sm inset-shadow-white dark:inset-shadow-slate-700 ${headerSize === 'sm' ? 'px-4 py-1 text-sm' : 'text-md px-4 py-2'}`}
+        className={`flex w-full cursor-pointer items-center justify-between bg-(--surface) inset-shadow-sm inset-shadow-white transition-colors hover:bg-(--surface-hover) dark:inset-shadow-slate-700 ${headerSize === 'sm' ? 'px-4 py-1 text-sm' : 'text-md px-4 py-2'}`}
       >
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-(--foreground)">{title}</h3>
