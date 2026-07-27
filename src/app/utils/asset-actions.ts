@@ -127,6 +127,16 @@ export interface ImageFileListResult {
 // can reference it without forward-declaration warnings.
 const POSTER_SIDECAR_SUFFIX = '.poster.jpg';
 
+/**
+ * Latent and text-encoder caches are named after the image with a trailer that
+ * varies by trainer, bucket resolution and model — `cat.npz` for legacy
+ * sd-scripts, but `cat_0512x0768_sdxl.npz` or `cat_anima_te.npz` today. Match
+ * on the separator so `cat` doesn't claim `cat10_sd.npz`.
+ */
+const isCacheSidecarOf = (fileName: string, basename: string): boolean =>
+  fileName.toLowerCase().endsWith('.npz') &&
+  (fileName === `${basename}.npz` || fileName.startsWith(`${basename}_`));
+
 // Returns just a list of image files without processing them
 // Includes images from root folder and valid repeat subfolders
 export const getImageFileList = async (
@@ -844,6 +854,23 @@ export const moveAssetsToFolder = async (
   const errors: string[] = [];
   const sourceFolders = new Set<string>();
 
+  // Directory listings are reused across assets from the same folder, since
+  // cache sidecars can only be found by scanning for the image's basename
+  const listingCache = new Map<string, string[]>();
+  const listFolder = (folderPath: string): string[] => {
+    const cached = listingCache.get(folderPath);
+    if (cached) return cached;
+
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(folderPath);
+    } catch (err) {
+      console.warn(`Failed to read folder ${folderPath}:`, err);
+    }
+    listingCache.set(folderPath, entries);
+    return entries;
+  };
+
   for (const plan of movePlan) {
     try {
       // Track source folder for cleanup
@@ -863,14 +890,28 @@ export const moveAssetsToFolder = async (
       );
       await renameWithRetry(oldImagePath, newImagePath);
 
-      // Move associated sidecar files (.txt tags, .npz cache, .poster.jpg
-      // for video assets) if they exist
-      for (const ext of ['.txt', '.npz', POSTER_SIDECAR_SUFFIX]) {
+      // Move associated sidecar files (.txt tags, .poster.jpg for video
+      // assets) if they exist
+      for (const ext of ['.txt', POSTER_SIDECAR_SUFFIX]) {
         const oldPath = path.join(dir, `${plan.oldFileId}${ext}`);
         const newPath = path.join(dir, `${plan.newFileId}${ext}`);
         if (fs.existsSync(oldPath)) {
           await renameWithRetry(oldPath, newPath);
         }
+      }
+
+      // Move latent/text-encoder caches, whose names carry a trainer-specific
+      // trailer, so training doesn't have to re-cache the moved assets
+      const oldFolder = path.dirname(path.join(dir, plan.oldFileId));
+      const newFolder = path.dirname(path.join(dir, plan.newFileId));
+
+      for (const entry of listFolder(oldFolder)) {
+        if (!isCacheSidecarOf(entry, plan.basename)) continue;
+
+        const oldCachePath = path.join(oldFolder, entry);
+        if (!fs.existsSync(oldCachePath)) continue;
+
+        await renameWithRetry(oldCachePath, path.join(newFolder, entry));
       }
 
       moved.push({

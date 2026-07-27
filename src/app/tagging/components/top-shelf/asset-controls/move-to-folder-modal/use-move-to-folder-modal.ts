@@ -52,6 +52,10 @@ export const useMoveToFolderModal = ({
   const [newRepeatCount, setNewRepeatCount] = useState(1);
   const [newLabel, setNewLabel] = useState('');
 
+  // Rename state, seeded from the folder when it is picked as the destination
+  const [renameRepeatCount, setRenameRepeatCount] = useState(1);
+  const [renameLabel, setRenameLabel] = useState('');
+
   // Progress and error state
   const [isMoving, setIsMoving] = useState(false);
   const [collisionError, setCollisionError] = useState<string[] | null>(null);
@@ -104,9 +108,13 @@ export const useMoveToFolderModal = ({
     assetsWithActiveFilters,
   ]);
 
+  const imageIndex = useMemo(
+    () => new Map(allImages.map((img) => [img.fileId, img])),
+    [allImages],
+  );
+
   // Compute source folder summary from resolved assets
   const sourceFolderSummary = useMemo(() => {
-    const imageIndex = new Map(allImages.map((img) => [img.fileId, img]));
     const folderCounts: Record<string, number> = {};
 
     for (const id of resolvedAssetIds) {
@@ -116,15 +124,22 @@ export const useMoveToFolderModal = ({
       folderCounts[folder] = (folderCounts[folder] || 0) + 1;
     }
     return folderCounts;
-  }, [resolvedAssetIds, allImages]);
+  }, [resolvedAssetIds, imageIndex]);
 
   const sourceFolderCount = Object.keys(sourceFolderSummary).length;
 
-  // Count root assets for the folder list
-  const rootAssetCount = useMemo(
-    () => allImages.filter((img) => !img.subfolder).length,
-    [allImages],
-  );
+  // Total assets per folder, for comparison against the scoped counts above
+  const folderTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+
+    for (const img of allImages) {
+      const folder = img.subfolder ?? DESTINATION_ROOT;
+      totals[folder] = (totals[folder] || 0) + 1;
+    }
+    return totals;
+  }, [allImages]);
+
+  const rootAssetCount = folderTotals[DESTINATION_ROOT] ?? 0;
 
   // Build folder options for the radio list
   const folderOptions = useMemo(() => {
@@ -133,21 +148,29 @@ export const useMoveToFolderModal = ({
       label: string;
       count: number;
       isSource: boolean;
+      /** Every scoped asset already lives here, and nothing else does. */
+      isCurrent: boolean;
       disabled: boolean;
     }> = [];
 
-    // Root option
+    // A folder holding every scoped asset can be renamed rather than moved to,
+    // but only when the scope covers the whole folder — moving a subset would
+    // split it in two, which is what the new folder option is for.
+    const isRenameable = (folder: string) =>
+      resolvedAssetIds.length > 0 &&
+      sourceFolderSummary[folder] === resolvedAssetIds.length &&
+      sourceFolderSummary[folder] === folderTotals[folder];
+
+    // Root option — the project folder itself is never renameable
     options.push({
       value: DESTINATION_ROOT,
       label: projectInfo.projectFolderName ?? 'Root',
       count: rootAssetCount,
       isSource: DESTINATION_ROOT in sourceFolderSummary,
+      isCurrent: false,
       disabled:
         resolvedAssetIds.length > 0 &&
-        resolvedAssetIds.every((id) => {
-          const img = allImages.find((i) => i.fileId === id);
-          return img && !img.subfolder;
-        }),
+        sourceFolderSummary[DESTINATION_ROOT] === resolvedAssetIds.length,
     });
 
     // Existing subfolder options
@@ -167,17 +190,20 @@ export const useMoveToFolderModal = ({
         ? `${parsed.repeatCount}\u00d7 ${parsed.label}`
         : folder;
 
+      const isCurrent = isRenameable(folder);
+
       options.push({
         value: folder,
         label: displayLabel,
         count,
         isSource: folder in sourceFolderSummary,
+        isCurrent,
+        // Holding every scoped asset only blocks the option when the folder
+        // can't be renamed instead
         disabled:
+          !isCurrent &&
           resolvedAssetIds.length > 0 &&
-          resolvedAssetIds.every((id) => {
-            const img = allImages.find((i) => i.fileId === id);
-            return img?.subfolder === folder;
-          }),
+          sourceFolderSummary[folder] === resolvedAssetIds.length,
       });
     }
 
@@ -186,10 +212,30 @@ export const useMoveToFolderModal = ({
     allSubfolders,
     rootAssetCount,
     sourceFolderSummary,
-    resolvedAssetIds,
-    allImages,
+    folderTotals,
+    resolvedAssetIds.length,
     projectInfo.projectFolderName,
   ]);
+
+  // Picking the folder the assets already sit in renames it rather than moving
+  // them anywhere — the move itself carries every asset across to the new name
+  const isRenameMode = folderOptions.some(
+    (option) => option.value === selectedDestination && option.isCurrent,
+  );
+  const renameTarget = isRenameMode ? selectedDestination : null;
+
+  // Rename validation
+  const renameFolderName = isRenameMode
+    ? `${renameRepeatCount}_${renameLabel.trim()}`
+    : '';
+  const isRenameLabelValid =
+    !isRenameMode ||
+    (renameLabel.trim().length > 0 && LABEL_PATTERN.test(renameLabel.trim()));
+  const isRenameRepeatCountValid = !isRenameMode || renameRepeatCount >= 1;
+  const isRenameUnchanged =
+    isRenameMode && renameFolderName === selectedDestination;
+  const renameCollidesWithFolder =
+    isRenameMode && !isRenameUnchanged && renameFolderName in allSubfolders;
 
   // Resolved destination folder name (null = root)
   const resolvedDestination = useMemo((): string | null => {
@@ -198,25 +244,35 @@ export const useMoveToFolderModal = ({
       if (!newLabel.trim() || newRepeatCount < 1) return null;
       return `${newRepeatCount}_${newLabel.trim()}`;
     }
+    if (isRenameMode) {
+      if (!renameLabel.trim() || renameRepeatCount < 1) return null;
+      return renameFolderName;
+    }
     return selectedDestination || null;
-  }, [selectedDestination, newRepeatCount, newLabel]);
+  }, [
+    selectedDestination,
+    newRepeatCount,
+    newLabel,
+    isRenameMode,
+    renameRepeatCount,
+    renameLabel,
+    renameFolderName,
+  ]);
 
   // Count assets that would actually move (not already in destination)
   const effectiveMoveCount = useMemo(() => {
     if (!resolvedDestination && selectedDestination === DESTINATION_ROOT) {
       // Moving to root
-      return resolvedAssetIds.filter((id) => {
-        const img = allImages.find((i) => i.fileId === id);
-        return img?.subfolder; // only count those not already in root
-      }).length;
+      return resolvedAssetIds.filter(
+        (id) => imageIndex.get(id)?.subfolder, // only count those not already in root
+      ).length;
     }
     if (!resolvedDestination) return 0;
 
-    return resolvedAssetIds.filter((id) => {
-      const img = allImages.find((i) => i.fileId === id);
-      return img?.subfolder !== resolvedDestination;
-    }).length;
-  }, [resolvedAssetIds, resolvedDestination, selectedDestination, allImages]);
+    return resolvedAssetIds.filter(
+      (id) => imageIndex.get(id)?.subfolder !== resolvedDestination,
+    ).length;
+  }, [resolvedAssetIds, resolvedDestination, selectedDestination, imageIndex]);
 
   // New folder validation
   const isNewFolderMode = selectedDestination === DESTINATION_NEW;
@@ -253,6 +309,11 @@ export const useMoveToFolderModal = ({
     selectedDestination !== '' &&
     !isSelectedDestinationDisabled &&
     (!isNewFolderMode || (isNewLabelValid && isNewRepeatCountValid)) &&
+    (!isRenameMode ||
+      (isRenameLabelValid &&
+        isRenameRepeatCountValid &&
+        !isRenameUnchanged &&
+        !renameCollidesWithFolder)) &&
     !collisionError;
 
   // Is the IO state blocking?
@@ -268,6 +329,8 @@ export const useMoveToFolderModal = ({
       setSelectedDestination('');
       setNewRepeatCount(1);
       setNewLabel('');
+      setRenameRepeatCount(1);
+      setRenameLabel('');
       setCollisionError(null);
       setMoveErrors(null);
       setIsMoving(false);
@@ -277,12 +340,42 @@ export const useMoveToFolderModal = ({
     }
   }, [isOpen, hasSelectedAssets, hasActiveFilters]);
 
+  // Seed and repair the destination selection. Nothing chosen — or a choice the
+  // scope has since disabled — falls back to renaming the folder the assets are
+  // already in, or to a new folder when that folder isn't renameable.
+  useEffect(() => {
+    if (!isOpen || selectedDestination === DESTINATION_NEW) return;
+
+    const selected = folderOptions.find((o) => o.value === selectedDestination);
+    if (selected && !selected.disabled) return;
+
+    const renameable = folderOptions.find((o) => o.isCurrent);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional default when no valid destination is selected
+    setSelectedDestination(renameable ? renameable.value : DESTINATION_NEW);
+  }, [isOpen, folderOptions, selectedDestination]);
+
+  // Seed the rename fields from the folder being renamed
+  useEffect(() => {
+    if (!renameTarget) return;
+
+    const parsed = parseSubfolder(renameTarget);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form seed when the rename target changes
+    setRenameRepeatCount(parsed?.repeatCount ?? 1);
+    setRenameLabel(parsed?.label ?? renameTarget);
+  }, [renameTarget]);
+
   // Clear collision error when destination changes
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional error reset when destination selection changes
     setCollisionError(null);
     setMoveErrors(null);
-  }, [selectedDestination, newRepeatCount, newLabel]);
+  }, [
+    selectedDestination,
+    newRepeatCount,
+    newLabel,
+    renameRepeatCount,
+    renameLabel,
+  ]);
 
   const handleSubmit = useCallback(async () => {
     if (!isFormValid || isMoving) return;
@@ -297,7 +390,9 @@ export const useMoveToFolderModal = ({
           ? null
           : selectedDestination === DESTINATION_NEW
             ? `${newRepeatCount}_${newLabel.trim()}`
-            : selectedDestination;
+            : isRenameMode
+              ? renameFolderName
+              : selectedDestination;
 
       const result = await dispatch(
         moveAssetsToFolderThunk({
@@ -330,6 +425,8 @@ export const useMoveToFolderModal = ({
     selectedDestination,
     newRepeatCount,
     newLabel,
+    isRenameMode,
+    renameFolderName,
     resolvedAssetIds,
     projectInfo.projectPath,
     keepSelection,
@@ -345,14 +442,30 @@ export const useMoveToFolderModal = ({
     const assetWord = count === 1 ? 'asset' : 'assets';
     const folderWord = sourceFolderCount === 1 ? 'folder' : 'folders';
 
-    if (effectiveMoveCount < count && effectiveMoveCount > 0) {
-      return `${effectiveMoveCount} of ${count} ${assetWord} will be moved (${count - effectiveMoveCount} already in destination).`;
+    if (isRenameMode) {
+      return `Renaming ${selectedDestination} — all ${count} ${assetWord} in it move to the new name.`;
     }
-    if (effectiveMoveCount === 0) {
+
+    // A half-typed new folder isn't a destination yet, so the counts below
+    // would read as "nothing to move" rather than "nothing chosen"
+    const hasDestination =
+      selectedDestination === DESTINATION_ROOT || resolvedDestination !== null;
+
+    if (hasDestination && effectiveMoveCount === 0) {
       return `All assets are already in the selected destination.`;
     }
+    if (hasDestination && effectiveMoveCount < count) {
+      return `${effectiveMoveCount} of ${count} ${assetWord} will be moved (${count - effectiveMoveCount} already in destination).`;
+    }
     return `${count} ${assetWord} from ${sourceFolderCount} ${folderWord} will be moved. Empty folders will be deleted.`;
-  }, [resolvedAssetIds.length, sourceFolderCount, effectiveMoveCount]);
+  }, [
+    resolvedAssetIds.length,
+    sourceFolderCount,
+    effectiveMoveCount,
+    isRenameMode,
+    selectedDestination,
+    resolvedDestination,
+  ]);
 
   return {
     // Scoping
@@ -379,6 +492,18 @@ export const useMoveToFolderModal = ({
     newFolderAlreadyExists,
     isNewLabelValid,
     isNewRepeatCountValid,
+
+    // Rename
+    isRenameMode,
+    renameRepeatCount,
+    setRenameRepeatCount,
+    renameLabel,
+    setRenameLabel,
+    renameFolderName,
+    isRenameLabelValid,
+    isRenameRepeatCountValid,
+    isRenameUnchanged,
+    renameCollidesWithFolder,
 
     // Selection
     keepSelection,

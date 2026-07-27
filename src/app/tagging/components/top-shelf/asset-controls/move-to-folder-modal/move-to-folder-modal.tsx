@@ -3,17 +3,19 @@
 import {
   FolderInputIcon,
   FolderOpenIcon,
+  FolderPenIcon,
   FolderPlusIcon,
   HomeIcon,
 } from 'lucide-react';
+import { Fragment } from 'react';
 
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { Modal } from '@/app/shared/modal';
-import { NumberInput } from '@/app/shared/number-input/number-input';
 import { ProgressBar } from '@/app/shared/progress-bar/progress-bar';
 import { ScopingCheckboxes } from '@/app/shared/scoping-checkboxes';
 
+import { FolderNameFields } from './folder-name-fields';
 import { useMoveToFolderModal } from './use-move-to-folder-modal';
 
 type MoveToFolderModalProps = {
@@ -48,6 +50,17 @@ export const MoveToFolderModal = ({
     newFolderAlreadyExists,
     isNewLabelValid,
     isNewRepeatCountValid,
+
+    isRenameMode,
+    renameRepeatCount,
+    setRenameRepeatCount,
+    renameLabel,
+    setRenameLabel,
+    renameFolderName,
+    isRenameLabelValid,
+    isRenameRepeatCountValid,
+    isRenameUnchanged,
+    renameCollidesWithFolder,
 
     keepSelection,
     setKeepSelection,
@@ -115,72 +128,106 @@ export const MoveToFolderModal = ({
             {folderOptions.map((option) => {
               const isRoot = option.value === DESTINATION_ROOT;
               const isSelected = selectedDestination === option.value;
+              const isRenaming = isSelected && option.isCurrent;
 
               return (
-                <label
-                  key={option.value}
-                  className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
-                    option.disabled
-                      ? 'cursor-not-allowed opacity-40'
-                      : isSelected
-                        ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
-                        : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/50'
-                  }`}
-                >
-                  {/* Radio */}
-                  <div
-                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-all ${
+                <Fragment key={option.value}>
+                  <label
+                    className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
                       option.disabled
-                        ? 'border-slate-300 bg-slate-50'
+                        ? 'cursor-not-allowed opacity-40'
                         : isSelected
-                          ? 'border-sky-700 bg-linear-to-t from-sky-600 to-sky-500 inset-shadow-xs inset-shadow-sky-300'
-                          : 'border-slate-400 bg-linear-to-t from-slate-100 to-white inset-shadow-xs inset-shadow-slate-300'
+                          ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
+                          : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/50'
                     }`}
                   >
-                    {isSelected && (
-                      <div className="h-1.5 w-1.5 rounded-full bg-white shadow-sm shadow-sky-800" />
+                    {/* Radio */}
+                    <div
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-all ${
+                        option.disabled
+                          ? 'border-slate-300 bg-slate-50'
+                          : isSelected
+                            ? 'border-sky-700 bg-linear-to-t from-sky-600 to-sky-500 inset-shadow-xs inset-shadow-sky-300'
+                            : 'border-slate-400 bg-linear-to-t from-slate-100 to-white inset-shadow-xs inset-shadow-slate-300'
+                      }`}
+                    >
+                      {isSelected && (
+                        <div className="h-1.5 w-1.5 rounded-full bg-white shadow-sm shadow-sky-800" />
+                      )}
+                    </div>
+                    <input
+                      type="radio"
+                      name="destination"
+                      value={option.value}
+                      checked={isSelected}
+                      disabled={option.disabled}
+                      onChange={() => setSelectedDestination(option.value)}
+                      className="sr-only"
+                    />
+
+                    {/* Icon */}
+                    {isRoot ? (
+                      <HomeIcon
+                        className={`h-4 w-4 shrink-0 ${
+                          option.isSource ? 'text-indigo-400' : 'text-slate-400'
+                        }`}
+                      />
+                    ) : option.isCurrent ? (
+                      <FolderPenIcon
+                        className={`h-4 w-4 shrink-0 ${
+                          option.isSource ? 'text-indigo-400' : 'text-slate-400'
+                        }`}
+                      />
+                    ) : (
+                      <FolderOpenIcon
+                        className={`h-4 w-4 shrink-0 ${
+                          option.isSource ? 'text-indigo-400' : 'text-slate-400'
+                        }`}
+                      />
                     )}
-                  </div>
-                  <input
-                    type="radio"
-                    name="destination"
-                    value={option.value}
-                    checked={isSelected}
-                    disabled={option.disabled}
-                    onChange={() => setSelectedDestination(option.value)}
-                    className="sr-only"
-                  />
 
-                  {/* Icon */}
-                  {isRoot ? (
-                    <HomeIcon
-                      className={`h-4 w-4 shrink-0 ${
-                        option.isSource ? 'text-indigo-400' : 'text-slate-400'
-                      }`}
-                    />
-                  ) : (
-                    <FolderOpenIcon
-                      className={`h-4 w-4 shrink-0 ${
-                        option.isSource ? 'text-indigo-400' : 'text-slate-400'
-                      }`}
-                    />
-                  )}
+                    {/* Label */}
+                    <span className="flex-1">{option.label}</span>
 
-                  {/* Label */}
-                  <span className="flex-1">{option.label}</span>
+                    {/* Source indicator */}
+                    {option.isSource && (
+                      <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
+                        {option.isCurrent ? 'rename' : 'source'}
+                      </span>
+                    )}
 
-                  {/* Source indicator */}
-                  {option.isSource && (
-                    <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
-                      source
+                    {/* Count */}
+                    <span className="text-xs text-slate-400 tabular-nums">
+                      {option.count}
                     </span>
-                  )}
+                  </label>
 
-                  {/* Count */}
-                  <span className="text-xs text-slate-400 tabular-nums">
-                    {option.count}
-                  </span>
-                </label>
+                  {/* Rename form for the folder the assets already sit in */}
+                  {isRenaming && (
+                    <FolderNameFields
+                      idPrefix="rename-folder"
+                      labelText="Rename"
+                      repeatCount={renameRepeatCount}
+                      onRepeatCountChange={setRenameRepeatCount}
+                      isRepeatCountValid={isRenameRepeatCountValid}
+                      label={renameLabel}
+                      onLabelChange={setRenameLabel}
+                      isLabelValid={isRenameLabelValid}
+                      folderName={renameFolderName}
+                      note={
+                        isRenameUnchanged ? (
+                          <span className="ml-2 text-slate-400">
+                            (unchanged)
+                          </span>
+                        ) : renameCollidesWithFolder ? (
+                          <span className="ml-2 text-rose-600">
+                            (folder already exists — pick another name)
+                          </span>
+                        ) : null
+                      }
+                    />
+                  )}
+                </Fragment>
               );
             })}
 
@@ -218,80 +265,25 @@ export const MoveToFolderModal = ({
 
             {/* New folder form */}
             {isNewFolderMode && (
-              <div className="flex w-full flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-col gap-1">
-                    <label
-                      htmlFor="repeat-count"
-                      className="text-xs text-slate-500"
-                    >
-                      Repeats
-                    </label>
-                    <NumberInput
-                      id="repeat-count"
-                      spinner
-                      kind="int"
-                      min={1}
-                      value={newRepeatCount}
-                      onChange={setNewRepeatCount}
-                      size="sm"
-                      className={`w-16 ${
-                        isNewRepeatCountValid ? '' : '!border-rose-400'
-                      }`}
-                    />
-                  </div>
-
-                  <span className="cursor-default self-end pb-1.5 text-sm text-slate-500">
-                    &times;
-                  </span>
-
-                  <div className="flex flex-1 flex-col gap-1">
-                    <label
-                      htmlFor="folder-label"
-                      className="text-xs text-slate-500"
-                    >
-                      Name
-                    </label>
-                    <input
-                      id="folder-label"
-                      type="text"
-                      value={newLabel}
-                      onChange={(e) => setNewLabel(e.target.value)}
-                      placeholder="e.g. sonic"
-                      autoFocus
-                      className={`w-full rounded border px-2 py-1 text-sm ${
-                        !isNewFolderMode ||
-                        newLabel.trim() === '' ||
-                        isNewLabelValid
-                          ? 'border-slate-300 dark:border-slate-600'
-                          : 'border-rose-400'
-                      } bg-white dark:bg-slate-700 dark:text-slate-200`}
-                    />
-                  </div>
-                </div>
-
-                {/* Preview */}
-                {newLabel.trim() && (
-                  <p className="text-xs text-slate-500">
-                    Folder name:{' '}
-                    <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                      {newFolderName}
+              <FolderNameFields
+                idPrefix="new-folder"
+                labelText="Name"
+                repeatCount={newRepeatCount}
+                onRepeatCountChange={setNewRepeatCount}
+                isRepeatCountValid={isNewRepeatCountValid}
+                label={newLabel}
+                onLabelChange={setNewLabel}
+                isLabelValid={isNewLabelValid}
+                folderName={newFolderName}
+                autoFocus
+                note={
+                  newFolderAlreadyExists ? (
+                    <span className="ml-2 text-amber-600">
+                      (folder exists — assets will be moved into it)
                     </span>
-                    {newFolderAlreadyExists && (
-                      <span className="ml-2 text-amber-600">
-                        (folder exists — assets will be moved into it)
-                      </span>
-                    )}
-                  </p>
-                )}
-
-                {/* Validation errors */}
-                {newLabel.trim() && !isNewLabelValid && (
-                  <p className="text-xs text-rose-600">
-                    Name may only contain letters, numbers, and hyphens.
-                  </p>
-                )}
-              </div>
+                  ) : null
+                }
+              />
             )}
           </div>
         </div>
@@ -370,8 +362,18 @@ export const MoveToFolderModal = ({
             size="md"
             width="lg"
           >
-            <FolderInputIcon className="mr-1 h-4 w-4" />
-            {isMoving ? 'Moving...' : 'Move'}
+            {isRenameMode ? (
+              <FolderPenIcon className="mr-1 h-4 w-4" />
+            ) : (
+              <FolderInputIcon className="mr-1 h-4 w-4" />
+            )}
+            {isRenameMode
+              ? isMoving
+                ? 'Renaming...'
+                : 'Rename'
+              : isMoving
+                ? 'Moving...'
+                : 'Move'}
           </Button>
         </div>
       </div>
