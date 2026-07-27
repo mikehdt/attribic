@@ -374,6 +374,11 @@ export const FIELD_REGISTRY = defineFields({
     group: 'sampling',
     defaultKey: null,
   },
+  samplePromptSizes: {
+    tier: 'intermediate',
+    group: 'sampling',
+    defaultKey: null,
+  },
   sampleMode: { tier: 'intermediate', group: 'sampling', defaultKey: null },
   sampleEveryEpochs: {
     tier: 'intermediate',

@@ -755,12 +755,16 @@ class KohyaProvider(TrainingProvider):
                 hp.get("guidance_scale", defaults.get("guidance_scale", 7))
             )
 
-            prompt_lines = [
-                _add_missing_sample_flags(
-                    prompt, sample_w, sample_h, sample_steps, sample_guidance
+            # Per-prompt sizes override the run default where the UI supplied
+            # them; a short/absent list leaves the older behaviour intact.
+            prompt_lines = []
+            for i, prompt in enumerate(request.sample_prompts):
+                width, height = request.sample_size_at(i, sample_w, sample_h)
+                prompt_lines.append(
+                    _add_missing_sample_flags(
+                        prompt, width, height, sample_steps, sample_guidance
+                    )
                 )
-                for prompt in request.sample_prompts
-            ]
 
             prompt_file = os.path.join(
                 config_dir, f"{request.output_name}.sample-prompts.txt"

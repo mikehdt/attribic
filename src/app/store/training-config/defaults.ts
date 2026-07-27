@@ -3,6 +3,7 @@ import {
   MODEL_DEFINITIONS,
   type TrainingDefaults,
 } from '@/app/services/training/models';
+import { DEFAULT_SAMPLE_ASPECT } from '@/app/services/training/sample-sizes';
 
 import type { FolderAugmentation, FormState } from './types';
 
@@ -74,6 +75,7 @@ export function defaultsToFormState(
     nativeResolution: defaults.nativeResolution,
     samplingEnabled: false,
     samplePrompts: [''],
+    samplePromptSizes: [DEFAULT_SAMPLE_ASPECT],
     // Epochs by default, matching saveMode — the two cadences read as a pair.
     sampleMode: 'epochs',
     sampleEveryEpochs: 1,

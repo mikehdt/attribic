@@ -8,6 +8,12 @@ import path from 'path';
 
 import { getProjectsFolder } from '@/app/services/config/server-config';
 
+import {
+  DEFAULT_SAMPLE_ASPECT,
+  getSampleBase,
+  resolveSampleSize,
+  type SampleAspect,
+} from './sample-sizes';
 import { getLoraOutputRoot } from './training-root';
 
 type ClientFormConfig = Record<string, unknown>;
@@ -119,6 +125,7 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   datasets: SidecarDatasetEntry[];
   hyperparameters: Record<string, unknown>;
   sample_prompts: string[];
+  sample_sizes: [number, number][];
 } {
   const projectsFolder = getProjectsFolder();
 
@@ -250,6 +257,22 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     model_paths: modelPaths,
   };
 
+  // Per-prompt image shape, resolved from aspect keys to pixels here because
+  // only the client knows the run's resolution settings. Index-aligned with
+  // sample_prompts; the sidecar turns each pair into `--w`/`--h` flags on the
+  // prompt line, which both backends parse.
+  const samplePrompts = samplingEnabled
+    ? ((config.samplePrompts as string[]) ?? [])
+    : [];
+  const sampleBase = getSampleBase(
+    config.resolution as number[] | number | undefined,
+    config.nativeResolution as string | undefined,
+  );
+  const sampleAspects = (config.samplePromptSizes as SampleAspect[]) ?? [];
+  const sampleSizes: [number, number][] = samplePrompts.map((_, i) =>
+    resolveSampleSize(sampleAspects[i] ?? DEFAULT_SAMPLE_ASPECT, sampleBase),
+  );
+
   return {
     project_path: projectPath,
     provider: (config.provider as string) ?? 'ai-toolkit',
@@ -260,8 +283,7 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     hyperparameters,
     // Providers enable sampling purely on a non-empty prompt list, so the
     // toggle must clear it — prompts persist in Redux while the section is off.
-    sample_prompts: samplingEnabled
-      ? ((config.samplePrompts as string[]) ?? [])
-      : [],
+    sample_prompts: samplePrompts,
+    sample_sizes: sampleSizes,
   };
 }

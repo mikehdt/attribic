@@ -3,6 +3,14 @@ import { memo } from 'react';
 
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
+import {
+  DEFAULT_SAMPLE_ASPECT,
+  getSampleBase,
+  resolveSampleSize,
+  SAMPLE_ASPECTS,
+  type SampleAspect,
+  sampleAspectName,
+} from '@/app/services/training/sample-sizes';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
@@ -47,6 +55,12 @@ const SAMPLE_SAMPLER_ITEMS: DropdownItem<string>[] = [
 type SamplingSectionProps = {
   samplingEnabled: boolean;
   samplePrompts: string[];
+  /** Index-aligned with `samplePrompts`; may be short on older saved configs. */
+  samplePromptSizes: SampleAspect[];
+  /** Training resolution, so each aspect can show the pixels it resolves to. */
+  resolution: number[];
+  /** Kohya-only exact `WxH` training size; empty when unused. */
+  nativeResolution: string;
   sampleMode: 'epochs' | 'steps';
   sampleEveryEpochs: number;
   sampleEverySteps: number;
@@ -66,12 +80,16 @@ type SamplingSectionProps = {
   onAddPrompt: () => void;
   onRemovePrompt: (index: number) => void;
   onSetPrompt: (index: number, value: string) => void;
+  onSetPromptSize: (index: number, value: SampleAspect) => void;
   onReset: (section: SectionName) => void;
 };
 
 const SamplingSectionComponent = ({
   samplingEnabled,
   samplePrompts,
+  samplePromptSizes,
+  resolution,
+  nativeResolution,
   sampleMode,
   sampleEveryEpochs,
   sampleEverySteps,
@@ -87,6 +105,7 @@ const SamplingSectionComponent = ({
   onAddPrompt,
   onRemovePrompt,
   onSetPrompt,
+  onSetPromptSize,
   onReset,
 }: SamplingSectionProps) => {
   const activeField =
@@ -103,6 +122,60 @@ const SamplingSectionComponent = ({
     visibleFields.has('guidanceScale') ||
     visibleFields.has('sampleSampler');
 
+  // Aspects resolve against the run's training size, so the menu can name the
+  // pixels each shape actually produces rather than a fixed 1024-family guess.
+  const sampleBase = getSampleBase(resolution, nativeResolution);
+  const aspectItems: DropdownItem<SampleAspect>[] = SAMPLE_ASPECTS.map((a) => {
+    const [w, h] = resolveSampleSize(a.value, sampleBase);
+    return {
+      value: a.value,
+      label: (
+        <span className="flex items-baseline gap-2">
+          <span className="tabular-nums">
+            {w} × {h}
+          </span>
+          <span className="text-slate-400 dark:text-slate-500">
+            {sampleAspectName(a.value, sampleBase)}
+          </span>
+        </span>
+      ),
+    };
+  });
+
+  // Kept as pairs rather than two filtered lists: dropping the empty prompts
+  // shifts the indices, and a shape has to stay with its prompt.
+  const prompts = samplePrompts
+    .map((text, i) => ({
+      text: text.trim(),
+      aspect: samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT,
+    }))
+    .filter((p) => p.text !== '');
+
+  // How many times the cadence fires across the resolved run length. Both
+  // are 0 until a dataset is attached, so the tally is left off until then.
+  const rounds =
+    sampleMode === 'epochs'
+      ? sampleEveryEpochs > 0
+        ? Math.floor(calculatedEpochs / sampleEveryEpochs)
+        : 0
+      : sampleEverySteps > 0
+        ? Math.floor(calculatedSteps / sampleEverySteps)
+        : 0;
+  const totalImages = rounds * prompts.length;
+
+  // Shared by the read-only Simple summary and the editable tiers, so the
+  // cost of a cadence/prompt change is visible wherever it can be changed.
+  const tally = totalImages > 0 && (
+    <p className="text-sm text-slate-500 tabular-nums dark:text-slate-400">
+      {rounds} {rounds === 1 ? 'round' : 'rounds'} &times; {prompts.length}{' '}
+      {prompts.length === 1 ? 'prompt' : 'prompts'} ={' '}
+      <span className="font-medium text-slate-600 dark:text-slate-300">
+        {totalImages.toLocaleString()} {totalImages === 1 ? 'image' : 'images'}
+      </span>{' '}
+      over the run
+    </p>
+  );
+
   // Simple view hides every sampling control, but if sampling was switched on
   // in a higher tier the run will still generate images — show a read-only
   // summary of what's coming so the setting isn't invisible. With sampling
@@ -114,19 +187,6 @@ const SamplingSectionComponent = ({
       sampleMode === 'epochs'
         ? `${sampleEveryEpochs === 1 ? 'epoch' : `${sampleEveryEpochs} epochs`}`
         : `${sampleEverySteps === 1 ? 'step' : `${sampleEverySteps} steps`}`;
-    const prompts = samplePrompts.filter((p) => p.trim() !== '');
-
-    // How many times the cadence fires across the resolved run length. Both
-    // are 0 until a dataset is attached, so the tally is left off until then.
-    const rounds =
-      sampleMode === 'epochs'
-        ? sampleEveryEpochs > 0
-          ? Math.floor(calculatedEpochs / sampleEveryEpochs)
-          : 0
-        : sampleEverySteps > 0
-          ? Math.floor(calculatedSteps / sampleEverySteps)
-          : 0;
-    const totalImages = rounds * prompts.length;
 
     return (
       <CollapsibleSection title="Sample Images">
@@ -137,28 +197,24 @@ const SamplingSectionComponent = ({
           </p>
           {prompts.length > 0 && (
             <ul className="list-inside list-disc space-y-0.5">
-              {prompts.map((prompt, i) => (
-                <li
-                  key={i}
-                  title={prompt}
-                  className="truncate text-slate-600 dark:text-slate-300"
-                >
-                  {prompt}
-                </li>
-              ))}
+              {prompts.map((prompt, i) => {
+                const [w, h] = resolveSampleSize(prompt.aspect, sampleBase);
+                return (
+                  <li key={i} className="text-slate-600 dark:text-slate-300">
+                    <span className="inline-flex max-w-full items-baseline gap-1.5 align-bottom">
+                      <span className="min-w-0 truncate" title={prompt.text}>
+                        {prompt.text}
+                      </span>
+                      <span className="shrink-0 text-slate-400 tabular-nums dark:text-slate-500">
+                        {w} × {h}
+                      </span>
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
-          {totalImages > 0 && (
-            <p className="text-slate-500 tabular-nums dark:text-slate-400">
-              {rounds} {rounds === 1 ? 'round' : 'rounds'} &times;{' '}
-              {prompts.length} {prompts.length === 1 ? 'prompt' : 'prompts'} ={' '}
-              <span className="font-medium text-slate-600 dark:text-slate-300">
-                {totalImages.toLocaleString()}{' '}
-                {totalImages === 1 ? 'image' : 'images'}
-              </span>{' '}
-              over the run
-            </p>
-          )}
+          {tally}
         </div>
       </CollapsibleSection>
     );
@@ -201,7 +257,27 @@ const SamplingSectionComponent = ({
                         value={prompt}
                         onChange={(e) => onSetPrompt(i, e.target.value)}
                         placeholder="e.g. a woman with red hair, sitting at a cafe"
-                        className="flex-1"
+                        className="min-w-0 flex-1"
+                      />
+                      <Dropdown
+                        items={aspectItems}
+                        selectedValue={
+                          samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT
+                        }
+                        onChange={(val) => onSetPromptSize(i, val)}
+                        selectedValueRenderer={() => {
+                          const [w, h] = resolveSampleSize(
+                            samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT,
+                            sampleBase,
+                          );
+                          return (
+                            <span className="tabular-nums">
+                              {w} × {h}
+                            </span>
+                          );
+                        }}
+                        aria-label={`Sample image size for prompt ${i + 1}`}
+                        className="shrink-0"
                       />
                       {samplePrompts.length > 1 && (
                         <button
@@ -315,6 +391,8 @@ const SamplingSectionComponent = ({
                 </div>
               )}
             </div>
+
+            {tally}
           </>
         )}
       </div>

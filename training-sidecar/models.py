@@ -105,6 +105,23 @@ class StartJobRequest(BaseModel):
     datasets: list[DatasetEntry]
     hyperparameters: dict
     sample_prompts: list[str] = []
+    # Per-prompt sample image size as [width, height], index-aligned with
+    # sample_prompts. Providers turn these into the `--w`/`--h` flags both
+    # backends parse off a prompt line. Absent/short = fall back to the run's
+    # default sample size, which is what clients predating this field send.
+    sample_sizes: list[list[int]] = []
+
+    def sample_size_at(
+        self, index: int, default_w: int, default_h: int
+    ) -> tuple[int, int]:
+        """Size for the prompt at `index`, falling back to the run's default
+        sample size when the client didn't send one (or sent something
+        malformed)."""
+        if 0 <= index < len(self.sample_sizes):
+            size = self.sample_sizes[index]
+            if len(size) == 2 and size[0] > 0 and size[1] > 0:
+                return int(size[0]), int(size[1])
+        return default_w, default_h
 
 
 class JobProgress(BaseModel):

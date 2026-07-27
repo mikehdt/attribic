@@ -22,6 +22,10 @@ import {
   getModelById,
   type ModelComponentType,
 } from '@/app/services/training/models';
+import {
+  DEFAULT_SAMPLE_ASPECT,
+  type SampleAspect,
+} from '@/app/services/training/sample-sizes';
 import type { TrainingProvider } from '@/app/services/training/types';
 
 import type { RootState } from '../index';
@@ -263,6 +267,7 @@ const trainingConfigSlice = createSlice({
         datasets: state.form.datasets,
         extraFolders: state.form.extraFolders,
         samplePrompts: state.form.samplePrompts,
+        samplePromptSizes: state.form.samplePromptSizes,
       };
 
       state.form = {
@@ -363,15 +368,24 @@ const trainingConfigSlice = createSlice({
       }
     },
 
+    // samplePrompts and samplePromptSizes are index-aligned, so every mutation
+    // here moves both in lockstep — a size array that drifts out of step would
+    // silently give a prompt someone else's shape.
     addSamplePrompt: (state) => {
       state.form.samplePrompts.push('');
+      state.form.samplePromptSizes.push(DEFAULT_SAMPLE_ASPECT);
     },
 
     removeSamplePrompt: (state, action: PayloadAction<number>) => {
       const next = state.form.samplePrompts.filter(
         (_, i) => i !== action.payload,
       );
+      const nextSizes = state.form.samplePromptSizes.filter(
+        (_, i) => i !== action.payload,
+      );
       state.form.samplePrompts = next.length === 0 ? [''] : next;
+      state.form.samplePromptSizes =
+        next.length === 0 ? [DEFAULT_SAMPLE_ASPECT] : nextSizes;
     },
 
     setSamplePrompt: (
@@ -379,6 +393,20 @@ const trainingConfigSlice = createSlice({
       action: PayloadAction<{ index: number; value: string }>,
     ) => {
       state.form.samplePrompts[action.payload.index] = action.payload.value;
+    },
+
+    setSamplePromptSize: (
+      state,
+      action: PayloadAction<{ index: number; value: SampleAspect }>,
+    ) => {
+      const { index, value } = action.payload;
+      // Configs saved before per-prompt sizes existed load with a short array;
+      // pad it out so writing to a later index doesn't leave holes.
+      const sizes = state.form.samplePromptSizes;
+      while (sizes.length < state.form.samplePrompts.length) {
+        sizes.push(DEFAULT_SAMPLE_ASPECT);
+      }
+      sizes[index] = value;
     },
 
     addDataset: (
@@ -576,6 +604,7 @@ export const {
   addSamplePrompt,
   removeSamplePrompt,
   setSamplePrompt,
+  setSamplePromptSize,
   addDataset,
   setDatasetScan,
   removeDataset,

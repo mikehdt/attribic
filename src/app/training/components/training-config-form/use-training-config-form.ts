@@ -5,6 +5,7 @@ import type {
   ModelDefinition,
 } from '@/app/services/training/models';
 import { resolveLoraOutputDir } from '@/app/services/training/output-path';
+import type { SampleAspect } from '@/app/services/training/sample-sizes';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
@@ -34,6 +35,7 @@ import {
   setOptimizer as setOptimizerAction,
   setProvider as setProviderAction,
   setSamplePrompt as setSamplePromptAction,
+  setSamplePromptSize as setSamplePromptSizeAction,
   updateFolderAugment as updateFolderAugmentAction,
 } from '@/app/store/training-config';
 import { refreshDatasetScans } from '@/app/store/training-config/thunks';
@@ -249,6 +251,13 @@ export function useTrainingConfigForm() {
     [dispatch],
   );
 
+  const setSamplePromptSize = useCallback(
+    (index: number, value: SampleAspect) => {
+      dispatch(setSamplePromptSizeAction({ index, value }));
+    },
+    [dispatch],
+  );
+
   const setAppModelDefaults = useCallback(
     (defaults: AppModelDefaults) => {
       dispatch(setAppModelDefaultsAction(defaults));
@@ -283,6 +292,7 @@ export function useTrainingConfigForm() {
     addSamplePrompt,
     removeSamplePrompt,
     setSamplePrompt,
+    setSamplePromptSize,
     setAppModelDefaults,
     outputFolder,
   };

@@ -926,6 +926,26 @@ def _resolve_sample_every_steps(hp: dict, defaults: dict) -> int:
     return sample_every_steps or 250
 
 
+def _sample_prompt_lines(request: StartJobRequest, default_res: int) -> list[str]:
+    """Prompt lines with each prompt's own image size appended as `--w`/`--h`.
+
+    ai-toolkit's sample block carries a single width/height for the whole run,
+    but its prompt parser (`SampleConfig._process_prompt_string`) understands
+    the same per-line flags sd-scripts does, so per-prompt shapes ride on the
+    prompt itself. A prompt the user already flagged by hand keeps their value.
+    """
+    lines: list[str] = []
+    for i, prompt in enumerate(request.sample_prompts):
+        width, height = request.sample_size_at(i, default_res, default_res)
+        flags = ""
+        if " --w " not in f" {prompt} ":
+            flags += f" --w {width}"
+        if " --h " not in f" {prompt} ":
+            flags += f" --h {height}"
+        lines.append(f"{prompt}{flags}")
+    return lines
+
+
 def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
     """Build the ai-toolkit job_config dict — same shape as the YAML the
     CLI provider emits, but with `process[0].type = ui_trainer` so
@@ -1144,7 +1164,9 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                                 ),
                                 "width": first_resolution(hp, defaults),
                                 "height": first_resolution(hp, defaults),
-                                "prompts": request.sample_prompts,
+                                "prompts": _sample_prompt_lines(
+                                    request, first_resolution(hp, defaults)
+                                ),
                                 "seed": 42,
                                 "walk_seed": True,
                                 "guidance_scale": hp.get(

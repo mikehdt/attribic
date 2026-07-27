@@ -6,6 +6,7 @@ import {
   getVisibleFields,
   type TrainingFieldName,
 } from '@/app/services/training/field-registry';
+import { DEFAULT_SAMPLE_ASPECT } from '@/app/services/training/sample-sizes';
 import type { FormState } from '@/app/store/training-config/types';
 
 import { TrainingBottomShelf } from '../bottom-shelf/training-bottom-shelf';
@@ -69,6 +70,7 @@ const TrainingConfigFormComponent = ({
     addSamplePrompt,
     removeSamplePrompt,
     setSamplePrompt,
+    setSamplePromptSize,
     setAppModelDefaults,
     outputFolder,
   } = useTrainingConfigForm();
@@ -150,6 +152,15 @@ const TrainingConfigFormComponent = ({
     // FormState but forgotten here (nativeResolution went missing that way, so
     // the trainer never saw it). The request builder picks the keys it wants by
     // name, so extra UI-only keys ride along harmlessly.
+    // Blank prompt rows are dropped, which shifts the indices — the per-prompt
+    // shapes have to be filtered alongside them, not separately.
+    const keptPrompts = state.samplePrompts
+      .map((text, i) => ({
+        text: text.trim(),
+        aspect: state.samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT,
+      }))
+      .filter((p) => p.text !== '');
+
     onStartTraining?.(
       {
         ...state,
@@ -161,7 +172,8 @@ const TrainingConfigFormComponent = ({
         // the converted step total.
         steps: effectiveSteps,
         epochs: effectiveEpochs,
-        samplePrompts: state.samplePrompts.map((s) => s.trim()).filter(Boolean),
+        samplePrompts: keptPrompts.map((p) => p.text),
+        samplePromptSizes: keptPrompts.map((p) => p.aspect),
       },
       state,
     );
@@ -310,6 +322,9 @@ const TrainingConfigFormComponent = ({
           <SamplingSection
             samplingEnabled={state.samplingEnabled}
             samplePrompts={state.samplePrompts}
+            samplePromptSizes={state.samplePromptSizes}
+            resolution={state.resolution}
+            nativeResolution={state.nativeResolution}
             sampleMode={state.sampleMode}
             sampleEveryEpochs={state.sampleEveryEpochs}
             sampleEverySteps={state.sampleEverySteps}
@@ -325,6 +340,7 @@ const TrainingConfigFormComponent = ({
             onAddPrompt={addSamplePrompt}
             onRemovePrompt={removeSamplePrompt}
             onSetPrompt={setSamplePrompt}
+            onSetPromptSize={setSamplePromptSize}
             onReset={resetSection}
           />
 

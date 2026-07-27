@@ -2,6 +2,7 @@ import type {
   ConceptualGroup,
   TrainingFieldName,
 } from '@/app/services/training/field-registry';
+import type { SampleAspect } from '@/app/services/training/sample-sizes';
 import type {
   ModelPaths,
   TrainingProvider,
@@ -119,6 +120,12 @@ export type FormState = {
 
   samplingEnabled: boolean;
   samplePrompts: string[];
+  /**
+   * Per-prompt image shape, index-aligned with `samplePrompts`. Saved configs
+   * predating this field load short (or absent) — read it with a
+   * `?? DEFAULT_SAMPLE_ASPECT` fallback rather than by index alone.
+   */
+  samplePromptSizes: SampleAspect[];
   sampleMode: 'epochs' | 'steps';
   sampleEveryEpochs: number;
   sampleEverySteps: number;
