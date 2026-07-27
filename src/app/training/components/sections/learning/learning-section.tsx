@@ -13,6 +13,7 @@ import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 import { Slider } from '@/app/shared/slider/slider';
 import type { TrainingViewMode } from '@/app/store/preferences';
@@ -213,13 +214,20 @@ const LearningSectionComponent = ({
     [onFieldChange],
   );
 
-  const handleLrTextChange = useCallback(
-    (raw: string) => {
-      const parsed = parseFloat(raw);
-      if (!Number.isFinite(parsed) || parsed <= 0) return;
-      onFieldChange('learningRate', parsed);
+  const lrValueInput = useMemo(
+    () => ({
+      value: learningRate,
+      onChange: (v: number) => onFieldChange('learningRate', v),
+      validate: (v: number) => v > 0,
+    }),
+    [learningRate, onFieldChange],
+  );
+
+  const handleDurationChange = useCallback(
+    (val: number) => {
+      onFieldChange(durationMode === 'epochs' ? 'epochs' : 'steps', val);
     },
-    [onFieldChange],
+    [durationMode, onFieldChange],
   );
 
   const handleOptimizerReset = useCallback(
@@ -273,19 +281,12 @@ const LearningSectionComponent = ({
               <FormTitle>Duration</FormTitle>
 
               <InputTray size="md" gap="sm">
-                <Input
-                  type="number"
+                <NumberInput
+                  spinner
+                  kind="int"
                   min={1}
                   value={durationMode === 'epochs' ? epochs : steps}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (val > 0) {
-                      onFieldChange(
-                        durationMode === 'epochs' ? 'epochs' : 'steps',
-                        val,
-                      );
-                    }
-                  }}
+                  onChange={handleDurationChange}
                   className="w-32"
                   size="md"
                 />
@@ -353,12 +354,11 @@ const LearningSectionComponent = ({
                 value={Math.round(sliderPosition)}
                 onChange={handleLrSlider}
                 showTrackFill
-                startLabel={isSimple ? 'Slower' : undefined}
-                midLabel={isSimple ? lrLabel : undefined}
-                endLabel={isSimple ? 'Faster' : undefined}
-                valueDisplay={learningRate}
+                startLabel="Slower"
+                midLabel={lrLabel}
+                endLabel="Faster"
+                valueInput={lrValueInput}
                 numberInputSize="md"
-                onValueDisplayChange={handleLrTextChange}
                 ariaLabel="Learning rate"
               />
             </div>

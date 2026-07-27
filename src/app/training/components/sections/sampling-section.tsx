@@ -9,6 +9,7 @@ import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 
 import { FieldTitle } from '../field-title';
@@ -236,14 +237,12 @@ const SamplingSectionComponent = ({
                 <div className="col-span-2">
                   <FormTitle>Generate Every</FormTitle>
                   <InputTray size="md">
-                    <Input
-                      type="number"
+                    <NumberInput
+                      spinner
+                      kind="int"
                       min={1}
                       value={activeValue}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (val > 0) onFieldChange(activeField, val);
-                      }}
+                      onChange={(val) => onFieldChange(activeField, val)}
                       className="mr-1 w-20"
                     />
                     <SegmentedControl
@@ -268,15 +267,13 @@ const SamplingSectionComponent = ({
                     defaults={defaults}
                     onFieldChange={onFieldChange}
                   />
-                  <Input
-                    type="number"
+                  <NumberInput
+                    spinner
+                    kind="int"
                     min={1}
                     max={100}
                     value={sampleSteps}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (val > 0) onFieldChange('sampleSteps', val);
-                    }}
+                    onChange={(val) => onFieldChange('sampleSteps', val)}
                     className="w-full"
                   />
                 </div>
@@ -291,15 +288,11 @@ const SamplingSectionComponent = ({
                     defaults={defaults}
                     onFieldChange={onFieldChange}
                   />
-                  <Input
-                    type="text"
+                  <NumberInput
+                    min={0}
                     value={guidanceScale}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val) && val >= 0)
-                        onFieldChange('guidanceScale', val);
-                    }}
-                    className="w-full tabular-nums"
+                    onChange={(val) => onFieldChange('guidanceScale', val)}
+                    className="w-full"
                   />
                 </div>
               )}

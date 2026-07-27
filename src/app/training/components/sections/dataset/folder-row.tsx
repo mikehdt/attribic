@@ -14,7 +14,7 @@ import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { FormTitle } from '@/app/shared/form-title/form-title';
-import { Input } from '@/app/shared/input/input';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 
 import type { FolderAugmentation } from '../../training-config-form/use-training-config-form';
 
@@ -125,21 +125,19 @@ export function FolderRow({
             {showRepeats && (
               <>
                 <span className="text-slate-400">&times;</span>
-                <Input
-                  type="number"
+                <NumberInput
+                  spinner
+                  kind="int"
                   min={1}
                   max={100}
                   value={effectiveRepeats}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (val > 0) {
-                      onSetRepeats(
-                        datasetIndex,
-                        folderName,
-                        val === detectedRepeats ? null : val,
-                      );
-                    }
-                  }}
+                  onChange={(val) =>
+                    onSetRepeats(
+                      datasetIndex,
+                      folderName,
+                      val === detectedRepeats ? null : val,
+                    )
+                  }
                   size="sm"
                   className="w-14 text-center"
                 />
@@ -209,18 +207,13 @@ export function FolderRow({
 
           <div>
             <FormTitle>LoRA Weight</FormTitle>
-            <Input
-              type="text"
+            <NumberInput
+              min={0}
               value={augmentation.loraWeight}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0) {
-                  onUpdateAugment(datasetIndex, folderName, {
-                    loraWeight: val,
-                  });
-                }
-              }}
-              className="w-20 tabular-nums"
+              onChange={(val) =>
+                onUpdateAugment(datasetIndex, folderName, { loraWeight: val })
+              }
+              className="w-20"
               size="sm"
             />
             <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-600">
@@ -263,19 +256,15 @@ export function FolderRow({
 
           <div>
             <FormTitle>Keep Tokens</FormTitle>
-            <Input
-              type="number"
+            <NumberInput
+              spinner
+              kind="int"
               min={0}
               value={augmentation.keepTokens}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val >= 0) {
-                  onUpdateAugment(datasetIndex, folderName, {
-                    keepTokens: val,
-                  });
-                }
-              }}
-              className="w-20 tabular-nums"
+              onChange={(val) =>
+                onUpdateAugment(datasetIndex, folderName, { keepTokens: val })
+              }
+              className="w-20"
               size="sm"
             />
             <p className="mt-0.5 text-xs text-slate-400">
@@ -286,18 +275,16 @@ export function FolderRow({
 
           <div>
             <FormTitle>Caption Dropout</FormTitle>
-            <Input
-              type="text"
+            <NumberInput
+              min={0}
+              max={1}
               value={augmentation.captionDropoutRate}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                if (!isNaN(val) && val >= 0 && val <= 1) {
-                  onUpdateAugment(datasetIndex, folderName, {
-                    captionDropoutRate: val,
-                  });
-                }
-              }}
-              className="w-20 tabular-nums"
+              onChange={(val) =>
+                onUpdateAugment(datasetIndex, folderName, {
+                  captionDropoutRate: val,
+                })
+              }
+              className="w-20"
               size="sm"
             />
             <p className="mt-0.5 text-xs text-slate-400">

@@ -39,13 +39,12 @@ import {
 } from '@/app/store/training-config/thunks';
 import type { LoadedProject } from '@/app/store/training-config/types';
 
+import { MENU_HEADING_CLASS, MENU_ITEM_CLASS } from './menu-styles';
 import { ModelBackendBadges } from './model-backend-badges';
+import { RecentRuns } from './recent-runs';
 
 /** How many recent projects the menu lists (fewer than are stored). */
 const MAX_RECENT_SHOWN = 3;
-
-const MENU_ITEM_CLASS =
-  'flex cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700';
 
 type ProjectSelectorProps = {
   onRequestLoad: () => void;
@@ -413,6 +412,12 @@ const PopupContent = ({
         )}
       </div>
 
+      {/* Still about the project above it, so it sits ahead of the actions
+          that leave the project behind. */}
+      {loadedProject && (
+        <RecentRuns project={loadedProject} onClose={onClose} />
+      )}
+
       <div className="flex flex-col">
         {loadedProject && (
           <button
@@ -437,9 +442,7 @@ const PopupContent = ({
 
       {recentEntries.length > 0 && (
         <div className="flex flex-col py-1">
-          <p className="px-3 py-1 text-sm font-medium text-slate-400 dark:text-slate-500">
-            Recent
-          </p>
+          <p className={MENU_HEADING_CLASS}>Recent Projects</p>
           {recentEntries.map((entry) => (
             <button
               key={entry.id}

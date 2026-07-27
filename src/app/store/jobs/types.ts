@@ -55,8 +55,12 @@ export type TrainingJob = JobBase & {
    * the header should say what it was trained from. Absent for ephemeral runs
    * (no project loaded), runs rehydrated from the sidecar, and history entries
    * archived before this field existed.
+   *
+   * `id` is what the project menu matches its own runs on — it survives a
+   * rename, which `name` doesn't. Entries archived before it existed fall back
+   * to matching on the name they were saved under.
    */
-  project?: { name: string; version: number };
+  project?: { id?: string; name: string; version: number };
   /**
    * The launch form exactly as it was submitted, kept so a past run's settings
    * can be loaded back into the config form. `config` is a lossy summary built

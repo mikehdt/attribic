@@ -6,7 +6,7 @@ import {
   SlidersHorizontalIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 
 import { formatDuration } from '@/app/shared/activity-panel/helpers';
 import { showsSamplesView } from '@/app/shared/activity-panel/training-detail-modal/training-detail-tabs/samples-model';
@@ -161,32 +161,34 @@ function HistoryRow({
  */
 export function TrainingHistoryModal() {
   const dispatch = useAppDispatch();
-  const { isOpen, closeModal } = useTrainingHistoryModal();
+  const { isOpen, entryId, selectEntry, closeModal } =
+    useTrainingHistoryModal();
   const history = useAppSelector(selectTrainingHistory);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = selectedId
-    ? (history.find((e) => e.id === selectedId) ?? null)
+  // Which run is showing lives in the modal's shared open state, so opening
+  // straight onto one (the project menu's recent runs) and drilling in from
+  // the list here are the same operation.
+  const selected = entryId
+    ? (history.find((e) => e.id === entryId) ?? null)
     : null;
   const selectedWide = selected != null && showsSamplesView(selected);
 
   const handleClose = useCallback(() => {
-    setSelectedId(null);
     closeModal();
   }, [closeModal]);
 
   const handleDelete = useCallback(
     (id: string) => {
       dispatch(deleteHistoryEntry(id));
-      setSelectedId((cur) => (cur === id ? null : cur));
+      if (entryId === id) selectEntry(null);
     },
-    [dispatch],
+    [dispatch, entryId, selectEntry],
   );
 
   const handleClearAll = useCallback(() => {
     dispatch(clearHistory());
-    setSelectedId(null);
-  }, [dispatch]);
+    selectEntry(null);
+  }, [dispatch, selectEntry]);
 
   // Load a past run's settings into the form and get out of the way — the form
   // is directly behind this modal, so there's nowhere to navigate to.
@@ -218,11 +220,7 @@ export function TrainingHistoryModal() {
       {selected ? (
         <div className="flex flex-col gap-3">
           <span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedId(null)}
-            >
+            <Button variant="ghost" size="sm" onClick={() => selectEntry(null)}>
               <ArrowLeftIcon />
               Back to history
             </Button>
@@ -253,7 +251,7 @@ export function TrainingHistoryModal() {
                   <HistoryRow
                     key={entry.id}
                     entry={entry}
-                    onOpen={setSelectedId}
+                    onOpen={selectEntry}
                     onDelete={handleDelete}
                     onReuse={handleReuse}
                   />

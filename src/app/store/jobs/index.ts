@@ -366,6 +366,16 @@ export const selectCompletedJobs = createSelector(selectAllJobs, (jobs) =>
   ),
 );
 
+/**
+ * Every training job the panel currently holds, live or finished. Terminal
+ * runs are seeded here from the durable archive, so this is the panel's view
+ * of them — callers that need runs the panel has since cleared should read
+ * `trainingHistory` as well.
+ */
+export const selectTrainingJobs = createSelector(selectAllJobs, (jobs) =>
+  jobs.filter((j): j is TrainingJob => j.type === 'training'),
+);
+
 /** The single active training job (there can be at most one). */
 const selectActiveTrainingJob = createSelector(
   selectAllJobs,

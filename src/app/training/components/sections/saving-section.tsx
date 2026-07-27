@@ -10,6 +10,7 @@ import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 
 import { FieldTitle } from '../field-title';
@@ -155,14 +156,12 @@ const SavingSectionComponent = ({
                 <div>
                   <FormTitle>Save Every</FormTitle>
                   <InputTray size="md">
-                    <Input
-                      type="number"
+                    <NumberInput
+                      spinner
+                      kind="int"
                       min={1}
                       value={activeValue}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (val > 0) onFieldChange(activeField, val);
-                      }}
+                      onChange={(val) => onFieldChange(activeField, val)}
                       className="mr-1 w-20"
                     />
                     <SegmentedControl
@@ -186,15 +185,12 @@ const SavingSectionComponent = ({
                       defaults={defaults}
                       onFieldChange={onFieldChange}
                     />
-                    <Input
-                      type="number"
+                    <NumberInput
+                      spinner
+                      kind="int"
                       min={0}
                       value={maxSavesToKeep}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val) && val >= 0)
-                          onFieldChange('maxSavesToKeep', val);
-                      }}
+                      onChange={(val) => onFieldChange('maxSavesToKeep', val)}
                       className="w-24"
                     />
                     <p className="mt-1 text-xs text-slate-400">

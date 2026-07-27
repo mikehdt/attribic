@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 
-type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'toolbar';
+export type InputSize = 'xs' | 'sm' | 'md' | 'lg' | 'toolbar';
 
 type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> & {
   size?: InputSize;

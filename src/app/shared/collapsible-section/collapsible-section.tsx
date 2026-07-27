@@ -4,6 +4,7 @@ import { memo, type ReactNode, useCallback, useState } from 'react';
 type CollapsibleSectionProps = {
   title: string;
   defaultExpanded?: boolean;
+  headerSize?: 'sm' | 'md';
   /** Content rendered inline after the title (e.g. status dots, badges) */
   headerExtra?: ReactNode;
   /** Actions rendered before the chevron; receives expanded state for conditional visibility */
@@ -14,6 +15,7 @@ type CollapsibleSectionProps = {
 const CollapsibleSectionComponent = ({
   title,
   defaultExpanded = true,
+  headerSize = 'md',
   headerExtra,
   headerActions,
   children,
@@ -42,10 +44,10 @@ const CollapsibleSectionComponent = ({
             handleToggle();
           }
         }}
-        className="flex w-full cursor-pointer items-center justify-between bg-(--surface) px-4 py-2 text-sm inset-shadow-sm inset-shadow-white dark:inset-shadow-slate-700"
+        className={`flex w-full cursor-pointer items-center justify-between bg-(--surface) inset-shadow-sm inset-shadow-white dark:inset-shadow-slate-700 ${headerSize === 'sm' ? 'px-4 py-1 text-sm' : 'text-md px-4 py-2'}`}
       >
         <div className="flex items-center gap-2">
-          <h3 className="text-base font-medium text-(--foreground)">{title}</h3>
+          <h3 className="font-medium text-(--foreground)">{title}</h3>
           {headerExtra}
         </div>
 

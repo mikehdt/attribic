@@ -8,6 +8,7 @@ import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 import { Slider } from '@/app/shared/slider/slider';
 
 import { FieldTitle } from '../field-title';
@@ -169,17 +170,13 @@ const LoraShapeSectionComponent = ({
                   defaults={defaults}
                   onFieldChange={onFieldChange}
                 />
-                <Input
-                  type="text"
+                <NumberInput
+                  min={0}
+                  max={1}
                   value={networkDropout}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val >= 0 && val <= 1) {
-                      onFieldChange('networkDropout', val);
-                    }
-                  }}
+                  onChange={(val) => onFieldChange('networkDropout', val)}
                   placeholder="0"
-                  className="w-full tabular-nums"
+                  className="w-full"
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   0 = disabled, 0.1–0.3 typical
@@ -196,16 +193,12 @@ const LoraShapeSectionComponent = ({
                   defaults={defaults}
                   onFieldChange={onFieldChange}
                 />
-                <Input
-                  type="text"
+                <NumberInput
+                  min={0}
                   value={scaleWeightNorms}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val) && val >= 0)
-                      onFieldChange('scaleWeightNorms', val);
-                  }}
+                  onChange={(val) => onFieldChange('scaleWeightNorms', val)}
                   placeholder="0"
-                  className="w-full tabular-nums"
+                  className="w-full"
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   Caps LoRA weight norms; 1.0 typical, 0 = disabled
@@ -222,17 +215,14 @@ const LoraShapeSectionComponent = ({
                   defaults={defaults}
                   onFieldChange={onFieldChange}
                 />
-                <Input
-                  type="number"
+                <NumberInput
+                  spinner
+                  kind="int"
                   min={-1}
                   value={lokrFactor}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val >= -1)
-                      onFieldChange('lokrFactor', val);
-                  }}
+                  onChange={(val) => onFieldChange('lokrFactor', val)}
                   placeholder="-1"
-                  className="w-full tabular-nums"
+                  className="w-full"
                 />
                 <p className="mt-1 text-xs text-slate-400">
                   -1 = auto (largest factor)

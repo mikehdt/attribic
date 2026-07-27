@@ -431,7 +431,11 @@ export function startTraining(
       config: snapshotClientConfig(config),
       progress: null,
       project: loadedProject
-        ? { name: loadedProject.name, version: loadedProject.version }
+        ? {
+            id: loadedProject.id,
+            name: loadedProject.name,
+            version: loadedProject.version,
+          }
         : undefined,
       formSnapshot,
     };

@@ -2,6 +2,7 @@ import { ImagesIcon } from 'lucide-react';
 
 import type { TrainingJob } from '@/app/store/jobs';
 
+import { CollapsibleSection } from '../../collapsible-section';
 import { ProgressBar } from '../../progress-bar/progress-bar';
 import {
   formatMemory,
@@ -455,12 +456,15 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         )}
       </div>
 
-      <div>
-        <span className="text-xs text-slate-400 uppercase">Recent log</span>
+      <CollapsibleSection
+        headerSize="sm"
+        title="Recent training log"
+        defaultExpanded={false}
+      >
         <div
           ref={logRef}
           onScroll={handleLogScroll}
-          className="mt-1 max-h-48 overflow-auto rounded border border-slate-300 bg-slate-100 p-2 font-mono text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300"
+          className="-mx-4 -my-3 max-h-48 overflow-auto px-4 py-3 font-mono text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300"
         >
           {progress.logLines && progress.logLines.length > 0 ? (
             progress.logLines.map((line, i) => (
@@ -475,7 +479,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             <span className="text-slate-400">No log output yet</span>
           )}
         </div>
-      </div>
+      </CollapsibleSection>
 
       {job.status === 'failed' && progress.error && (
         <pre className="max-h-40 overflow-auto font-mono text-[11px] whitespace-pre-wrap text-rose-500">

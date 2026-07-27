@@ -8,7 +8,7 @@ import {
   useId,
 } from 'react';
 
-import { Input } from '@/app/shared/input/input';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 
 type SliderColor = 'sky' | 'indigo' | 'teal' | 'green' | 'red' | 'amber';
 type SliderSize = 'xs' | 'sm' | 'md';
@@ -36,10 +36,18 @@ type SliderProps = {
   /** Read-only value display rendered to the right of the track. */
   valueDisplay?: ReactNode;
   /**
-   * If provided alongside `valueDisplay`, the display becomes a typeable text
-   * input. Fires with the raw string — consumer parses/validates/clamps.
+   * Typeable number box to the right of the track, bound to a value that isn't
+   * the slider position — e.g. a log-scaled learning rate whose slider runs
+   * 0-100. Takes precedence over `valueDisplay`.
    */
-  onValueDisplayChange?: (raw: string) => void;
+  valueInput?: {
+    value: number;
+    onChange: (value: number) => void;
+    kind?: 'int' | 'float';
+    min?: number;
+    max?: number;
+    validate?: (value: number) => boolean;
+  };
 
   /** Editable number input bound to the slider value, rendered to the right. */
   showNumberInput?: boolean;
@@ -109,7 +117,7 @@ export const Slider = ({
   midLabel,
   endLabel,
   valueDisplay,
-  onValueDisplayChange,
+  valueInput,
   showNumberInput = false,
   numberInputSize = 'sm',
   ariaLabel,
@@ -127,24 +135,6 @@ export const Slider = ({
     [onChange],
   );
 
-  const handleNumberChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value;
-      if (raw === '') return;
-      const v = parseFloat(raw);
-      if (Number.isNaN(v)) return;
-      onChange(clamp(v, min, max));
-    },
-    [onChange, min, max],
-  );
-
-  const handleValueDisplayChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      onValueDisplayChange?.(e.target.value);
-    },
-    [onValueDisplayChange],
-  );
-
   const range = max - min;
   const pct = range > 0 ? ((clamp(value, min, max) - min) / range) * 100 : 0;
 
@@ -153,7 +143,8 @@ export const Slider = ({
   const accentText = accentTextClasses[color];
   const fillClasses = fillColorClasses[color];
 
-  const hasValueColumn = valueDisplay !== undefined || showNumberInput;
+  const hasValueColumn =
+    valueDisplay !== undefined || valueInput !== undefined || showNumberInput;
   const valueColWidth = numberInputWidth[numberInputSize];
   const hasAnyLabel =
     startLabel !== undefined ||
@@ -197,36 +188,41 @@ export const Slider = ({
           />
         </div>
 
-        {valueDisplay !== undefined &&
-          (onValueDisplayChange ? (
-            <Input
-              type="text"
-              value={String(valueDisplay)}
-              onChange={handleValueDisplayChange}
-              disabled={disabled}
-              size={numberInputSize}
-              className={`${numberInputWidth[numberInputSize]} text-center tabular-nums`}
-              aria-label={ariaLabel ? `${ariaLabel} value` : undefined}
-            />
-          ) : (
+        {valueInput ? (
+          <NumberInput
+            value={valueInput.value}
+            onChange={valueInput.onChange}
+            kind={valueInput.kind}
+            min={valueInput.min}
+            max={valueInput.max}
+            validate={valueInput.validate}
+            disabled={disabled}
+            size={numberInputSize}
+            className={`${valueColWidth} text-center`}
+            aria-label={ariaLabel ? `${ariaLabel} value` : undefined}
+          />
+        ) : (
+          valueDisplay !== undefined && (
             <span
               className={`text-right text-sm font-medium text-(--foreground) tabular-nums ${valueColWidth}`}
             >
               {valueDisplay}
             </span>
-          ))}
+          )
+        )}
 
         {showNumberInput && (
-          <Input
-            type="number"
+          <NumberInput
+            spinner={Number.isInteger(step)}
+            kind={Number.isInteger(step) ? 'int' : 'float'}
             min={min}
             max={max}
             step={step}
             value={value}
-            onChange={handleNumberChange}
+            onChange={onChange}
             disabled={disabled}
             size={numberInputSize}
-            className={`${numberInputWidth[numberInputSize]} text-center`}
+            className={`${valueColWidth} text-center`}
             aria-label={ariaLabel ? `${ariaLabel} value` : undefined}
           />
         )}

@@ -10,6 +10,7 @@ import {
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { Modal } from '@/app/shared/modal';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 import { ProgressBar } from '@/app/shared/progress-bar/progress-bar';
 import { ScopingCheckboxes } from '@/app/shared/scoping-checkboxes';
 
@@ -226,21 +227,17 @@ export const MoveToFolderModal = ({
                     >
                       Repeats
                     </label>
-                    <input
+                    <NumberInput
                       id="repeat-count"
-                      type="number"
+                      spinner
+                      kind="int"
                       min={1}
                       value={newRepeatCount}
-                      onChange={(e) =>
-                        setNewRepeatCount(
-                          Math.max(1, parseInt(e.target.value) || 1),
-                        )
-                      }
-                      className={`w-16 rounded border px-2 py-1 text-sm ${
-                        isNewRepeatCountValid
-                          ? 'border-slate-300 dark:border-slate-600'
-                          : 'border-rose-400'
-                      } bg-white dark:bg-slate-700 dark:text-slate-200`}
+                      onChange={setNewRepeatCount}
+                      size="sm"
+                      className={`w-16 ${
+                        isNewRepeatCountValid ? '' : '!border-rose-400'
+                      }`}
                     />
                   </div>
 

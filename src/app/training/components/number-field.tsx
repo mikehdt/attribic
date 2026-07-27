@@ -1,7 +1,7 @@
-import { type ReactNode, useCallback, useState } from 'react';
+import { type ReactNode, useCallback } from 'react';
 
 import type { TrainingDefaults } from '@/app/services/training/models';
-import { Input } from '@/app/shared/input/input';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 import type { FormState } from '@/app/store/training-config/types';
 
 import { FieldTitle } from './field-title';
@@ -40,16 +40,7 @@ type NumberFieldProps<K extends NumericField> = {
 
 /**
  * A labelled numeric form field: title, reset affordance, input and hint.
- *
- * Editing is draft-based. These inputs previously committed straight to the
- * store behind a `parseFloat` guard that dropped anything not already a valid
- * number — which made the field fight you mid-edit, because clearing it or
- * typing an intermediate value like `0.` or `1e-` parses to nothing and the
- * rejected keystroke never reached the DOM. Instead the raw text is held
- * locally while the field is being edited and pushed to the store on every
- * keystroke that parses to an in-range number; blurring drops the draft so the
- * display snaps back to whatever the store actually holds. Abandoning a field
- * mid-edit therefore restores the last valid value rather than leaving it empty.
+ * Editing is draft-based — see {@link NumberInput}.
  */
 export function NumberField<K extends NumericField>({
   field,
@@ -66,19 +57,9 @@ export function NumberField<K extends NumericField>({
   className = 'w-full tabular-nums',
   ariaLabel,
 }: NumberFieldProps<K>) {
-  const [draft, setDraft] = useState<string | null>(null);
-
   const handleChange = useCallback(
-    (raw: string) => {
-      setDraft(raw);
-      const parsed = kind === 'int' ? parseInt(raw, 10) : parseFloat(raw);
-      if (!Number.isFinite(parsed)) return;
-      if (min !== undefined && parsed < min) return;
-      if (max !== undefined && parsed > max) return;
-      if (validate && !validate(parsed)) return;
-      onFieldChange(field, parsed as FormState[K]);
-    },
-    [field, kind, max, min, onFieldChange, validate],
+    (parsed: number) => onFieldChange(field, parsed as FormState[K]),
+    [field, onFieldChange],
   );
 
   return (
@@ -90,12 +71,13 @@ export function NumberField<K extends NumericField>({
         defaults={defaults}
         onFieldChange={onFieldChange}
       />
-      <Input
-        type="text"
-        inputMode={kind === 'int' ? 'numeric' : 'decimal'}
-        value={draft ?? String(value)}
-        onChange={(e) => handleChange(e.target.value)}
-        onBlur={() => setDraft(null)}
+      <NumberInput
+        value={value}
+        onChange={handleChange}
+        kind={kind}
+        min={min}
+        max={max}
+        validate={validate}
         placeholder={placeholder}
         className={className}
         aria-label={ariaLabel}

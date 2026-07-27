@@ -9,7 +9,7 @@ import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { Dropdown, DropdownGroup, DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
-import { Input } from '@/app/shared/input/input';
+import { NumberInput } from '@/app/shared/number-input/number-input';
 import { RadioGroup } from '@/app/shared/radio-group';
 
 const VIDEO_QUALITY_OPTIONS: { value: VlmVideoQuality; label: string }[] = [
@@ -149,21 +149,14 @@ export function AutoTaggerVlmSettings({
           <FormTitle as="span" size="sm">
             Max Tokens
           </FormTitle>
-          <Input
-            type="number"
+          <NumberInput
+            spinner
+            kind="int"
             min={32}
             max={4096}
             step={32}
             value={vlmOptions.maxTokens}
-            onChange={(e) =>
-              onVlmOptionChange(
-                'maxTokens',
-                Math.max(
-                  32,
-                  Math.min(4096, parseInt(e.target.value, 10) || 32),
-                ),
-              )
-            }
+            onChange={(val) => onVlmOptionChange('maxTokens', val)}
           />
         </div>
 
@@ -204,40 +197,23 @@ export function AutoTaggerVlmSettings({
           <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
               <FormTitle as="span">Frame budget</FormTitle>
-              <Input
-                type="number"
+              <NumberInput
+                spinner
+                kind="int"
                 min={4}
                 max={128}
                 step={4}
                 value={vlmOptions.video.frameBudget}
-                onChange={(e) =>
-                  onVideoOptionChange(
-                    'frameBudget',
-                    Math.max(
-                      4,
-                      Math.min(128, parseInt(e.target.value, 10) || 4),
-                    ),
-                  )
-                }
+                onChange={(val) => onVideoOptionChange('frameBudget', val)}
               />
             </div>
             <div className="flex flex-col gap-1">
               <FormTitle as="span">Max FPS</FormTitle>
-              <Input
-                type="number"
+              <NumberInput
                 min={0.1}
                 max={8}
-                step={0.5}
                 value={vlmOptions.video.maxFps}
-                onChange={(e) =>
-                  onVideoOptionChange(
-                    'maxFps',
-                    Math.max(
-                      0.1,
-                      Math.min(8, parseFloat(e.target.value) || 0.1),
-                    ),
-                  )
-                }
+                onChange={(val) => onVideoOptionChange('maxFps', val)}
               />
             </div>
             <div className="flex flex-col gap-1">
