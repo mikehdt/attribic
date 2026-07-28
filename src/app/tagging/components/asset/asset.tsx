@@ -190,7 +190,7 @@ const AssetComponent = ({
             color={isSelected ? 'indigo' : 'slate'}
             isPressed={showCropVisualization}
             onClick={onToggleLocalCropVisualization}
-            title={`${showCropVisualization ? 'Hide' : 'Show'} crop visualization for this asset`}
+            title={`${showCropVisualization ? 'Hide' : 'Show'} crop visualisation for this asset`}
           >
             {showCropVisualization ? <EyeOffIcon /> : <EyeIcon />}
           </Button>
@@ -290,6 +290,7 @@ const assetPropsAreEqual = (
     prevProps.filteredIndex !== nextProps.filteredIndex ||
     prevProps.ioState !== nextProps.ioState ||
     prevProps.lastModified !== nextProps.lastModified ||
+    prevProps.blurDataUrl !== nextProps.blurDataUrl ||
     prevProps.currentPage !== nextProps.currentPage ||
     prevProps.previewState !== nextProps.previewState ||
     prevProps.onHover !== nextProps.onHover

@@ -74,11 +74,11 @@ export const EditTagsModal = ({
 
         {/* Summary message */}
         {hasNoAffectedAssets ? (
-          <p className="text-xs text-rose-600">
+          <p className="text-sm text-rose-600">
             No assets match the current selection and filter combination.
           </p>
         ) : (
-          <p className="text-xs text-slate-500">{getSummaryMessage()}</p>
+          <p className="text-sm text-slate-500">{getSummaryMessage()}</p>
         )}
 
         {/* Selected tags count - now shows scoped count */}

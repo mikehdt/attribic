@@ -8,9 +8,11 @@ import { selectIoMessage, selectLoadProgress } from '@/app/store/assets';
 import { useAppSelector } from '@/app/store/hooks';
 import { selectProjectName } from '@/app/store/project';
 
-type ErrorProps = { onReload: (_args?: { maintainIoState: boolean }) => void };
+type ErrorViewProps = {
+  onReload: (_args?: { maintainIoState: boolean }) => void;
+};
 
-export const Error = ({ onReload }: ErrorProps) => {
+export const ErrorView = ({ onReload }: ErrorViewProps) => {
   const router = useRouter();
 
   const handleRetry = () => {

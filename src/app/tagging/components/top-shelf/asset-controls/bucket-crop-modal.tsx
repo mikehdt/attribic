@@ -329,7 +329,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
           <div className="relative flex h-80 items-center justify-center">
             <div className="relative">
               <div
-                className="border-2 border-slate-300 bg-slate-200"
+                className="border-2 border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700"
                 style={{
                   width: `${visualizationDimensions.width}px`,
                   height: `${visualizationDimensions.height}px`,
@@ -397,7 +397,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
             </div>
             {heightPriority ? (
               validWidthsForHeight.length === 1 ? (
-                <div className="flex items-center rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                <div className="flex items-center rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
                   {validWidthsForHeight[0]}
                   {isWidthRounded && (
                     <span className="ml-1 text-xs text-amber-600">
@@ -450,7 +450,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
             </div>
             {widthPriority ? (
               validHeightsForWidth.length === 1 ? (
-                <div className="flex items-center rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                <div className="flex items-center rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
                   {validHeightsForWidth[0]}
                   {isHeightRounded && (
                     <span className="ml-1 text-xs text-amber-600">

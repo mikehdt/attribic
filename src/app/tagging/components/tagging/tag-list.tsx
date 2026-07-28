@@ -21,6 +21,7 @@
  */
 import {
   ClientRect,
+  closestCenter,
   CollisionDetection,
   DndContext,
   DragMoveEvent,
@@ -81,11 +82,16 @@ let dragPointer: { x: number; y: number } | null = null;
 const collisionWithEdgeZones: CollisionDetection = (args) => {
   pointerEdgeZone = null;
   dragPointer = args.pointerCoordinates;
-  const within = pointerWithin(args);
-  if (within.length > 0) return within;
 
   const { pointerCoordinates, droppableRects, droppableContainers } = args;
-  if (!pointerCoordinates) return [];
+
+  // Keyboard drags have no pointer — fall back to closestCenter so the
+  // KeyboardSensor's requested coordinates resolve to an `over` target
+  // (handleDragUpdate has a matching pointer-free placement path)
+  if (!pointerCoordinates) return closestCenter(args);
+
+  const within = pointerWithin(args);
+  if (within.length > 0) return within;
 
   let firstId: UniqueIdentifier | null = null;
   let firstRect: ClientRect | null = null;
@@ -204,10 +210,6 @@ const TagsDisplayComponent = ({
   onEditSubmit,
   onEditCancel,
 }: TagsDisplayProps) => {
-  // Conditional DnD: only render DndContext when hovered or dragging
-  const [isHovered, setIsHovered] = useState(false);
-  const isDraggingRef = useRef(false);
-
   // Live drag state: dragOrder is the optimistically reordered tag names
   // while a drag is in flight (null otherwise). Reordering the actual list
   // lets flex-wrap lay tags out at their natural widths, rows and all.
@@ -249,19 +251,10 @@ const TagsDisplayComponent = ({
   // only strengthens
   const flipSuppressedChipRef = useRef<string | null>(null);
 
-  const handleMouseEnter = useCallback(() => setIsHovered(true), []);
-  const handleMouseLeave = useCallback(() => {
-    // Don't disable DnD if we're mid-drag
-    if (!isDraggingRef.current) {
-      setIsHovered(false);
-    }
-  }, []);
-
   const tagNames = useMemo(() => tags.map((t) => t.name), [tags]);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      isDraggingRef.current = true;
       stationaryIntentsRef.current.pointer = null;
       stationaryIntentsRef.current.applied.clear();
       placedChipsRef.current.clear();
@@ -284,7 +277,27 @@ const TagsDisplayComponent = ({
       const { active, over } = event;
       const zone = pointerEdgeZone;
       const pointer = dragPointer;
-      if (!pointer) return;
+
+      const order = dragOrderRef.current;
+      if (!order) return;
+
+      const applyOrder = (next: string[]) => {
+        dragOrderRef.current = next;
+        setDragOrder(next);
+      };
+
+      // Keyboard drags have no pointer: each arrow press resolves a new
+      // `over` chip (closestCenter fallback in the collision detector) and
+      // the dragged tag takes its place. The pointer machinery below (edge
+      // zones, stationary intents, midpoint tests) doesn't apply.
+      if (!pointer) {
+        if (!over || active.id === over.id) return;
+        const from = order.indexOf(active.id as string);
+        const to = order.indexOf(over.id as string);
+        if (from === -1 || to === -1 || from === to) return;
+        applyOrder(arrayMove(order, from, to));
+        return;
+      }
 
       // One application per intent while the pointer is stationary; any
       // movement resets the slate
@@ -297,14 +310,6 @@ const TagsDisplayComponent = ({
         station.pointer = pointer;
         station.applied.clear();
       }
-
-      const order = dragOrderRef.current;
-      if (!order) return;
-
-      const applyOrder = (next: string[]) => {
-        dragOrderRef.current = next;
-        setDragOrder(next);
-      };
 
       // Edge zones: place at the very start/end
       if (zone) {
@@ -389,7 +394,6 @@ const TagsDisplayComponent = ({
   );
 
   const handleDragEnd = useCallback(() => {
-    isDraggingRef.current = false;
     if (activeId && dragOrder) {
       const oldIndex = tagNames.indexOf(activeId);
       const newIndex = dragOrder.indexOf(activeId);
@@ -403,7 +407,6 @@ const TagsDisplayComponent = ({
   }, [activeId, dragOrder, tagNames, onReorder]);
 
   const handleDragCancel = useCallback(() => {
-    isDraggingRef.current = false;
     setActiveId(null);
     dragOrderRef.current = null;
     setDragOrder(null);
@@ -425,9 +428,6 @@ const TagsDisplayComponent = ({
     () => (activeId ? (tags.find((t) => t.name === activeId) ?? null) : null),
     [activeId, tags],
   );
-  // Keep DnD enabled (which renders SortableTag with InputTag) when editing
-  const dndEnabled = sortable && (isHovered || editingTagName !== null);
-
   // Fade logic: when editing or when add input matches an existing tag,
   // fade all tags except the one being edited and the one that matches
   const isInputActive = editingTagName !== null || matchingTagName !== null;
@@ -442,7 +442,7 @@ const TagsDisplayComponent = ({
     const tagEditValue = isBeingEdited ? editValue : '';
     const tagIsDuplicateEdit = isBeingEdited ? isDuplicateEdit : false;
 
-    return dndEnabled ? (
+    return sortable ? (
       <SortableTag
         key={tag.name}
         id={tag.name}
@@ -489,14 +489,16 @@ const TagsDisplayComponent = ({
     );
   });
 
-  // DndContext only rendered when hovered - eliminates dnd-kit overhead when not needed
+  // In sortable mode the DnD tree renders unconditionally. It used to mount
+  // only on hover (to skip idle dnd-kit overhead), but that swapped the whole
+  // element tree at every hover boundary — remounting all chip DOM, dropping
+  // focus — and left the KeyboardSensor unreachable since keyboard users never
+  // hover. Idle cost is just droppable registration; measuring and collision
+  // work only happen during a drag. Non-draggable chips (editing, faded,
+  // duplicate-matched) are disabled per-chip inside SortableTag.
   return (
-    <div
-      className="flex flex-wrap"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
-      {dndEnabled ? (
+    <div className="flex flex-wrap">
+      {sortable ? (
         <DndContext
           sensors={sensors}
           collisionDetection={collisionWithEdgeZones}
@@ -728,14 +730,17 @@ const TagListComponent = ({
   }, []);
 
   const handleEditSubmit = useCallback(() => {
+    if (!editingTagName) return;
     const currentEditValue = editValueRef.current.trim();
-    if (editingTagName && currentEditValue && !isDuplicateEditRef.current) {
-      if (currentEditValue !== editingTagName) {
-        onEditTag(editingTagName, currentEditValue);
-      }
-      setEditingTagName(null);
-      setEditValue('');
+    // Duplicate: keep the edit open so the matching-tag highlight (and the
+    // input's flash) can show why the submit was refused
+    if (currentEditValue && isDuplicateEditRef.current) return;
+    // Empty falls through without dispatching — submitting nothing is a cancel
+    if (currentEditValue && currentEditValue !== editingTagName) {
+      onEditTag(editingTagName, currentEditValue);
     }
+    setEditingTagName(null);
+    setEditValue('');
   }, [editingTagName, onEditTag]);
 
   const handleEditCancel = useCallback(() => {
@@ -755,8 +760,16 @@ const TagListComponent = ({
   const handleToggleTag = useCallback(
     (tagName: string) => {
       if (tagEditMode === TagEditMode.DOUBLE_CLICK) {
-        if (pendingToggleRef.current !== null) {
-          clearTimeout(pendingToggleRef.current.timer);
+        const pending = pendingToggleRef.current;
+        if (pending !== null) {
+          clearTimeout(pending.timer);
+          pendingToggleRef.current = null;
+          // A click on a different tag can't be the second half of a
+          // double-click on the pending one — fire its toggle now rather
+          // than dropping it
+          if (pending.tagName !== tagName) {
+            onToggleTag(pending.tagName);
+          }
         }
         pendingToggleRef.current = {
           tagName,

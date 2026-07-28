@@ -36,6 +36,19 @@ const initialState: JobsState = {
   detailJob: null,
 };
 
+/**
+ * Whether a job has reached a state it can never legitimately leave. Progress
+ * reducers use this to drop late-arriving ticks: the SSE loop has await points
+ * during which a user cancel can land, and without the guard the next progress
+ * dispatch would flip the job back to `running` with nothing left to ever
+ * finalise it.
+ */
+const isTerminalStatus = (status: JobStatus): boolean =>
+  status === 'completed' ||
+  status === 'failed' ||
+  status === 'cancelled' ||
+  status === 'interrupted';
+
 const jobsSlice = createSlice({
   name: 'jobs',
   initialState,
@@ -187,7 +200,9 @@ const jobsSlice = createSlice({
       action: PayloadAction<{ id: string; progress: TaggingProgress }>,
     ) => {
       const job = state.jobs[action.payload.id];
-      if (!job || job.type !== 'tagging') return;
+      if (!job || job.type !== 'tagging' || isTerminalStatus(job.status)) {
+        return;
+      }
 
       job.progress = action.payload.progress;
       job.status = 'running';
@@ -205,7 +220,9 @@ const jobsSlice = createSlice({
     ) => {
       const { id, ...result } = action.payload;
       const job = state.jobs[id];
-      if (!job || job.type !== 'tagging') return;
+      if (!job || job.type !== 'tagging' || isTerminalStatus(job.status)) {
+        return;
+      }
 
       job.lastResult = result;
     },

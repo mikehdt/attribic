@@ -8,6 +8,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { MenuButton, MenuItem } from '@/app/shared/menu-button';
+import type { ImageAsset } from '@/app/store/assets';
 import { gatherTags } from '@/app/store/assets';
 import { selectFilteredAssets } from '@/app/store/assets';
 import {
@@ -16,11 +17,16 @@ import {
   setModelsAndProviders,
 } from '@/app/store/auto-tagger';
 import { selectFilterTags } from '@/app/store/filters';
-import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import {
+  useAppDispatch,
+  useAppSelector,
+  useAppStore,
+} from '@/app/store/hooks';
 import { selectSelectedAssetsCount } from '@/app/store/selection';
 import {
   selectAssetsWithActiveFiltersCount,
   selectEffectiveScopeAssetIds,
+  selectNoSelectedAssetHasTags,
   selectSelectedAssetsData,
 } from '@/app/store/selection/combinedSelectors';
 import { AutoTaggerModal } from '@/app/tagging/components/auto-tagger';
@@ -28,8 +34,13 @@ import { AutoTaggerModal } from '@/app/tagging/components/auto-tagger';
 import { CopyTagsModal } from './copy-tags-modal';
 import { TriggerPhrasesModal } from './trigger-phrases-modal';
 
+// Stable sentinel returned while the tagger modal is closed, so this
+// always-mounted toolbar doesn't subscribe to full asset arrays it isn't using
+const NO_ASSETS: ImageAsset[] = [];
+
 export const TagActionsMenu = () => {
   const dispatch = useAppDispatch();
+  const store = useAppStore();
 
   const [isCopyTagsModalOpen, setIsCopyTagsModalOpen] = useState(false);
   // Never auto-opens: a batch running for this project (one the user started
@@ -40,7 +51,6 @@ export const TagActionsMenu = () => {
 
   const filterTags = useAppSelector(selectFilterTags);
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
-  const effectiveScopeAssetIds = useAppSelector(selectEffectiveScopeAssetIds);
 
   const openCopyTagsModal = useCallback(() => setIsCopyTagsModalOpen(true), []);
   const closeCopyTagsModal = useCallback(
@@ -48,11 +58,19 @@ export const TagActionsMenu = () => {
     [],
   );
 
-  const selectedAssetsData = useAppSelector(selectSelectedAssetsData);
-  const filteredAssets = useAppSelector(selectFilteredAssets);
+  // Full asset arrays are only subscribed while the tagger modal is open;
+  // menu enablement runs off counts and booleans so store churn while the
+  // menu idles doesn't re-render it.
+  const selectedAssetsData = useAppSelector((state) =>
+    isTaggerModalOpen ? selectSelectedAssetsData(state) : NO_ASSETS,
+  );
+  const filteredAssets = useAppSelector((state) =>
+    isTaggerModalOpen ? selectFilteredAssets(state) : NO_ASSETS,
+  );
   const filteredAssetsCount = useAppSelector(
     selectAssetsWithActiveFiltersCount,
   );
+  const noSelectedAssetHasTags = useAppSelector(selectNoSelectedAssetHasTags);
   const hasReadyModel = useAppSelector(selectHasReadyModel);
   const isAutoTaggerInitialised = useAppSelector(selectIsInitialised);
 
@@ -96,8 +114,7 @@ export const TagActionsMenu = () => {
   }, [isAutoTaggerInitialised, dispatch]);
 
   // Whether there are any assets available for auto-tagging (cheap count check)
-  const hasAssetsForTagger =
-    selectedAssetsData.length > 0 || filteredAssetsCount > 0;
+  const hasAssetsForTagger = selectedAssetsCount > 0 || filteredAssetsCount > 0;
 
   // Prepare assets for auto-tagger: only compute the full mapped array when modal is open.
   // Videos are included — the ONNX batch route extracts a poster frame per video.
@@ -116,11 +133,16 @@ export const TagActionsMenu = () => {
 
   const handleGatherTags = useCallback(() => {
     if (filterTags.length >= 2) {
+      // Scope ids read at click time — subscribing would re-render this
+      // always-mounted menu on every selection/filter change
       dispatch(
-        gatherTags({ tags: filterTags, assetIds: effectiveScopeAssetIds }),
+        gatherTags({
+          tags: filterTags,
+          assetIds: selectEffectiveScopeAssetIds(store.getState()),
+        }),
       );
     }
-  }, [dispatch, filterTags, effectiveScopeAssetIds]);
+  }, [dispatch, filterTags, store]);
 
   const openTriggersModal = useCallback(() => setIsTriggersModalOpen(true), []);
   const closeTriggersModal = useCallback(
@@ -128,35 +150,44 @@ export const TagActionsMenu = () => {
     [],
   );
 
-  const noSelectedAssetHasTags = selectedAssetsData.every(
-    (a) => a.tagList.length === 0,
+  const overflowMenuItems: MenuItem[] = useMemo(
+    () => [
+      {
+        label: 'Copy Tags',
+        icon: <CopyIcon />,
+        onClick: openCopyTagsModal,
+        disabled: selectedAssetsCount < 2 || noSelectedAssetHasTags,
+      },
+      {
+        label: 'Gather Tags',
+        icon: <ArrowUpFromLineIcon />,
+        onClick: handleGatherTags,
+        disabled: filterTags.length < 2,
+      },
+      {
+        label: 'Auto Tagger',
+        icon: <SparklesIcon />,
+        onClick: openTaggerModal,
+        disabled: !hasReadyModel || !hasAssetsForTagger,
+      },
+      {
+        label: 'Trigger Phrases',
+        icon: <HighlighterIcon />,
+        onClick: openTriggersModal,
+      },
+    ],
+    [
+      openCopyTagsModal,
+      selectedAssetsCount,
+      noSelectedAssetHasTags,
+      handleGatherTags,
+      filterTags.length,
+      openTaggerModal,
+      hasReadyModel,
+      hasAssetsForTagger,
+      openTriggersModal,
+    ],
   );
-
-  const overflowMenuItems: MenuItem[] = [
-    {
-      label: 'Copy Tags',
-      icon: <CopyIcon />,
-      onClick: openCopyTagsModal,
-      disabled: selectedAssetsCount < 2 || noSelectedAssetHasTags,
-    },
-    {
-      label: 'Gather Tags',
-      icon: <ArrowUpFromLineIcon />,
-      onClick: handleGatherTags,
-      disabled: filterTags.length < 2,
-    },
-    {
-      label: 'Auto Tagger',
-      icon: <SparklesIcon />,
-      onClick: openTaggerModal,
-      disabled: !hasReadyModel || !hasAssetsForTagger,
-    },
-    {
-      label: 'Trigger Phrases',
-      icon: <HighlighterIcon />,
-      onClick: openTriggersModal,
-    },
-  ];
 
   return (
     <>

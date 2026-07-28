@@ -408,6 +408,11 @@ export const coreReducers = {
 
     const asset = state.images[assetIndex];
 
+    // Discarding the edits also discards a lingering failed-save flag
+    if (asset.ioState === IoState.ERROR) {
+      asset.ioState = IoState.COMPLETE;
+    }
+
     // Also revert caption text (safe in both modes)
     asset.captionText = asset.savedCaptionText;
 

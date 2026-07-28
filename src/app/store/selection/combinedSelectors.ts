@@ -246,6 +246,15 @@ export const selectSelectedAssetsData = createSelector(
 );
 
 /**
+ * Boolean-only view for menu enablement: recomputes when selection data
+ * changes, but subscribers only re-render when the answer flips.
+ */
+export const selectNoSelectedAssetHasTags = createSelector(
+  [selectSelectedAssetsData],
+  (selectedAssets) => selectedAssets.every((a) => a.tagList.length === 0),
+);
+
+/**
  * Returns the effective asset IDs based on scoping priority:
  * 1. Selected assets visible in current filtered view (intersection)
  * 2. Filtered assets (if filters active)

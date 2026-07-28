@@ -90,7 +90,10 @@ export const useTagsView = () => {
   useEffect(() => {
     if (selectedIndex >= 0 && selectedIndex < filteredTags.length) {
       const selectedTag = filteredTags[selectedIndex].tag;
-      const tagEl = document.getElementById(`tag-${selectedTag}`);
+      // Must match the encoded id scheme in view-tags.tsx
+      const tagEl = document.getElementById(
+        `tag-${encodeURIComponent(selectedTag)}`,
+      );
       if (tagEl) {
         tagEl.scrollIntoView({ block: 'nearest' });
       }

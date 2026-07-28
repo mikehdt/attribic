@@ -113,6 +113,13 @@ export const coreReducers = {
     state.filterExtensions = [];
   },
 
+  /** Clear everything the File view shows: name searches, subfolders and extensions. */
+  clearFileFilters: (state: Filters) => {
+    state.filterExtensions = [];
+    state.filterSubfolders = [];
+    state.filenamePatterns = [];
+  },
+
   clearFilters: (state: Filters) => {
     state.filterTags = [];
     state.filterSizes = [];

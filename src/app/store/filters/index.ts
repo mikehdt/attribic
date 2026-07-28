@@ -70,6 +70,7 @@ export const {
   clearSizeFilters,
   clearBucketFilters,
   clearExtensionFilters,
+  clearFileFilters,
   clearFilters,
   resetFilterModeIfNeeded,
   removeSubfolderFilters,

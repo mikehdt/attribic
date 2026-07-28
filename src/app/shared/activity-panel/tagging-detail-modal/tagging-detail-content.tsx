@@ -1,5 +1,8 @@
-import { ImageOffIcon } from 'lucide-react';
+import { ImageOffIcon, XIcon } from 'lucide-react';
+import { useState } from 'react';
 
+import { Button } from '@/app/shared/button';
+import { useConfirmAction } from '@/app/shared/use-confirm-action';
 import type { TaggingImageError, TaggingJob } from '@/app/store/jobs';
 import { getImageUrl } from '@/app/utils/image-utils';
 
@@ -51,6 +54,9 @@ function ImageErrors({ errors }: { errors: TaggingImageError[] }) {
  * model is writing about your images as the batch runs.
  */
 function LastResult({ job }: { job: TaggingJob }) {
+  // Fall back to the placeholder icon when the thumbnail 404s. Keyed by src
+  // rather than a boolean so the next result's image gets a fresh attempt.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const result = job.lastResult;
   if (!result) return null;
 
@@ -62,12 +68,13 @@ function LastResult({ job }: { job: TaggingJob }) {
   return (
     <div className="flex gap-3">
       <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-900">
-        {src ? (
+        {src && src !== failedSrc ? (
           // eslint-disable-next-line @next/next/no-img-element -- local file served straight off disk; the optimiser adds nothing for one throwaway preview
           <img
             src={src}
             alt={result.fileId}
             className="h-full w-full object-contain"
+            onError={() => setFailedSrc(src)}
           />
         ) : (
           <ImageOffIcon className="h-6 w-6 text-slate-400" />
@@ -82,7 +89,7 @@ function LastResult({ job }: { job: TaggingJob }) {
           )}
         </p>
         <span className="truncate text-sm text-slate-400">
-          Caption for {result.fileId}
+          {isCaptionJob(job) ? 'Caption' : 'Tags'} for {result.fileId}
         </span>
       </div>
     </div>
@@ -102,6 +109,7 @@ function LastResult({ job }: { job: TaggingJob }) {
  */
 export function TaggingDetailContent({
   job,
+  onCancel,
 }: {
   job: TaggingJob | null;
   /** Absent for archived/terminal-only views; the button hides itself. */
@@ -111,6 +119,13 @@ export function TaggingDetailContent({
   // span once completedAt lands. Called before the null guard — hooks can't
   // sit behind an early return.
   const elapsed = useElapsed(job?.startedAt ?? null, job?.completedAt ?? null);
+
+  // Two-step confirm, as on the activity card — one stray click shouldn't
+  // kill a batch. Called before the null guard for the same hooks reason.
+  const { armed: confirmingCancel, trigger: handleCancelClick } =
+    useConfirmAction(() => {
+      if (job) onCancel?.(job);
+    });
 
   if (!job) return null;
 
@@ -134,7 +149,7 @@ export function TaggingDetailContent({
         <h2 className="text-sm font-medium text-(--foreground)">
           {job.projectName}
         </h2>
-        <p className="text-xs text-slate-400">
+        <p className="text-sm text-slate-400">
           {captioning ? 'Caption' : 'Auto-tag'} · {job.modelName}
         </p>
       </div>
@@ -222,9 +237,28 @@ export function TaggingDetailContent({
       )}
 
       {isFailed && job.error && (
-        <pre className="max-h-40 overflow-auto font-mono text-[11px] whitespace-pre-wrap text-rose-500">
+        <pre className="max-h-40 overflow-auto font-mono text-xs whitespace-pre-wrap text-rose-500">
           {job.error}
         </pre>
+      )}
+
+      {isRunning && onCancel && (
+        <div className="flex justify-end">
+          <Button
+            onClick={handleCancelClick}
+            color="rose"
+            size="sm"
+            width="lg"
+            title={
+              confirmingCancel
+                ? 'Click again to confirm cancellation'
+                : `Cancel ${captioning ? 'captioning' : 'tagging'}`
+            }
+          >
+            <XIcon />
+            {confirmingCancel ? 'Confirm?' : 'Cancel'}
+          </Button>
+        </div>
       )}
     </div>
   );

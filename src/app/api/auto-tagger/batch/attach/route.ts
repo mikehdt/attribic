@@ -16,6 +16,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import path from 'path';
 
 import { displayName } from '@/app/services/auto-tagger/display-name';
 import { attachCaptionBatch } from '@/app/services/auto-tagger/providers/vlm/client';
@@ -23,6 +24,7 @@ import {
   attachOnnxBatch,
   hasOnnxBatch,
 } from '@/app/services/auto-tagger/providers/wd14/batch-store';
+import { getProjectsFolder } from '@/app/services/config/server-config';
 
 export async function GET(request: NextRequest) {
   const batchId = request.nextUrl.searchParams.get('batchId');
@@ -80,9 +82,20 @@ export async function GET(request: NextRequest) {
           return;
         }
 
+        // Absolute path of the batch's project folder, from the sidecar
+        // snapshot. Needed to name thumbnails project-relative — a bare
+        // basename 404s for assets in repeat subfolders.
+        let projectPath: string | undefined;
+
         for await (const event of attachCaptionBatch(batchId)) {
           if ('snapshot' in event) {
             total = event.total;
+            if (event.project) {
+              projectPath = path.resolve(
+                getProjectsFolder() || 'public/assets',
+                event.project,
+              );
+            }
             if (event.status === 'queued' && event.position) {
               sendEvent({
                 type: 'queued',
@@ -138,7 +151,7 @@ export async function GET(request: NextRequest) {
             sendEvent({
               type: 'result',
               fileId: event.itemId,
-              fileName: displayName(event.imagePath),
+              fileName: displayName(event.imagePath, projectPath),
               caption: event.caption,
             });
           }

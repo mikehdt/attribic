@@ -1,8 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import {
   clearBucketFilters,
-  clearExtensionFilters,
+  clearFileFilters,
   clearSizeFilters,
   clearTagFilters,
   selectFilterCount,
@@ -26,24 +26,46 @@ export const FilterControls = () => {
   const dispatch = useAppDispatch();
   const filterCount = useAppSelector(selectFilterCount);
 
-  const handleClearFilters = useCallback(() => {
-    // Dispatch clear filters action based on active view
+  // Single view/sub-view mapping so the disabled state, the dispatched clear
+  // action, and the button title can never disagree about what's visible.
+  const clearConfig = useMemo(() => {
     if (activeView === 'tag') {
-      dispatch(clearTagFilters());
-    } else if (activeView === 'size') {
-      // For size view, clear based on sub-view
-      if (sizeSubView === 'dimensions') {
-        dispatch(clearSizeFilters());
-      } else {
-        dispatch(clearBucketFilters());
-      }
-    } else {
-      dispatch(clearExtensionFilters());
+      return {
+        count: filterCount.tags,
+        action: clearTagFilters,
+        title: 'Clear tag filters',
+      };
     }
+    if (activeView === 'size') {
+      return sizeSubView === 'dimensions'
+        ? {
+            count: filterCount.sizes,
+            action: clearSizeFilters,
+            title: 'Clear size filters',
+          }
+        : {
+            count: filterCount.buckets,
+            action: clearBucketFilters,
+            title: 'Clear bucket filters',
+          };
+    }
+    // File view shows name searches, subfolders and extensions
+    return {
+      count:
+        filterCount.filenamePatterns +
+        filterCount.subfolders +
+        filterCount.extensions,
+      action: clearFileFilters,
+      title: 'Clear file filters',
+    };
+  }, [activeView, sizeSubView, filterCount]);
+
+  const handleClearFilters = useCallback(() => {
+    dispatch(clearConfig.action());
     // Clear search term and reset selected index
     setSearchTerm('');
     setSelectedIndex(-1);
-  }, [activeView, sizeSubView, dispatch, setSearchTerm, setSelectedIndex]);
+  }, [clearConfig, dispatch, setSearchTerm, setSelectedIndex]);
 
   const handleSortType = useCallback(
     () => setSortType(getSortOptions().nextType),
@@ -56,16 +78,13 @@ export const FilterControls = () => {
     setSortDirection(newDirection);
   }, [setSortDirection, sortDirection]);
 
-  const isButtonDisabled =
-    (activeView === 'tag' && filterCount.tags === 0) ||
-    (activeView === 'size' && filterCount.sizes === 0) ||
-    (activeView === 'filetype' && filterCount.extensions === 0);
+  const isButtonDisabled = clearConfig.count === 0;
 
   return (
     <>
       <button
         onClick={handleSortType}
-        className="cursor-pointer rounded rounded-tr-none rounded-br-none border border-r-0 border-slate-200 bg-white px-2 py-1 text-xs inset-shadow-xs inset-shadow-white transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:inset-shadow-white/10 dark:hover:bg-slate-600"
+        className="cursor-pointer rounded rounded-tr-none rounded-br-none border border-r-0 border-slate-200 bg-white px-2 py-1 text-sm inset-shadow-xs inset-shadow-white transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:inset-shadow-white/10 dark:hover:bg-slate-600"
         title="Toggle sort type"
       >
         By {getSortOptions().typeLabel}
@@ -73,7 +92,7 @@ export const FilterControls = () => {
 
       <button
         onClick={handleSortDirection}
-        className="cursor-pointer rounded rounded-tl-none rounded-bl-none border border-slate-200 bg-white px-2 py-1 text-xs inset-shadow-xs inset-shadow-white transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:inset-shadow-white/10 dark:hover:bg-slate-600"
+        className="cursor-pointer rounded rounded-tl-none rounded-bl-none border border-slate-200 bg-white px-2 py-1 text-sm inset-shadow-xs inset-shadow-white transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:inset-shadow-white/10 dark:hover:bg-slate-600"
         title="Toggle sort direction"
       >
         Sort {getSortOptions().directionLabel}
@@ -81,13 +100,13 @@ export const FilterControls = () => {
 
       <button
         onClick={handleClearFilters}
-        className={`ml-auto rounded border border-slate-200 px-2 py-1 text-xs inset-shadow-xs inset-shadow-white transition-colors dark:border-slate-600 dark:inset-shadow-white/10 ${
+        className={`ml-auto rounded border border-slate-200 px-2 py-1 text-sm inset-shadow-xs inset-shadow-white transition-colors dark:border-slate-600 dark:inset-shadow-white/10 ${
           !isButtonDisabled
             ? 'cursor-pointer bg-white hover:bg-slate-100 dark:bg-slate-700 dark:hover:bg-slate-600'
             : 'cursor-not-allowed bg-slate-50 text-slate-400 dark:bg-slate-800 dark:text-slate-500'
         }`}
         disabled={isButtonDisabled}
-        title={`Clear ${activeView} filters`}
+        title={clearConfig.title}
       >
         Clear
       </button>

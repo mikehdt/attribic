@@ -1,9 +1,17 @@
 import { ListOrderedIcon } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { memo, useCallback, useId, useMemo, useRef } from 'react';
+import {
+  type KeyboardEvent,
+  memo,
+  useCallback,
+  useId,
+  useMemo,
+  useRef,
+} from 'react';
 
 import { Button } from '@/app/shared/button';
 import { Popup, usePopup } from '@/app/shared/popup';
+import { useListHighlight } from '@/app/shared/popup/use-list-highlight';
 import {
   selectFilteredAssets,
   selectSortDirection,
@@ -12,7 +20,10 @@ import {
 } from '@/app/store/assets';
 import { selectPaginationSize } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
-import { getCategoriesWithPageInfo } from '@/app/tagging/utils/category-utils';
+import {
+  getCategoriesWithPageInfo,
+  getCategoryAnchorId,
+} from '@/app/tagging/utils/category-utils';
 import { scrollToAnchor } from '@/app/tagging/utils/scroll-to-anchor';
 
 import { CategoryList } from './category-list';
@@ -61,19 +72,9 @@ const CategoryNavigationComponent = ({
     [filteredAssets, sortType, sortDirection, selectedAssets, paginationSize],
   );
 
-  const handleToggle = useCallback(() => {
-    if (isOpen) {
-      closePopup(popupId);
-    } else {
-      openPopup(popupId, {
-        position: 'bottom-left',
-        triggerRef: buttonRef,
-      });
-    }
-  }, [isOpen, closePopup, openPopup, popupId]);
-
   const handleClose = useCallback(() => {
     closePopup(popupId);
+    buttonRef.current?.focus();
   }, [closePopup, popupId]);
 
   const basePath = params.project
@@ -95,11 +96,76 @@ const CategoryNavigationComponent = ({
     [currentPage, handleClose, router, basePath],
   );
 
+  // Keyboard navigation for the category list — same aria-activedescendant
+  // pattern as MenuButton/Dropdown: focus stays on the trigger button while
+  // arrows move the highlight, Enter selects, hover syncs.
+  const isNavigable = useCallback(() => true, []);
+
+  const handleSelectIndex = useCallback(
+    (index: number) => {
+      const entry = categoriesWithPageInfo[index];
+      if (entry) {
+        handleCategoryClick(entry.page, getCategoryAnchorId(entry.category));
+      }
+    },
+    [categoriesWithPageInfo, handleCategoryClick],
+  );
+
+  const {
+    highlightedIndex,
+    getOptionId,
+    resetHighlight,
+    handlePositioned,
+    handleKeyDown,
+    getItemHoverProps,
+  } = useListHighlight({
+    count: categoriesWithPageInfo.length,
+    isNavigable,
+    isOpen,
+    onSelect: handleSelectIndex,
+    onClose: handleClose,
+  });
+
+  const handleToggle = useCallback(() => {
+    if (isOpen) {
+      handleClose();
+      resetHighlight();
+    } else {
+      openPopup(popupId, {
+        position: 'bottom-left',
+        triggerRef: buttonRef,
+      });
+    }
+  }, [isOpen, handleClose, resetHighlight, openPopup, popupId]);
+
+  const handleButtonKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      if (isOpen) {
+        handleKeyDown(e);
+        return;
+      }
+      switch (e.key) {
+        case 'Enter':
+        case ' ':
+        case 'ArrowDown':
+        case 'ArrowUp':
+          e.preventDefault();
+          openPopup(popupId, {
+            position: 'bottom-left',
+            triggerRef: buttonRef,
+          });
+          break;
+      }
+    },
+    [isOpen, handleKeyDown, openPopup, popupId],
+  );
+
   return (
     <div className="relative">
       <Button
         ref={buttonRef}
         onClick={handleToggle}
+        onKeyDown={handleButtonKeyDown}
         variant="toggle"
         size="lg"
         width="lg"
@@ -116,6 +182,7 @@ const CategoryNavigationComponent = ({
         id={popupId}
         position="bottom-left"
         triggerRef={buttonRef}
+        onPositioned={handlePositioned}
         className="flex max-h-[80vh] w-64 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg shadow-slate-600/50 dark:border-slate-600 dark:bg-slate-800 dark:shadow-slate-950/50"
       >
         <CategoryList
@@ -123,6 +190,9 @@ const CategoryNavigationComponent = ({
           currentPage={currentPage}
           onCategoryClick={handleCategoryClick}
           onClose={handleClose}
+          highlightedIndex={highlightedIndex}
+          getOptionId={getOptionId}
+          getItemHoverProps={getItemHoverProps}
         />
       </Popup>
     </div>

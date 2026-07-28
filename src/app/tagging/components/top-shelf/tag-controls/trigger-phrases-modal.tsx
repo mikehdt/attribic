@@ -46,9 +46,12 @@ export const TriggerPhrasesModal = ({
   // commit point for an individual phrase, so the modal can't sneak an
   // un-confirmed value into the saved list.
   const handleSave = useCallback(() => {
-    dispatch(setTriggerPhrases(phrases));
+    // Mirror the add path: trim edits and drop phrases emptied in place, so a
+    // blanked-out row can't write "" into the project config.
+    const cleaned = phrases.map((p) => p.trim()).filter(Boolean);
+    dispatch(setTriggerPhrases(cleaned));
     if (projectFolderName) {
-      updateProject(projectFolderName, { triggerPhrases: phrases });
+      updateProject(projectFolderName, { triggerPhrases: cleaned });
     }
     onClose();
   }, [phrases, dispatch, projectFolderName, onClose]);
@@ -114,7 +117,7 @@ export const TriggerPhrasesModal = ({
       >
         Trigger Phrases
       </h2>
-      <p className="my-3 text-xs text-slate-500 dark:text-slate-400">
+      <p className="my-3 text-sm text-slate-500 dark:text-slate-400">
         Add trigger words or phrases to highlight in your captions and tags.
       </p>
 

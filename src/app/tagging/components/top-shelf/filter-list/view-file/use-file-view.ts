@@ -231,9 +231,10 @@ export const useFileView = () => {
     const selected = getSelectedItem(selectedIndex);
     if (!selected) return;
 
+    // Subfolder ids are encoded to match view-file.tsx (names may have spaces)
     const elId =
       selected.type === 'subfolder'
-        ? `subfolder-${selected.item.subfolder}`
+        ? `subfolder-${encodeURIComponent(selected.item.subfolder)}`
         : `ext-${selected.item.ext}`;
     const el = document.getElementById(elId);
     if (el) {

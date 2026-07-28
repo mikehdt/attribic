@@ -108,29 +108,8 @@ export async function POST(request: NextRequest) {
       body.batchId ??
       `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Resolve to absolute path
-    // The projectPath from client could be:
-    // 1. An absolute path (e.g., "C:\images\project")
-    // 2. A path relative to cwd (e.g., "public/assets/project")
-    // 3. Just the project folder name if config uses an absolute projectsFolder
-    let projectPath: string;
-    if (path.isAbsolute(rawProjectPath)) {
-      projectPath = rawProjectPath;
-    } else {
-      // Check if the path exists as-is (relative to cwd)
-      const resolvedPath = path.resolve(rawProjectPath);
-      if (fs.existsSync(resolvedPath)) {
-        projectPath = resolvedPath;
-      } else {
-        // Try with the configured projects folder
-        const config = getServerConfig();
-        projectPath = path.resolve(
-          path.join(config.projectsFolder, rawProjectPath),
-        );
-      }
-    }
-
-    // Validation
+    // Validation — must run before any path work so a bad request gets a
+    // 400 rather than a throw-into-500 from path resolution.
     if (!modelId) {
       return new Response(JSON.stringify({ error: 'modelId is required' }), {
         status: 400,
@@ -175,6 +154,28 @@ export async function POST(request: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
         },
       );
+    }
+
+    // Resolve to absolute path
+    // The projectPath from client could be:
+    // 1. An absolute path (e.g., "C:\images\project")
+    // 2. A path relative to cwd (e.g., "public/assets/project")
+    // 3. Just the project folder name if config uses an absolute projectsFolder
+    let projectPath: string;
+    if (path.isAbsolute(rawProjectPath)) {
+      projectPath = rawProjectPath;
+    } else {
+      // Check if the path exists as-is (relative to cwd)
+      const resolvedPath = path.resolve(rawProjectPath);
+      if (fs.existsSync(resolvedPath)) {
+        projectPath = resolvedPath;
+      } else {
+        // Try with the configured projects folder
+        const config = getServerConfig();
+        projectPath = path.resolve(
+          path.join(config.projectsFolder, rawProjectPath),
+        );
+      }
     }
 
     const options: TaggerOptions = {
@@ -254,12 +255,23 @@ export async function POST(request: NextRequest) {
     // them from the first moment. VLM batches get the equivalent registration
     // sidecar-side, inside captionBatchViaSidecar.
     if (providerType !== 'vlm') {
-      createOnnxBatch({
+      const created = createOnnxBatch({
         batchId,
         project: projectFolderName,
         modelName: resolvedModel.name,
         total,
       });
+      // A running batch already owns this ID — a duplicate submit would
+      // interleave two runners into one state object.
+      if (!created) {
+        return new Response(
+          JSON.stringify({ error: 'A batch with this ID is already running' }),
+          {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
     }
 
     const stream = new ReadableStream({
@@ -389,7 +401,7 @@ export async function POST(request: NextRequest) {
 
           const result = {
             itemId: asset.fileId,
-            fileName: displayName(imagePath),
+            fileName: displayName(imagePath, projectPath),
             tags: tagNames,
           };
           appendOnnxResult(batchId, result);
@@ -560,7 +572,9 @@ export async function POST(request: NextRequest) {
           sendEvent({
             type: 'result',
             fileId: event.itemId,
-            fileName: resolvedPath ? displayName(resolvedPath) : undefined,
+            fileName: resolvedPath
+              ? displayName(resolvedPath, projectPath)
+              : undefined,
             caption: event.caption,
           });
         }

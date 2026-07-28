@@ -74,6 +74,8 @@ const TaggingManagerComponent = ({ assetId }: TaggingManagerProps) => {
         state: tag.status,
         count: tagCounts[tag.name] || 0,
         isHighlighted: highlightedTags.has(tag.name),
+        // 'sentences' is a legacy caption mode (its switcher entry is
+        // commented out) — kept so projects still set to it behave as before
         isTriggerMatch: hasTriggers
           ? captionMode === 'sentences'
             ? triggerPhrases.some((p) =>

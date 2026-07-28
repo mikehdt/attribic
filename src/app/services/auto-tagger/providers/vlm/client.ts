@@ -89,6 +89,8 @@ type SnapshotStatus = {
   current: number;
   total: number;
   position?: number;
+  /** Project folder name the batch was started for, if the sidecar has it. */
+  project?: string;
 };
 
 type BatchEvent =
@@ -517,6 +519,7 @@ export async function* attachCaptionBatch(
       total: snapshot.total,
       position:
         snapshot.queue_position > 0 ? snapshot.queue_position : undefined,
+      project: snapshot.project ?? undefined,
     };
 
     // Replay accumulated per-image outcomes.

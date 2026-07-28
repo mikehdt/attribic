@@ -21,7 +21,7 @@ import {
   setTriggerPhrases,
 } from '../store/project';
 import { hydrateActiveTraining } from '../store/training/training-runtime';
-import { Error } from '../tagging/views/error';
+import { ErrorView } from '../tagging/views/error';
 import { InitialLoad } from '../tagging/views/initial-load';
 import { NoContent } from '../tagging/views/no-content';
 import { getProjectInfo } from '../utils/project-actions';
@@ -140,13 +140,6 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [loadImageAssets, isTagging, projectFolderName]);
 
-  // Redirect to root on I/O error
-  useEffect(() => {
-    if (ioState === IoState.ERROR && isTagging) {
-      router.push('/');
-    }
-  }, [ioState, router, isTagging]);
-
   // Auto-trigger completion delay when state becomes COMPLETING
   useEffect(() => {
     if (ioState === IoState.COMPLETING) {
@@ -201,8 +194,10 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
     return <InitialLoad />;
   }
 
+  // Global ERROR is only set by load failures now (save failures stay
+  // per-asset), so the full-page error view with Retry is the right surface.
   if (ioState === IoState.ERROR) {
-    return <Error onReload={loadImageAssets} />;
+    return <ErrorView onReload={loadImageAssets} />;
   }
 
   if (ioState !== IoState.LOADING && imageCount === 0) {

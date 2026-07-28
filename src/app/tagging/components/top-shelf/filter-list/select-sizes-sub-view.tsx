@@ -16,20 +16,16 @@ export const SizeSubViewSelector = () => {
     setSizeSubView,
     setSearchTerm,
     setSelectedIndex,
-    setSortType,
     inputRef,
   } = useFilterContext();
 
   const handleSubViewChange = (subView: SizeSubViewType) => {
     setSizeSubView(subView);
-    // Clear search and reset selection when switching sub-views
+    // Clear search and reset selection when switching sub-views. No sort reset
+    // is needed: each sub-view keeps its own sort state, and the buckets sort
+    // cycle only ever contains types valid for buckets.
     setSearchTerm('');
     setSelectedIndex(-1);
-
-    // Reset sort to 'count' when switching to buckets (since buckets don't support megapixels, etc.)
-    if (subView === 'buckets') {
-      setSortType('count');
-    }
 
     // Focus the search input after a short delay to ensure it's rendered
     requestAnimationFrame(() => {

@@ -131,7 +131,7 @@ export const AssetSortControls = () => {
       },
       {
         value: SortType.FOLDER,
-        label: 'Folder',
+        label: 'Subfolder',
         disabled: !hasSubfolderAssets,
       },
     ],

@@ -62,27 +62,39 @@ function ensureWorker(): Promise<Worker> {
   }
 
   // Spawn a fresh worker
-  worker = spawnWorker();
+  const w = (worker = spawnWorker());
   workerReady = false;
 
   readyPromise = new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      w.off('message', onMessage);
+      w.off('error', onError);
+      w.off('exit', onExit);
+    };
     const onMessage = (msg: { type: string }) => {
       if (msg.type === 'ready') {
         workerReady = true;
-        worker!.off('message', onMessage);
-        worker!.off('error', onError);
+        cleanup();
         resolve();
       }
     };
     const onError = (err: Error) => {
-      worker!.off('message', onMessage);
+      cleanup();
       reject(err);
     };
-    worker!.on('message', onMessage);
-    worker!.once('error', onError);
+    // A native crash (onnxruntime/sharp abort, process.exit in the worker)
+    // emits `exit` without `error` — without this the ready promise would
+    // stay pending forever and wedge the request queue.
+    const onExit = (code: number) => {
+      cleanup();
+      reject(new Error(`ONNX worker exited before ready (code ${code})`));
+    };
+    w.on('message', onMessage);
+    w.once('error', onError);
+    w.once('exit', onExit);
   });
 
-  return readyPromise.then(() => worker!);
+  return readyPromise.then(() => w);
 }
 
 // ---------------------------------------------------------------------------
@@ -121,9 +133,13 @@ function sendMessage(
   msg: unknown,
 ): Promise<{ type: string; [key: string]: unknown }> {
   return new Promise((resolve, reject) => {
-    const onMessage = (response: { type: string; error?: string }) => {
+    const cleanup = () => {
       w.off('message', onMessage);
       w.off('error', onError);
+      w.off('exit', onExit);
+    };
+    const onMessage = (response: { type: string; error?: string }) => {
+      cleanup();
 
       if (response.type === 'error') {
         reject(new Error(response.error || 'Worker error'));
@@ -132,12 +148,19 @@ function sendMessage(
       }
     };
     const onError = (err: Error) => {
-      w.off('message', onMessage);
+      cleanup();
       reject(err);
+    };
+    // Mid-inference native crashes emit `exit` without `error`; settle the
+    // request so the queue can move on and respawn a fresh worker.
+    const onExit = (code: number) => {
+      cleanup();
+      reject(new Error(`ONNX worker exited mid-request (code ${code})`));
     };
 
     w.on('message', onMessage);
     w.once('error', onError);
+    w.once('exit', onExit);
     w.postMessage(msg);
   });
 }

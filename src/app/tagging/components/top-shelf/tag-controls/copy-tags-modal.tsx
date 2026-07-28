@@ -2,7 +2,7 @@
 
 import { CopyIcon, FilmIcon } from 'lucide-react';
 import Image from 'next/image';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { isSupportedVideoExtension } from '@/app/constants';
 import { Button } from '@/app/shared/button';
@@ -88,25 +88,23 @@ export const CopyTagsModal = ({ isOpen, onClose }: CopyTagsModalProps) => {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [addToStart, setAddToStart] = useState(false);
   const [tagSortOption, setTagSortOption] = useState<TagSortOption>('order');
+  const [wasOpen, setWasOpen] = useState(isOpen);
 
-  // Reset state when modal opens/closes
-  useEffect(() => {
+  // Reset local state only on the closed→open transition (render-time
+  // "adjusting state on prop change" pattern). Keying an effect on
+  // `selectedAssetsData` identity would re-seed the donor and wipe the tag
+  // selection whenever a store change lands while the modal is open.
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
-      // Pre-select first asset as donor
-      if (selectedAssetsData.length > 0) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form initialization on modal open
-        setDonorAssetId(selectedAssetsData[0].fileId);
-      }
-      setSelectedTags(new Set());
-      setAddToStart(false);
-      setTagSortOption('order');
-    } else {
-      setDonorAssetId(null);
+      setDonorAssetId(
+        selectedAssetsData.length > 0 ? selectedAssetsData[0].fileId : null,
+      );
       setSelectedTags(new Set());
       setAddToStart(false);
       setTagSortOption('order');
     }
-  }, [isOpen, selectedAssetsData]);
+  }
 
   // Get the donor asset data
   const donorAsset = useMemo(

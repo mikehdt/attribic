@@ -28,6 +28,10 @@ type CaptionEditorProps = {
   onTextChange: (text: string) => void;
 };
 
+// Debounce for committing the local draft to Redux while typing — long enough
+// to skip per-keystroke dispatches, short enough for dirty tracking to feel live
+const COMMIT_DEBOUNCE_MS = 300;
+
 /**
  * Mirror/overlay caption editor.
  *
@@ -47,9 +51,44 @@ const CaptionEditorComponent = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const wordCount = captionText.trim()
-    ? captionText.trim().split(/\s+/).length
-    : 0;
+  // Local draft of the caption. Typing edits this and commits to Redux on
+  // blur plus a short debounce — dispatching per keystroke would re-run the
+  // full filter/sort pipeline for every asset on the page.
+  const [draft, setDraft] = useState(captionText);
+  const draftRef = useRef(captionText);
+  const committedRef = useRef(captionText);
+  const isFocusedRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTextChangeRef = useRef(onTextChange);
+  useEffect(() => {
+    onTextChangeRef.current = onTextChange;
+  });
+
+  const commitDraft = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    if (draftRef.current !== committedRef.current) {
+      committedRef.current = draftRef.current;
+      onTextChangeRef.current(draftRef.current);
+    }
+  }, []);
+
+  // Resync from the store when it changes externally (auto-tagger, clear-all)
+  // while the editor isn't focused; a focused editor's draft wins
+  useEffect(() => {
+    committedRef.current = captionText;
+    if (!isFocusedRef.current) {
+      draftRef.current = captionText;
+      setDraft(captionText);
+    }
+  }, [captionText]);
+
+  // Flush a dirty draft on unmount so page/asset changes mid-edit don't lose it
+  useEffect(() => commitDraft, [commitDraft]);
+
+  const wordCount = draft.trim() ? draft.trim().split(/\s+/).length : 0;
 
   // Auto-grow the textarea to fit its content
   const adjustHeight = useCallback(() => {
@@ -78,7 +117,7 @@ const CaptionEditorComponent = ({
   useEffect(() => {
     if (!isActive) return;
     adjustHeight();
-  }, [captionText, isActive, adjustHeight]);
+  }, [draft, isActive, adjustHeight]);
 
   // Sync scroll position from textarea to backdrop
   const handleScroll = useCallback(() => {
@@ -95,20 +134,46 @@ const CaptionEditorComponent = ({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      onTextChange(e.target.value);
+      const text = e.target.value;
+      draftRef.current = text;
+      setDraft(text);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(commitDraft, COMMIT_DEBOUNCE_MS);
     },
-    [onTextChange],
+    [commitDraft],
   );
 
-  const handleFocus = useCallback(() => setIsFocused(true), []);
+  // Escape reverts the draft to the last committed store value and leaves the
+  // editor — matching the tag inputs, where Escape cancels
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Escape') {
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+          debounceRef.current = null;
+        }
+        draftRef.current = committedRef.current;
+        setDraft(committedRef.current);
+        e.currentTarget.blur();
+      }
+    },
+    [],
+  );
+
+  const handleFocus = useCallback(() => {
+    isFocusedRef.current = true;
+    setIsFocused(true);
+  }, []);
   const handleBlur = useCallback(() => {
+    isFocusedRef.current = false;
     setIsFocused(false);
+    commitDraft();
     // Deactivate if the mouse isn't over the container
     const container = containerRef.current;
     if (container && !container.matches(':hover')) {
       setIsActive(false);
     }
-  }, []);
+  }, [commitDraft]);
 
   // Show textarea on hover or focus, keep it while focused even if mouse leaves
   const handleMouseEnter = useCallback(() => setIsActive(true), []);
@@ -139,8 +204,8 @@ const CaptionEditorComponent = ({
                 : 'border-slate-200 hover:border-slate-400 dark:border-slate-700 dark:hover:border-slate-600'
           }`}
         >
-          {captionText ? (
-            renderBackdropText(captionText, triggerPhrases)
+          {draft ? (
+            renderBackdropText(draft, triggerPhrases)
           ) : isActive ? (
             // Non-breaking space keeps the backdrop at one line height when empty
             '\u00A0'
@@ -155,8 +220,9 @@ const CaptionEditorComponent = ({
         {isActive && (
           <textarea
             ref={textareaRef}
-            value={captionText}
+            value={draft}
             onChange={handleChange}
+            onKeyDown={handleKeyDown}
             onFocus={handleFocus}
             onBlur={handleBlur}
             onScroll={handleScroll}
@@ -166,7 +232,7 @@ const CaptionEditorComponent = ({
         )}
       </div>
 
-      <span className="mt-2 border border-transparent px-2 text-right text-xs text-slate-400 tabular-nums dark:text-slate-500">
+      <span className="mt-2 border border-transparent px-2 text-right text-sm text-slate-400 tabular-nums dark:text-slate-500">
         {wordCount} {wordCount === 1 ? 'word' : 'words'}
       </span>
     </div>

@@ -4,6 +4,7 @@ import {
   BookmarkXIcon,
   FolderOpenIcon,
   ImageIcon,
+  TriangleAlertIcon,
 } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
@@ -17,7 +18,7 @@ import {
   resetTags,
   saveAsset,
   selectAssetHasModifiedTags,
-  selectSaveProgress,
+  selectIsBatchSaveInProgress,
 } from '@/app/store/assets';
 import {
   toggleBucketFilter,
@@ -78,7 +79,7 @@ const AssetMetadataComponent = ({
   const filterBuckets = useAppSelector(selectFilterBuckets);
   const filterExtensions = useAppSelector(selectFilterExtensions);
   const filterSubfolders = useAppSelector(selectFilterSubfolders);
-  const saveProgress = useAppSelector(selectSaveProgress);
+  const isBatchSaveInProgress = useAppSelector(selectIsBatchSaveInProgress);
   const projectFolderName = useAppSelector(selectProjectFolderName);
 
   // Use optimised selector - only re-renders when THIS asset's modified state changes
@@ -100,12 +101,9 @@ const AssetMetadataComponent = ({
     : false;
 
   // Disable buttons when the individual asset is saving or a batch save is in progress
-  const isBatchSaveInProgress =
-    saveProgress &&
-    saveProgress.total > 0 &&
-    saveProgress.completed < saveProgress.total;
-
   const isSaving = ioState === IoState.SAVING || isBatchSaveInProgress;
+
+  const saveFailed = ioState === IoState.ERROR;
 
   const handleToggleSize = useCallback(
     () => dispatch(toggleSizeFilter(dimensionsComposed)),
@@ -163,9 +161,11 @@ const AssetMetadataComponent = ({
   return (
     <div
       className={`flex w-full items-end gap-2 border-t px-2 py-1 text-sm inset-shadow-sm transition-colors ${
-        hasModifiedTags
-          ? 'border-t-amber-300 bg-amber-100 inset-shadow-white dark:border-t-amber-600 dark:bg-amber-900 dark:inset-shadow-amber-700'
-          : 'border-t-(--border) bg-(--surface) inset-shadow-white dark:inset-shadow-slate-700'
+        saveFailed
+          ? 'border-t-rose-300 bg-rose-100 inset-shadow-white dark:border-t-rose-600 dark:bg-rose-900 dark:inset-shadow-rose-700'
+          : hasModifiedTags
+            ? 'border-t-amber-300 bg-amber-100 inset-shadow-white dark:border-t-amber-600 dark:bg-amber-900 dark:inset-shadow-amber-700'
+            : 'border-t-(--border) bg-(--surface) inset-shadow-white dark:inset-shadow-slate-700'
       }`}
     >
       <span className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-2 py-0.5 tabular-nums">
@@ -232,6 +232,16 @@ const AssetMetadataComponent = ({
           {highlightPatterns(displayFilename, filenamePatterns)}
         </span>
       </span>
+
+      {saveFailed ? (
+        <span
+          className="flex shrink-0 items-center gap-1 self-center pl-2 text-rose-700 dark:text-rose-300"
+          title="The tag file could not be written — check the file isn't locked, then save again"
+        >
+          <TriangleAlertIcon className="h-4 w-4" />
+          Save failed
+        </span>
+      ) : null}
 
       {hasModifiedTags ? (
         <span className="-my-0.5 flex shrink-0 gap-2 pl-2">

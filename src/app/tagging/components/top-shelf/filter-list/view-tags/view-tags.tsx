@@ -67,7 +67,8 @@ export const TagsView = () => {
               const preview = previewState(item.tag);
               return (
                 <li
-                  id={`tag-${item.tag}`}
+                  // Encoded so tags with spaces/quotes still form a valid DOM id
+                  id={`tag-${encodeURIComponent(item.tag)}`}
                   key={item.tag}
                   onClick={(e) => {
                     if (e.shiftKey) e.preventDefault(); // avoid text selection

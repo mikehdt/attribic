@@ -1,34 +1,48 @@
-# Filter List Components
+# Filter List
 
-This directory contains components for managing and displaying filter lists for image assets.
+Popup panel for filtering assets by tag, size/bucket, and file attributes.
+Opened from the toolbar via `FilterListButton`, which renders `FilterPanel`
+inside a `Popup` wrapped in `FilterProvider`.
 
-## Component Hierarchy
+## Structure
 
 ```
-FilterList                 # Main container for filter functionality
-├── FilterListProvider     # Provides context for filter state
-│   └── FilterPanel        # Main panel UI container
-│       ├── ViewSelector   # Toggles between filter view types
-│       ├── FilterControls # Sort and filter action controls
-│       ├── SearchProvider # Context for search functionality
-│       │   └── SearchInput # Input field for searching
-│       └── FilterViews    # Container for different filter views
-│           ├── TagsView   # Filter by tags
-│           ├── SizesView  # Filter by image dimensions
-│           └── FiletypesView # Filter by file extensions
+filter-list-button.tsx       # Toolbar toggle button + popup wiring
+filter-context.tsx           # FilterProvider / useFilterContext
+filter-panel.tsx             # Panel layout: view selector, controls, active view
+list-view-selector.tsx       # Segmented control: Tags / Sizes / File
+select-sizes-sub-view.tsx    # Size sub-view switcher: Images / Buckets
+filter-controls.tsx          # Sort type/direction buttons + Clear button
+use-keyboard-navigation.ts   # Arrow/Enter/Escape handling for the lists
+use-range-toggle.ts          # Shift-click range selection shared by all views
+view-tags/                   # Tag view (list + hook)
+view-sizes/                  # Size view, Images sub-view (exact dimensions)
+view-buckets/                # Size view, Buckets sub-view
+view-file/                   # File view: name searches, subfolders, extensions
+types.ts                     # Sort types, view types, sort cycles/labels
 ```
 
-## Hook Dependencies
+## Views
 
-- useKeyboardNavigation - Handles keyboard interaction for accessibility
-- usePanelPosition - Calculates and manages panel positioning
-- useOutsideClick - Detects clicks outside the panel for closing
-- useFilterList - Main hook combining filter-related functionality
+- **Tags** — filter by tag; hidden in caption mode.
+- **Sizes** — two sub-views: **Images** (exact dimensions, sortable by count/
+  active/size/ratio/megapixels) and **Buckets** (bucket dimensions).
+- **File** — three sections in one scrolling list: filename search patterns
+  (add/remove), subfolders, and file extensions.
 
-## Implementation Flow
+## filter-context responsibilities
 
-1. Filter components provide an interactive UI for filtering assets
-2. Users can filter by tags, image dimensions, or file types
-3. Results update in real-time as filters are applied or removed
-4. Filter state is persisted in Redux for application-wide consistency
-5. Components use context to avoid prop drilling and maintain clean architecture
+- Active view, size sub-view, and per-view (and per-sub-view) sort settings —
+  persisted across popup open/close cycles via module-level variables.
+- Transient search term, highlighted index, and list length.
+- Shift-held tracking and the range-selection anchor for `useRangeToggle`.
+- Keyboard navigation plumbing (delegates to `useKeyboardNavigation`).
+
+Filter selections themselves live in the Redux `filters` slice; the views
+dispatch toggle/clear actions and read counts from store selectors.
+
+## Keyboard navigation
+
+Focus stays in the search input. Arrow keys move the highlight, Enter toggles
+the highlighted item (Shift+Enter extends a range), and Escape is two-stage:
+first clears the highlight, then closes the panel.

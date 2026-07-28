@@ -828,6 +828,10 @@ export function useAutoTagger({
       let promotedToRunning = false;
       const promoteToRunning = () => {
         if (promotedToRunning) return;
+        // A cancel can land between stream events; promoting after it would
+        // flip the cancelled job back to running (the jobs reducers guard
+        // progress/result dispatches, but updateJobStatus is generic).
+        if (abortController.signal.aborted) return;
         promotedToRunning = true;
         dispatch(updateJobStatus({ id: jobId, status: 'running' }));
       };

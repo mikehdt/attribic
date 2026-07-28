@@ -49,6 +49,7 @@ export const FileView = () => {
           onKeyDown={handleCombinedKeyDown}
           autoFocus
           placeholder="Search file and folder names..."
+          aria-label="Search file and folder names"
           className="w-full rounded border border-slate-300 bg-white py-1.5 ps-2 pe-8 text-sm placeholder-slate-400 dark:border-slate-600 dark:bg-slate-700 dark:placeholder-slate-400 dark:focus:border-sky-400"
         />
         <button
@@ -61,6 +62,7 @@ export const FileView = () => {
               : 'pointer-events-none text-slate-300 dark:text-slate-600'
           }`}
           title="Add pattern"
+          aria-label="Add pattern"
         >
           <PlusIcon className="h-4 w-4" />
         </button>
@@ -117,7 +119,7 @@ export const FileView = () => {
               color="indigo"
               className="py-1.5"
             >
-              Repeat Folders
+              Subfolders
             </SectionDivider>
 
             <ul className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -125,7 +127,8 @@ export const FileView = () => {
                 const preview = subfolderPreviewState(item.subfolder);
                 return (
                   <li
-                    id={`subfolder-${item.subfolder}`}
+                    // Encoded so folder names with spaces still form a valid DOM id
+                    id={`subfolder-${encodeURIComponent(item.subfolder)}`}
                     key={item.subfolder}
                     onClick={(e) => {
                       if (e.shiftKey) e.preventDefault(); // avoid text selection

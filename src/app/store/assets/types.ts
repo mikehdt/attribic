@@ -43,7 +43,7 @@ export type KohyaBucket = {
 };
 
 export type ImageAsset = {
-  ioState: Extract<IoState, IoState.SAVING | IoState.COMPLETE>;
+  ioState: Extract<IoState, IoState.SAVING | IoState.COMPLETE | IoState.ERROR>;
   fileId: string;
   fileExtension: string;
   subfolder?: string; // Repeat folder name (e.g., "2_sonic"), undefined for root

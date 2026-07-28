@@ -37,14 +37,14 @@ const FilterIndicatorsInfoComponent = () => {
         },
         {
           count: filterCount.subfolders,
-          label: filterCount.subfolders === 1 ? 'folder' : 'folders',
+          label: filterCount.subfolders === 1 ? 'subfolder' : 'subfolders',
           color:
             'bg-indigo-50 border-indigo-300 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-500',
         },
         {
           count: filterCount.filenamePatterns,
           label:
-            filterCount.filenamePatterns === 1 ? 'name filter' : 'name filters',
+            filterCount.filenamePatterns === 1 ? 'name search' : 'name searches',
           color:
             'bg-violet-50 border-violet-300 text-violet-600 dark:bg-violet-900 dark:text-violet-500',
         },

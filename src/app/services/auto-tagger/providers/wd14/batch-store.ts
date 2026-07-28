@@ -67,12 +67,19 @@ function emit(state: OnnxBatchState, event: OnnxBatchEvent): void {
   }
 }
 
+/**
+ * Register a new batch. Refuses — returning false — when a batch with this ID
+ * is still running: replacing its state would interleave two runners into one
+ * object. Terminal (completed/failed/cancelled) batches may be replaced.
+ */
 export function createOnnxBatch(init: {
   batchId: string;
   project?: string;
   modelName?: string;
   total: number;
-}): void {
+}): boolean {
+  const existing = batches.get(init.batchId);
+  if (existing && existing.status === 'running') return false;
   batches.set(init.batchId, {
     batchId: init.batchId,
     project: init.project,
@@ -84,6 +91,7 @@ export function createOnnxBatch(init: {
     results: [],
     listeners: new Set(),
   });
+  return true;
 }
 
 /** Record one image's outcome and advance the completion count. */

@@ -304,7 +304,7 @@ export const MoveToFolderModal = ({
         {collisionError && (
           <div className="w-full rounded-md border border-rose-300 bg-rose-50 p-3 dark:border-rose-700 dark:bg-rose-900/30">
             <p className="text-sm font-medium text-rose-700 dark:text-rose-300">
-              Cannot move: {collisionError.length}
+              Cannot move: {collisionError.length}{' '}
               {collisionError.length !== 1 ? 'files' : 'file'} would collide in
               the destination folder.
             </p>

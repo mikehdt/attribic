@@ -62,20 +62,34 @@ export function cancelTaggingJob(jobId: string): void {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batchId: jobId }),
       });
-      // The sidecar reaches 'cancelled' shortly after (its cancel check
-      // aborts mid-image). Clear its stored batch once that has landed so
-      // /batch/active doesn't resurface an already-flushed batch — the
-      // immediate clear from the flush path 409s while the batch is still
-      // mid-cancel.
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      await fetch('/api/auto-tagger/batch/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batchId: jobId }),
-      });
     } catch {
       // best-effort — the sidecar may not be running
+      return;
     }
+    // Clear the stored batch once the cancel has landed, so /batch/active
+    // doesn't resurface an already-flushed batch. Cancellation only takes
+    // effect at the next image boundary, and one inference can run long —
+    // the clear route 409s until the batch goes terminal, so poll rather
+    // than guess a fixed delay.
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const response = await fetch('/api/auto-tagger/batch/clear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batchId: jobId }),
+        });
+        if (response.ok) return;
+        // 409 = still running; keep polling. Anything else won't self-heal.
+        if (response.status !== 409) return;
+      } catch {
+        // transient network failure — retry until the deadline
+      }
+    }
+    console.warn(
+      `[tagging] Batch ${jobId} still running 60s after cancel; its stored state was not cleared`,
+    );
   })();
 }
 

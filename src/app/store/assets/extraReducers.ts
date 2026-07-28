@@ -101,7 +101,17 @@ export const setupExtraReducers = (
   });
 
   builder.addCase(saveAsset.rejected, (state, action) => {
-    state.ioState = IoState.ERROR;
+    // A single failed write must not tear down the session (global ERROR
+    // unmounts the tagging view and discards every other pending edit).
+    // Flag the asset instead — its metadata bar surfaces the failure and the
+    // edits stay live for a retry.
+    const { arg } = action.meta;
+    const fileId = typeof arg === 'string' ? arg : arg.fileId;
+    const imageIndex = state.imageIndexById[fileId];
+    if (imageIndex !== undefined) {
+      state.images[imageIndex].ioState = IoState.ERROR;
+    }
+    state.ioState = IoState.COMPLETE;
     state.ioMessage = action.error.message;
   });
 
@@ -170,7 +180,10 @@ export const setupExtraReducers = (
   });
 
   builder.addCase(saveAllAssets.rejected, (state, action) => {
-    state.ioState = IoState.ERROR;
+    // Same reasoning as saveAsset.rejected: keep the session alive so the
+    // still-dirty assets can be retried. Per-file failures never reject the
+    // thunk — this is the whole-batch catastrophic path.
+    state.ioState = IoState.COMPLETE;
     state.ioMessage = `Failed to save all assets: ${action.error.message}`;
     state.saveProgress = undefined;
   });

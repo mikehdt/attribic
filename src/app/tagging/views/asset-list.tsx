@@ -1,8 +1,9 @@
 'use client';
 
 import { BoxSelectIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { Button } from '@/app/shared/button';
 import {
   type ImageAsset,
   selectFilteredAssets,
@@ -10,7 +11,7 @@ import {
   selectSortType,
   SortType,
 } from '@/app/store/assets';
-import { selectPaginationSize } from '@/app/store/filters';
+import { clearFilters, selectPaginationSize } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   clearClickTracking,
@@ -42,8 +43,10 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
 
   const dispatch = useAppDispatch();
 
-  // Track whether shift key is currently held
-  const [isShiftHeld, setIsShiftHeld] = useState(false);
+  // Track whether shift key is currently held. A ref, not state: nothing
+  // renders from it, and a state flip would change handleAssetHover's
+  // identity — failing every Asset memo on each shift press/release
+  const isShiftHeldRef = useRef(false);
   // Track currently hovered asset (using ref to avoid re-renders on hover)
   const hoveredAssetRef = useRef<string | null>(null);
 
@@ -52,11 +55,11 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
     dispatch(clearClickTracking());
   }, [currentPage, dispatch]);
 
-  // Track shift key state globally
+  // Track shift key state globally (subscribed once — no per-toggle churn)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift' && !isShiftHeld) {
-        setIsShiftHeld(true);
+      if (e.key === 'Shift' && !isShiftHeldRef.current) {
+        isShiftHeldRef.current = true;
         // If already hovering an asset when shift is pressed, update Redux
         if (hoveredAssetRef.current) {
           dispatch(setShiftHoverAssetId(hoveredAssetRef.current));
@@ -65,13 +68,13 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
-        setIsShiftHeld(false);
+        isShiftHeldRef.current = false;
         dispatch(setShiftHoverAssetId(null));
       }
     };
     // Also clear on blur (window loses focus)
     const handleBlur = () => {
-      setIsShiftHeld(false);
+      isShiftHeldRef.current = false;
       dispatch(setShiftHoverAssetId(null));
     };
 
@@ -84,7 +87,7 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
     };
-  }, [dispatch, isShiftHeld]);
+  }, [dispatch]);
 
   // Get pagination size from Redux
   const paginationSize = useAppSelector(selectPaginationSize);
@@ -110,15 +113,16 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
     return filteredAssets.slice(start, start + paginationSize);
   }, [filteredAssets, currentPage, paginationSize]);
 
-  // Handler for asset hover - always track in ref, dispatch to Redux only if shift is held
+  // Handler for asset hover - always track in ref, dispatch to Redux only if
+  // shift is held. Stable identity (shift read via ref) keeps Asset memos intact
   const handleAssetHover = useCallback(
     (assetId: string | null) => {
       hoveredAssetRef.current = assetId;
-      if (isShiftHeld) {
+      if (isShiftHeldRef.current) {
         dispatch(setShiftHoverAssetId(assetId));
       }
     },
-    [dispatch, isShiftHeld],
+    [dispatch],
   );
 
   // Group assets by sort category. The shared helper is the single source of
@@ -163,6 +167,12 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
   // Get shift-hover preview state
   const shiftHoverPreview = useAppSelector((state) =>
     selectShiftHoverPreview(state, paginatedAssetIds),
+  );
+
+  // Same clear-all as the top-shelf clear-filters button
+  const handleClearFilters = useCallback(
+    () => dispatch(clearFilters()),
+    [dispatch],
   );
 
   // Check if there's only one category to hide headers
@@ -236,6 +246,9 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
       <h1 className="mt-4 mb-4 w-full text-xl">
         No results match your filters
       </h1>
+      <Button onClick={handleClearFilters} size="md" width="xl">
+        Clear all filters
+      </Button>
     </div>
   );
 };

@@ -29,6 +29,12 @@ const assetsSlice = createSlice({
     selectAllImages: (state) => state.images,
     selectImageCount: (state) => state.images.length,
     selectSaveProgress: (state) => state.saveProgress,
+    // Boolean-only view of save progress: per-tick object updates during a
+    // batch save would otherwise re-render every subscriber (one per asset)
+    selectIsBatchSaveInProgress: (state) =>
+      !!state.saveProgress &&
+      state.saveProgress.total > 0 &&
+      state.saveProgress.completed < state.saveProgress.total,
     selectLoadProgress: (state) => state.loadProgress,
     selectSortType: (state) => state.sortType,
     selectSortDirection: (state) => state.sortDirection,
@@ -65,6 +71,7 @@ export const {
   selectAllImages,
   selectImageCount,
   selectSaveProgress,
+  selectIsBatchSaveInProgress,
   selectLoadProgress,
   selectSortType,
   selectSortDirection,

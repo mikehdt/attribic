@@ -9,6 +9,7 @@ import { CheckIcon, PlusIcon, XIcon } from 'lucide-react';
 import {
   ChangeEvent,
   ClipboardEvent,
+  FocusEvent,
   KeyboardEvent,
   memo,
   SyntheticEvent,
@@ -70,9 +71,23 @@ const InputTagComponent = ({
   onMultipleTagsSubmit,
 }: InputTagProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const blurFrameRef = useRef<number | null>(null);
   const [isFocused, setIsFocused] = useState(mode === 'edit');
   const inputWidth = useInputWidth(value.length);
+
+  // Brief pulse on the input when a submit is blocked by a duplicate — the
+  // matching tag is already highlighted (others faded); this ties the refusal
+  // back to the input itself
+  const [duplicateFlash, setDuplicateFlash] = useState(false);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashDuplicate = useCallback(() => {
+    setDuplicateFlash(true);
+    if (flashTimeoutRef.current) {
+      clearTimeout(flashTimeoutRef.current);
+    }
+    flashTimeoutRef.current = setTimeout(() => setDuplicateFlash(false), 600);
+  }, []);
 
   // Helper function to process comma-separated tags
   const processMultipleTags = useCallback(
@@ -148,12 +163,25 @@ const InputTagComponent = ({
         // Handle single tag submission
         if (value.trim() && !isDuplicate) {
           onSubmit(prepend);
+        } else if (value.trim() && isDuplicate) {
+          flashDuplicate();
+        } else if (mode === 'edit') {
+          // Submitting an empty edit cancels it rather than silently no-oping
+          onCancel();
         }
       } else if (e.key === 'Escape') {
         onCancel();
       }
     },
-    [value, isDuplicate, onSubmit, onCancel, mode, processMultipleTags],
+    [
+      value,
+      isDuplicate,
+      onSubmit,
+      onCancel,
+      mode,
+      processMultipleTags,
+      flashDuplicate,
+    ],
   );
 
   const handleSubmitClick = useCallback(
@@ -198,20 +226,36 @@ const InputTagComponent = ({
   );
 
   const handleFocus = useCallback(() => setIsFocused(true), []);
-  const handleBlur = useCallback(() => {
-    if (mode === 'add') {
-      if (blurTimeoutRef.current) {
-        clearTimeout(blurTimeoutRef.current);
+  const handleBlur = useCallback(
+    (e: FocusEvent<HTMLInputElement>) => {
+      if (mode === 'add') {
+        // Defer dropping the focus styling a frame so it doesn't thrash in
+        // the same frame as a click on the adjacent submit/cancel buttons
+        if (blurFrameRef.current !== null) {
+          cancelAnimationFrame(blurFrameRef.current);
+        }
+        blurFrameRef.current = requestAnimationFrame(() => setIsFocused(false));
+        return;
       }
-      blurTimeoutRef.current = setTimeout(() => setIsFocused(false), 100);
-    }
-  }, [mode]);
+      // Edit mode: clicking elsewhere cancels the edit (safer than
+      // committing). Blurs into this component's own submit/cancel buttons
+      // don't count — their click handlers decide what happens.
+      if (containerRef.current?.contains(e.relatedTarget as Node | null)) {
+        return;
+      }
+      onCancel();
+    },
+    [mode, onCancel],
+  );
 
-  // Clear any pending blur timeout on unmount to avoid setState after unmount
+  // Clear pending blur/flash timers on unmount to avoid setState after unmount
   useEffect(() => {
     return () => {
-      if (blurTimeoutRef.current) {
-        clearTimeout(blurTimeoutRef.current);
+      if (blurFrameRef.current !== null) {
+        cancelAnimationFrame(blurFrameRef.current);
+      }
+      if (flashTimeoutRef.current) {
+        clearTimeout(flashTimeoutRef.current);
       }
     };
   }, []);
@@ -228,7 +272,7 @@ const InputTagComponent = ({
   const canSubmit = value.trim() !== '' && !isDuplicate && !disabled;
 
   return (
-    <div className="relative mr-2 inline-flex">
+    <div ref={containerRef} className="relative mr-2 inline-flex">
       <input
         ref={inputRef}
         value={value}
@@ -241,7 +285,7 @@ const InputTagComponent = ({
         placeholder={placeholder}
         disabled={disabled}
         tabIndex={disabled ? -1 : 0}
-        className={`${inputWidth} rounded-2xl border py-1 ps-4 pe-14 transition-all ${borderColor} ${disabled ? 'pointer-events-none opacity-50' : 'bg-white dark:bg-slate-800'} ${isFocused ? `inset-shadow-sm ${shadowColor} ring-2 ring-sky-500` : ''}`}
+        className={`${inputWidth} rounded-2xl border py-1 ps-4 pe-14 transition-all ${borderColor} ${disabled ? 'pointer-events-none opacity-50' : 'bg-white dark:bg-slate-800'} ${duplicateFlash ? `inset-shadow-sm ${shadowColor} ring-2 ring-rose-500` : isFocused ? `inset-shadow-sm ${shadowColor} ring-2 ring-sky-500` : ''}`}
       />
 
       {/* Submit button */}
