@@ -33,6 +33,7 @@ from ai_toolkit_server import AiToolkitServer
 from providers.ai_toolkit_ui import AiToolkitUiProvider
 from providers.kohya import KohyaProvider
 from providers.mock import MockProvider
+import safe_stdio
 from sample_archive import configure as configure_sample_archive
 from system_stats import collect as collect_system_stats
 from system_stats import prime as prime_system_stats
@@ -498,6 +499,8 @@ async def ws_caption(websocket: WebSocket):
 
 
 def main():
+    global _server
+
     parser = argparse.ArgumentParser(description="Training sidecar server")
     parser.add_argument(
         "--app-root",
@@ -508,6 +511,12 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.app_root)
+
+    # The sidecar outlives the Node process that spawned it (detached spawn +
+    # heartbeat), and on Windows a print() to the dead parent's pipe raises
+    # OSError(EINVAL). Make the streams unbreakable before uvicorn's logging
+    # config captures references to them.
+    safe_stdio.install(config.training_dir / "sidecar-orphan.log")
 
     import uvicorn
 
