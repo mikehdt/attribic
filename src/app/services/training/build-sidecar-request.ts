@@ -125,6 +125,9 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   hyperparameters: Record<string, unknown>;
   sample_prompts: string[];
   sample_sizes: [number, number][];
+  project?: { id?: string; name: string; version: number };
+  form_snapshot?: Record<string, unknown>;
+  client_config?: Record<string, unknown>;
 } {
   const projectsFolder = getProjectsFolder();
 
@@ -284,5 +287,16 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     // toggle must clear it — prompts persist in Redux while the section is off.
     sample_prompts: samplePrompts,
     sample_sizes: sampleSizes,
+    // Client-owned metadata, forwarded so the sidecar's record of the run is
+    // complete enough to rebuild the client's whole view of it. Without these a
+    // run recovered from the sidecar comes back with no project attached — and
+    // the project menu's run list, which filters on exactly that, silently
+    // drops it — and with a config rebuilt lossily from the fields above.
+    // None is consumed by any provider; the sidecar stores them verbatim.
+    project: config.project as
+      | { id?: string; name: string; version: number }
+      | undefined,
+    form_snapshot: config.formSnapshot as Record<string, unknown> | undefined,
+    client_config: config.clientConfig as Record<string, unknown> | undefined,
   };
 }

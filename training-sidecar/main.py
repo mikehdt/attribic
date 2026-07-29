@@ -323,11 +323,49 @@ async def job_status():
     return {"active": True, **state}
 
 
+@app.get("/jobs")
+async def list_jobs():
+    """Every tracked training job — queued, running and terminal.
+
+    The source of truth for the client's run history and its activity panel,
+    both of which are projections of this list. `/jobs/status` answers "what's
+    the one job worth showing"; this answers "every run there has ever been",
+    which is also what a client needs to resynchronise after its progress
+    WebSocket dropped and reconnected.
+
+    Dismissed runs are included — they've only left the activity panel, and run
+    history still shows them. Clients filter on the `dismissed` flag.
+    """
+    return {"jobs": job_manager.list_status()}
+
+
 @app.post("/jobs/clear")
 async def clear_job(job_id: Optional[str] = None):
-    """Clear terminal training jobs. If `job_id` is omitted, clears all of them."""
-    job_manager.clear_completed(job_id)
-    return {"status": "cleared"}
+    """Dismiss terminal training jobs from the activity panel.
+
+    Despite the name (kept for client compatibility), this does not delete
+    anything: it flags the runs so their cards leave the panel and a refresh
+    doesn't bring them back. The records stay on disk and in run history.
+    Deleting a run is `DELETE /jobs/<job_id>`.
+
+    If `job_id` is omitted, dismisses every terminal training job.
+    """
+    dismissed = job_manager.dismiss_completed(job_id)
+    return {"status": "dismissed", "count": dismissed}
+
+
+@app.delete("/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """Delete a terminal training run from the sidecar's records for good.
+
+    The destructive counterpart to `/jobs/clear`, driven only by an explicit
+    delete in the run-history view. The Node route that calls this also removes
+    the run's folder (generated config + archived samples); this drops the
+    sidecar's own memory and state file so a later `/jobs` listing can't
+    resurrect it.
+    """
+    deleted = job_manager.delete_job(job_id)
+    return {"status": "deleted" if deleted else "not_found", "job_id": job_id}
 
 
 # --- WebSocket for real-time progress ---

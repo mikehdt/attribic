@@ -32,6 +32,16 @@ _TERMINAL_TRAINING_STATUSES = (
     JobStatus.CANCELLED,
 )
 
+# Training status → registry lifecycle status, for re-registering jobs read back
+# from disk at startup. Only terminal states appear: anything in flight when the
+# sidecar stopped is marked FAILED before it gets here, since its subprocess
+# didn't survive.
+_LIFECYCLE_BY_JOB_STATUS = {
+    JobStatus.COMPLETED: LifecycleStatus.COMPLETED,
+    JobStatus.FAILED: LifecycleStatus.FAILED,
+    JobStatus.CANCELLED: LifecycleStatus.CANCELLED,
+}
+
 # Upper bound on the accumulated loss series. Once exceeded we halve the
 # series (keep every other point) and double the sampling stride, so a long
 # run stays bounded while keeping an even spread across the whole timeline.
@@ -296,8 +306,14 @@ class JobManager:
         for rec in self._registry.queued_jobs():
             if rec.kind == JobKind.TRAINING and rec.id in self._jobs:
                 return self._jobs[rec.id]
+        # Dismissed runs are excluded: the user has cleared the card from the
+        # activity panel, and offering the run here would put it straight back
+        # on the next hydrate. The record itself is untouched — `list_status`
+        # still reports it, because run history shows dismissed runs.
         terminal = [
-            j for j in self._jobs.values() if j.status in _TERMINAL_TRAINING_STATUSES
+            j
+            for j in self._jobs.values()
+            if j.status in _TERMINAL_TRAINING_STATUSES and not j.dismissed
         ]
         if terminal:
             terminal.sort(key=lambda j: j.completed_at or "", reverse=True)
@@ -313,11 +329,30 @@ class JobManager:
         job = self._focus_job()
         if job is None:
             return None
+        return self._status_dict(job)
+
+    def _status_dict(self, job: JobState) -> dict:
+        """A job's state as a dict, with its queue position when queued."""
         data = job.model_dump()
         position = self._registry.queue_position(job.job_id)
         if position > 0:
             data["queue_position"] = position
         return data
+
+    def list_status(self) -> list[dict]:
+        """Every tracked training job, oldest submission first.
+
+        The single-job `get_status` is what a client polls for "what's running";
+        this is what it reconciles against after a gap in the progress stream
+        (a dropped WebSocket), where any of the queued / running / just-finished
+        jobs may have moved on without it.
+        """
+        return [
+            self._status_dict(job)
+            for job in sorted(
+                self._jobs.values(), key=lambda j: j.started_at or ""
+            )
+        ]
 
     async def start_job(self, request: StartJobRequest) -> StartJobResponse:
         """Create a training job and enqueue it. Returns immediately.
@@ -373,6 +408,9 @@ class JobManager:
             provider=request.provider,
             project_path=request.project_path,
             config=request.model_dump(),
+            project=request.project,
+            form_snapshot=request.form_snapshot,
+            client_config=request.client_config,
             started_at=now,
             progress=progress,
         )
@@ -726,11 +764,17 @@ class JobManager:
         self._accumulators.pop(job_id, None)
         self._persist_state(job_id)
 
-    def clear_completed(self, job_id: Optional[str] = None):
-        """Clear terminal training jobs from active state and disk.
+    def dismiss_completed(self, job_id: Optional[str] = None) -> int:
+        """Mark terminal training jobs as cleared from the activity panel.
 
-        If `job_id` is given, clears only that job (if terminal). Otherwise,
-        sweeps all terminal training jobs.
+        Dismissing is a *view* change, not a deletion: the record stays on disk
+        and keeps appearing in run history. All it does is take the card out of
+        the activity panel and stop `_focus_job` offering the run, so a refresh
+        doesn't put it back. Removing a run for good is `delete_job`, which only
+        the run-history view drives.
+
+        If `job_id` is given, dismisses only that job (when terminal);
+        otherwise every terminal training job. Returns how many were affected.
         """
         targets = (
             [job_id]
@@ -741,19 +785,44 @@ class JobManager:
                 if j.status in _TERMINAL_TRAINING_STATUSES
             ]
         )
+        dismissed = 0
         for jid in targets:
             job = self._jobs.get(jid)
             if job is None or job.status not in _TERMINAL_TRAINING_STATUSES:
                 continue
-            path = self._jobs_dir / f"{jid}.json"
-            try:
-                path.unlink(missing_ok=True)
-            except OSError as e:
-                print(f"Warning: Failed to delete cleared job file: {e}")
-            self._registry.remove(jid)
-            self._accumulators.pop(jid, None)
-            self._last_persist_at.pop(jid, None)
-            del self._jobs[jid]
+            if job.dismissed:
+                continue
+            job.dismissed = True
+            self._persist_state(jid)
+            dismissed += 1
+        return dismissed
+
+    def delete_job(self, job_id: str) -> bool:
+        """Forget a terminal run entirely — memory, registry and disk record.
+
+        The counterpart to `dismiss_completed`: this is what "delete" in the
+        run-history view means, and the only path that destroys a run. The run's
+        folder (`jobs/<id>/`, generated config plus archived samples) is removed
+        by the Node route that calls this; here we drop what the sidecar itself
+        holds, so a later `/jobs` listing can't resurrect what the user deleted.
+
+        Refuses to touch a live run — its config is still in use by the training
+        subprocess. Returns whether anything was removed.
+        """
+        job = self._jobs.get(job_id)
+        if job is None or job.status not in _TERMINAL_TRAINING_STATUSES:
+            return False
+
+        path = self._jobs_dir / f"{job_id}.json"
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as e:
+            print(f"Warning: Failed to delete job file: {e}")
+        self._registry.remove(job_id)
+        self._accumulators.pop(job_id, None)
+        self._last_persist_at.pop(job_id, None)
+        del self._jobs[job_id]
+        return True
 
     def _persist_state(self, job_id: str):
         """Write a job's state to disk for crash recovery."""
@@ -771,12 +840,18 @@ class JobManager:
             print(f"Warning: Failed to persist job state: {e}")
 
     def _recover_state(self):
-        """Attempt to recover in-flight jobs from disk after a restart.
+        """Reload every job written to disk after a restart.
 
-        Each in-flight file (PENDING/PREPARING/TRAINING) is marked FAILED since
-        the training subprocess did not survive the restart. Terminal files
-        from prior sessions are cleaned up opportunistically — the client
-        owns terminal training history via localStorage.
+        This is what makes the on-disk record durable, and so the source of
+        truth for run history: terminal runs are read back verbatim and kept,
+        rather than swept as they once were. (They used to be deleted here on
+        the premise that the browser owned history in localStorage — which meant
+        history couldn't survive a cleared browser store, couldn't be shared
+        between browsers, and drifted from the sample folders left behind on
+        disk. The record is small; nothing prunes it but an explicit delete.)
+
+        Each in-flight file (PENDING/PREPARING/TRAINING) is still marked FAILED,
+        since its training subprocess did not survive the restart.
         """
         if not self._jobs_dir.exists():
             return
@@ -786,30 +861,31 @@ class JobManager:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 job = JobState(**data)
 
-                if job.status in (
+                interrupted = job.status in (
                     JobStatus.PENDING,
                     JobStatus.PREPARING,
                     JobStatus.TRAINING,
-                ):
+                )
+                if interrupted:
                     job.status = JobStatus.FAILED
                     job.progress.status = JobStatus.FAILED
                     job.progress.error = "Training interrupted — sidecar restarted"
                     job.completed_at = datetime.now(timezone.utc).isoformat()
-                    self._jobs[job.job_id] = job
-                    self._registry.create(
-                        job.job_id,
-                        JobKind.TRAINING,
-                        status=LifecycleStatus.FAILED,
-                        metadata={
-                            "provider": job.provider.value,
-                            "project_path": job.project_path,
-                        },
-                    )
+
+                self._jobs[job.job_id] = job
+                self._registry.create(
+                    job.job_id,
+                    JobKind.TRAINING,
+                    status=_LIFECYCLE_BY_JOB_STATUS.get(
+                        job.status, LifecycleStatus.FAILED
+                    ),
+                    metadata={
+                        "provider": job.provider.value,
+                        "project_path": job.project_path,
+                    },
+                )
+                # Only the ones we changed need writing back.
+                if interrupted:
                     self._persist_state(job.job_id)
-                else:
-                    try:
-                        path.unlink(missing_ok=True)
-                    except OSError:
-                        pass
             except (json.JSONDecodeError, OSError, ValueError) as e:
                 print(f"Warning: Failed to recover job state from {path.name}: {e}")

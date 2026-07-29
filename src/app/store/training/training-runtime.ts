@@ -14,11 +14,21 @@ import type {
 import { fetchJson } from '@/app/utils/fetch-json';
 
 import type { AppThunk, RootState } from '../index';
-import { addJob, openPanel, removeJob, updateTrainingProgress } from '../jobs';
+import {
+  addJob,
+  openPanel,
+  removeJob,
+  restoreJobs,
+  updateTrainingProgress,
+} from '../jobs';
 import type { TrainingJob } from '../jobs/types';
 import { addToast } from '../toasts/reducers';
 import type { FormState } from '../training-config/types';
-import { dismissFromPanel } from '../training-history';
+import {
+  dismissFromPanel,
+  restoreHistory,
+  type TrainingHistoryEntry,
+} from '../training-history';
 
 // WebSocket handlers need a dispatch function that accepts thunks + actions.
 // Inside a thunk, `dispatch` is typed with an `unknown` extra-arg slot while
@@ -75,10 +85,22 @@ type SidecarJobProgress = {
 // filtering to a single tracked job, so a just-completed job can still
 // receive its terminal event while a freshly-dequeued job starts streaming.
 
+type ThunkGetState = () => RootState;
+
 type WsState = {
   socket: WebSocket | null;
   /** Port we connected to — used to detect when a reconnect needs a fresh URL. */
   port: number | null;
+  /**
+   * Store handles captured from the thunk that first opened the socket.
+   * Reconnects fire from a timer, outside any thunk, so they have no dispatch
+   * of their own.
+   */
+  dispatch: ThunkDispatch | null;
+  getState: ThunkGetState | null;
+  /** Consecutive drops since the last successful open — indexes the backoff. */
+  reconnectAttempts: number;
+  reconnectTimer: number | null;
   /** Per-job checkpoint step positions, keyed by job_id. */
   checkpointStepsByJob: Map<string, number[]>;
   /** Per-job predicted sample-generation step positions, keyed by job_id. */
@@ -90,10 +112,22 @@ type WsState = {
 const ws: WsState = {
   socket: null,
   port: null,
+  dispatch: null,
+  getState: null,
+  reconnectAttempts: 0,
+  reconnectTimer: null,
   checkpointStepsByJob: new Map(),
   sampleStepsByJob: new Map(),
   startedAtByJob: new Map(),
 };
+
+/**
+ * Backoff between reconnect attempts, indexed by consecutive-failure count and
+ * held at the last value from then on. Starts fast because the common drop is
+ * a sidecar restart that's already back, and settles at 30s so a sidecar that's
+ * genuinely gone isn't hammered for the life of a multi-hour run.
+ */
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 5000, 10_000, 30_000];
 
 /**
  * Drop a job's WS-router metadata. Called when a job is cleared from the
@@ -107,6 +141,10 @@ function forgetJob(jobId: string) {
 }
 
 function closeSocket() {
+  if (ws.reconnectTimer !== null) {
+    window.clearTimeout(ws.reconnectTimer);
+    ws.reconnectTimer = null;
+  }
   if (ws.socket) {
     try {
       ws.socket.close();
@@ -114,8 +152,34 @@ function closeSocket() {
       // Ignore close errors — we're tearing down anyway.
     }
   }
+  // Nulling this first is what tells the socket's own `close` handler that the
+  // teardown was ours, so it doesn't schedule a reconnect (it compares
+  // identity against `ws.socket`).
   ws.socket = null;
   ws.port = null;
+  ws.reconnectAttempts = 0;
+}
+
+/**
+ * Is there a training job we still expect to hear about? Reconnects are gated
+ * on this: chasing a sidecar forever when every run has finished is pure noise,
+ * and the sidecar shuts *itself* down once Node stops heartbeating and the
+ * queue is empty — so a closed socket with nothing live is the normal end
+ * state, not a fault.
+ *
+ * Deliberately generous about what counts as live. A job stuck at `pending`
+ * locally may well have started (or finished) while the stream was down —
+ * missing exactly those transitions is what a drop looks like — so it keeps
+ * the retry alive until a resync says otherwise.
+ */
+function hasLiveTrainingJob(getState: ThunkGetState): boolean {
+  return Object.values(getState().jobs.jobs).some(
+    (job) =>
+      job.type === 'training' &&
+      (job.status === 'pending' ||
+        job.status === 'preparing' ||
+        job.status === 'running'),
+  );
 }
 
 /** Message text for a toast — bare, without the `Error:` class prefix. */
@@ -187,19 +251,258 @@ function buildProgress(
   };
 }
 
-function ensureProgressSocket(dispatch: ThunkDispatch, port: number) {
-  // If we already have a live socket on the same port, reuse it. Only
-  // reopen when the port changed or the socket dropped.
-  if (ws.socket && ws.port === port && ws.socket.readyState <= WebSocket.OPEN) {
+/**
+ * The sidecar's own record of one training job (snake_case, as it stores it).
+ *
+ * This is the durable record — `<training>/jobs/<job_id>.json` — and the source
+ * of truth for every run the client shows. `project` and `form_snapshot` are
+ * client-owned fields the sidecar stores verbatim, which is what makes a run
+ * fully reconstructable from disk alone.
+ */
+type SidecarJobEntry = {
+  job_id: string;
+  status: SidecarJobStatus;
+  config?: Record<string, unknown>;
+  progress?: SidecarJobProgress;
+  started_at?: string;
+  completed_at?: string | null;
+  project?: { id?: string; name: string; version: number } | null;
+  form_snapshot?: FormState | null;
+  /** The client's own config summary, stored verbatim at launch. */
+  client_config?: TrainingJobConfig | null;
+  /** Cleared from the activity panel; still present in run history. */
+  dismissed?: boolean;
+};
+
+/**
+ * Rebuild a training job the client has no record of from the sidecar's own
+ * view of it, and add it to the store.
+ *
+ * Shared by the mount-time hydrate and the post-reconnect resync: both
+ * discover runs this page has never seen — one started in another tab, or one
+ * that began while the progress stream was down — and both have only the
+ * sidecar's persisted request dump to reconstruct from, so the result is a
+ * minimal skeleton carrying just the fields the job card renders.
+ *
+ * Never seeds a run the user has dismissed. `/jobs` lists dismissed runs — run
+ * history still shows them — so without this guard a reconnect would put every
+ * cleared card straight back into the activity panel.
+ *
+ * Also no-ops for a terminal run already in Run History, which is the fuller
+ * record: re-seeding would have it re-recorded over that snapshot.
+ */
+function seedJobFromSidecar(
+  dispatch: ThunkDispatch,
+  getState: ThunkGetState,
+  entry: SidecarJobEntry,
+) {
+  if (entry.dismissed) return;
+
+  const seededAt = entry.started_at ? Date.parse(entry.started_at) : Date.now();
+  ws.startedAtByJob.set(entry.job_id, seededAt);
+
+  const isTerminal =
+    entry.status === 'completed' ||
+    entry.status === 'failed' ||
+    entry.status === 'cancelled';
+  if (isTerminal && getState().trainingHistory.entries[entry.job_id]) return;
+
+  dispatch(addJob(trainingJobFromSidecar(entry)));
+}
+
+/**
+ * Build a `TrainingJob` from the sidecar's stored record of it.
+ *
+ * The sidecar's record is the source of truth for every run, so this is the one
+ * translation from its shape into the client's — used both to seed a job the
+ * page has never seen and to rebuild the whole run history on load.
+ *
+ * Prefers the client's own config summary, stored on the record at launch, so a
+ * run redisplays exactly as it did live. Records predating that field fall back
+ * to rebuilding the config from the persisted launch request, which is lossy —
+ * no datasets, a single resolution, no expert settings.
+ *
+ * The project the run belongs to and the launch form are likewise carried on
+ * the record rather than derived, precisely so they survive this trip.
+ */
+function trainingJobFromSidecar(entry: SidecarJobEntry): TrainingJob {
+  const seededAt = entry.started_at ? Date.parse(entry.started_at) : Date.now();
+  const completedAt = entry.completed_at ? Date.parse(entry.completed_at) : null;
+
+  // `buildProgress` dates a terminal tick to now, which is right for a live
+  // stream and wrong for a record read back off disk — a run that finished last
+  // week would report as having just ended, and the detail view's duration is
+  // the gap between these two. Restamp both from the record.
+  const progress = entry.progress
+    ? {
+        ...buildProgress(entry.job_id, entry.progress),
+        startedAt: seededAt,
+        completedAt,
+      }
+    : null;
+
+  // Sidecar config is snake_case — pick out the fields used for rendering.
+  const cfg = entry.config ?? {};
+  const hp = (cfg.hyperparameters as Record<string, unknown>) ?? {};
+  const provider =
+    (cfg.provider as TrainingProvider) ??
+    (cfg.provider_type as TrainingProvider) ??
+    'ai-toolkit';
+
+  return {
+    id: entry.job_id,
+    type: 'training',
+    status:
+      entry.status === 'training' || entry.status === 'preparing'
+        ? 'running'
+        : entry.status,
+    createdAt: seededAt,
+    startedAt: seededAt,
+    completedAt,
+    error: entry.progress?.error ?? null,
+    // Carried on the record rather than derived: the project is what the
+    // project menu filters its run list on, and its absence is what used to
+    // make recovered runs vanish from that menu.
+    project: entry.project ?? undefined,
+    formSnapshot: entry.form_snapshot ?? undefined,
+    config: entry.client_config ?? {
+      projectPath: (cfg.project_path as string) ?? '',
+      provider,
+      baseModel: (cfg.base_model as string) ?? '',
+      modelPaths: {},
+      outputPath: (cfg.output_path as string) ?? '',
+      outputName: (cfg.output_name as string) ?? 'unnamed-lora',
+      datasets: [],
+      hyperparameters: {
+        learningRate: (hp.lr as number) ?? 1e-4,
+        epochs: (hp.epochs as number) ?? 0,
+        batchSize: (hp.batch_size as number) ?? 1,
+        resolution: 1024,
+        networkDim: (hp.network_dim as number) ?? 16,
+        networkAlpha: (hp.network_alpha as number) ?? 16,
+        optimizer: (hp.optimizer as string) ?? 'adamw8bit',
+        scheduler: (hp.scheduler as string) ?? 'constant',
+        warmupSteps: (hp.warmup_steps as number) ?? 0,
+        saveEveryNEpochs: 1,
+        sampleEveryNSteps: 250,
+        gradientAccumulationSteps: 1,
+        mixedPrecision: 'bf16',
+        extra: {
+          numRestarts: (hp.num_restarts as number) ?? 1,
+          maxSavesToKeep: (hp.max_saves_to_keep as number) ?? 0,
+        },
+      },
+      // The persisted request carries the prompts — they drive the samples
+      // grid's column headers after a refresh.
+      samplePrompts: (cfg.sample_prompts as string[]) ?? [],
+    },
+    progress,
+  };
+}
+
+/**
+ * Pull the sidecar's own view of every training job and fold it back in.
+ *
+ * The progress socket is a pure delta stream — it only carries what changed
+ * while someone was listening — so a drop silently strands whatever moved
+ * during the gap: a run that finished, the queued job that took its place.
+ * Reconciling against `/api/training/jobs` (the whole queue, not just the
+ * sidecar's single "focus" job) is what makes a reconnect actually recover.
+ *
+ * Best-effort — a failure leaves the stale state in place and the next live
+ * tick corrects whatever is still running.
+ */
+async function resyncJobs(dispatch: ThunkDispatch, getState: ThunkGetState) {
+  let entries: SidecarJobEntry[];
+  try {
+    const data = await fetchJson<{ jobs?: SidecarJobEntry[] }>(
+      '/api/training/jobs',
+    );
+    entries = data.jobs ?? [];
+  } catch (err) {
+    console.warn(
+      '[training-ws] Resync failed — job state may be stale until the next tick',
+      err,
+    );
     return;
   }
 
-  closeSocket();
+  for (const entry of entries) {
+    if (!entry.job_id) continue;
+    const existing = getState().jobs.jobs[entry.job_id];
+    if (!existing) {
+      // A run this page has never seen (started in another tab, or begun
+      // while we were disconnected) — rebuild it from the sidecar's record.
+      seedJobFromSidecar(dispatch, getState, entry);
+      continue;
+    }
+    // Already finished locally: the sidecar has nothing left to tell us, and
+    // re-applying its progress would stamp a fresh `completedAt` (buildProgress
+    // dates terminal ticks to now), defeating the history middleware's
+    // idempotency guard and re-archiving the run on every reconnect.
+    if (
+      existing.status === 'completed' ||
+      existing.status === 'failed' ||
+      existing.status === 'cancelled' ||
+      existing.status === 'interrupted'
+    ) {
+      continue;
+    }
+    if (entry.progress) {
+      dispatch(
+        updateTrainingProgress({
+          id: entry.job_id,
+          progress: buildProgress(entry.job_id, entry.progress),
+        }),
+      );
+    }
+  }
+}
+
+/**
+ * Schedule a reconnect after a drop, unless there's nothing left to hear about
+ * or an attempt is already pending. Each consecutive failure walks further
+ * down `RECONNECT_DELAYS_MS`; a successful open resets the count.
+ */
+function scheduleReconnect() {
+  if (ws.reconnectTimer !== null || ws.socket) return;
+
+  const { dispatch, getState, port } = ws;
+  if (!dispatch || !getState || port === null) return;
+
+  if (!hasLiveTrainingJob(getState)) {
+    ws.reconnectAttempts = 0;
+    return;
+  }
+
+  const delay =
+    RECONNECT_DELAYS_MS[
+      Math.min(ws.reconnectAttempts, RECONNECT_DELAYS_MS.length - 1)
+    ]!;
+  ws.reconnectAttempts += 1;
+
+  ws.reconnectTimer = window.setTimeout(() => {
+    ws.reconnectTimer = null;
+    openProgressSocket(dispatch, getState, port);
+  }, delay);
+}
+
+function openProgressSocket(
+  dispatch: ThunkDispatch,
+  getState: ThunkGetState,
+  port: number,
+) {
   ws.port = port;
 
   const url = `ws://127.0.0.1:${port}/ws/progress`;
   const socket = new WebSocket(url);
   ws.socket = socket;
+
+  socket.addEventListener('open', () => {
+    if (ws.socket !== socket) return;
+    ws.reconnectAttempts = 0;
+    void resyncJobs(dispatch, getState);
+  });
 
   socket.addEventListener('message', (event) => {
     try {
@@ -216,16 +519,38 @@ function ensureProgressSocket(dispatch: ThunkDispatch, port: number) {
   });
 
   socket.addEventListener('close', () => {
-    if (ws.socket === socket) {
-      ws.socket = null;
-    }
+    // A socket we already replaced (or tore down deliberately, which nulls
+    // `ws.socket` first) — its close is not a drop.
+    if (ws.socket !== socket) return;
+    ws.socket = null;
+    scheduleReconnect();
   });
 
   socket.addEventListener('error', () => {
-    // Error handling: the sidecar may restart; we'll leave the job in its
-    // current Redux state and let the next hydrate call recover.
-    console.warn('[training-ws] Socket error — progress streaming stopped');
+    // Always followed by `close`, which owns the retry — nothing to do here
+    // but say so, since a silent console is indistinguishable from a healthy
+    // stream that simply has nothing to report.
+    console.warn('[training-ws] Socket error — will retry if a run is live');
   });
+}
+
+function ensureProgressSocket(
+  dispatch: ThunkDispatch,
+  getState: ThunkGetState,
+  port: number,
+) {
+  // Kept for reconnects, which fire from a timer with no thunk context.
+  ws.dispatch = dispatch;
+  ws.getState = getState;
+
+  // If we already have a live socket on the same port, reuse it. Only
+  // reopen when the port changed or the socket dropped.
+  if (ws.socket && ws.port === port && ws.socket.readyState <= WebSocket.OPEN) {
+    return;
+  }
+
+  closeSocket();
+  openProgressSocket(dispatch, getState, port);
 }
 
 // ---------------------------------------------------------------------------
@@ -353,6 +678,9 @@ export function startTraining(
     // load or clear a project while the sidecar handshake is in flight, and
     // the run belongs to whatever was loaded when they pressed start.
     const loadedProject = getState().trainingConfig.loadedProject;
+    // Built once and used twice: it's both what this session's job card renders
+    // and what the sidecar stores, so a reloaded run redisplays identically.
+    const clientConfig = snapshotClientConfig(config);
 
     // No client-side GPU-busy gate — the sidecar owns a shared queue
     // across training + tagging, so additional jobs enqueue behind whatever
@@ -386,7 +714,22 @@ export function startTraining(
       }>('/api/training/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        // The project and the launch form ride along with the config so the
+        // sidecar can store them on the run's record. They're what lets a run
+        // recovered from disk rejoin the project menu's list and reload its
+        // settings — neither is derivable from the config alone.
+        body: JSON.stringify({
+          ...config,
+          project: loadedProject
+            ? {
+                id: loadedProject.id,
+                name: loadedProject.name,
+                version: loadedProject.version,
+              }
+            : undefined,
+          formSnapshot,
+          clientConfig,
+        }),
       });
       if (!data.job_id) {
         dispatch(
@@ -422,7 +765,7 @@ export function startTraining(
       startedAt: null,
       completedAt: null,
       error: null,
-      config: snapshotClientConfig(config),
+      config: clientConfig,
       progress: null,
       project: loadedProject
         ? {
@@ -436,7 +779,7 @@ export function startTraining(
     dispatch(addJob(job));
     dispatch(openPanel());
 
-    ensureProgressSocket(dispatch, sidecarPort);
+    ensureProgressSocket(dispatch, getState, sidecarPort);
   };
 }
 
@@ -503,27 +846,14 @@ export function clearTrainingJob(jobId: string): AppThunk {
  */
 const HYDRATE_RETRY_DELAYS_MS = [500, 2000, 5000];
 
-type ActiveJobResponse = {
-  active: boolean;
-  job_id?: string;
-  status?: SidecarJobStatus;
-  config?: Record<string, unknown>;
-  progress?: SidecarJobProgress;
-  started_at?: string;
-};
+type ActiveJobResponse = Partial<SidecarJobEntry> & { active: boolean };
 
 export function hydrateActiveTraining(): AppThunk {
   return async (dispatch, getState) => {
     // If we already have a socket open, nothing to do.
     if (ws.socket && ws.socket.readyState <= WebSocket.OPEN) return;
 
-    let active: {
-      job_id: string;
-      status: SidecarJobStatus;
-      config?: Record<string, unknown>;
-      progress?: SidecarJobProgress;
-      started_at?: string;
-    } | null = null;
+    let active: SidecarJobEntry | null = null;
     let sidecarPort = 9733;
 
     for (let attempt = 0; ; attempt++) {
@@ -566,97 +896,100 @@ export function hydrateActiveTraining(): AppThunk {
 
     // Don't re-seed if this job is already in Redux — the middleware may
     // have persisted it, in which case we only need to reattach the WS.
-    const existing = (getState() as RootState).jobs.jobs[active.job_id];
-    const seededAt = active.started_at
-      ? Date.parse(active.started_at)
-      : Date.now();
-    ws.startedAtByJob.set(active.job_id, seededAt);
+    const existing = getState().jobs.jobs[active.job_id];
+    if (existing) {
+      ws.startedAtByJob.set(
+        active.job_id,
+        existing.startedAt ??
+          (active.started_at ? Date.parse(active.started_at) : Date.now()),
+      );
+    } else {
+      seedJobFromSidecar(dispatch, getState, active);
+    }
 
-    // A terminal job that's already snapshotted in Run History needs no
-    // reconstruction: the history entry (full config, archived sample paths)
-    // is the durable record, and re-seeding the minimal skeleton below would
-    // re-record it over that snapshot — the skeleton's completedAt is
-    // unknowable here, so the persistence middleware's idempotency guard
-    // can't match. This arises when a dismissed run's /api/training/clear
-    // never reached the sidecar, leaving it reporting the finished job as
-    // active across a refresh.
-    const isTerminal =
-      active.status === 'completed' ||
-      active.status === 'failed' ||
-      active.status === 'cancelled';
+    // Only attach a WS if the job is still in-flight. `pending` counts: the
+    // sidecar's focus job is only queued when nothing is running, and a socket
+    // attached now is what shows it starting rather than leaving the panel
+    // frozen on "queued" until the next reload.
     if (
-      isTerminal &&
-      !existing &&
-      (getState() as RootState).trainingHistory.entries[active.job_id]
+      active.status === 'training' ||
+      active.status === 'preparing' ||
+      active.status === 'pending'
     ) {
-      return;
-    }
-
-    if (!existing) {
-      // Reconstruct a minimal TrainingJob. Sidecar config is snake_case —
-      // pick out the fields used for rendering the job card.
-      const cfg = active.config ?? {};
-      const hp = (cfg.hyperparameters as Record<string, unknown>) ?? {};
-      const provider =
-        (cfg.provider as TrainingProvider) ??
-        (cfg.provider_type as TrainingProvider) ??
-        'ai-toolkit';
-      const job: TrainingJob = {
-        id: active.job_id,
-        type: 'training',
-        status:
-          active.status === 'training' || active.status === 'preparing'
-            ? 'running'
-            : active.status,
-        createdAt: seededAt,
-        startedAt: seededAt,
-        completedAt: null,
-        error: active.progress?.error ?? null,
-        config: {
-          projectPath: (cfg.project_path as string) ?? '',
-          provider,
-          baseModel: (cfg.base_model as string) ?? '',
-          modelPaths: {},
-          outputPath: (cfg.output_path as string) ?? '',
-          outputName: (cfg.output_name as string) ?? 'unnamed-lora',
-          datasets: [],
-          hyperparameters: {
-            learningRate: (hp.lr as number) ?? 1e-4,
-            epochs: (hp.epochs as number) ?? 0,
-            batchSize: (hp.batch_size as number) ?? 1,
-            resolution: 1024,
-            networkDim: (hp.network_dim as number) ?? 16,
-            networkAlpha: (hp.network_alpha as number) ?? 16,
-            optimizer: (hp.optimizer as string) ?? 'adamw8bit',
-            scheduler: (hp.scheduler as string) ?? 'constant',
-            warmupSteps: (hp.warmup_steps as number) ?? 0,
-            saveEveryNEpochs: 1,
-            sampleEveryNSteps: 250,
-            gradientAccumulationSteps: 1,
-            mixedPrecision: 'bf16',
-            extra: {
-              numRestarts: (hp.num_restarts as number) ?? 1,
-              maxSavesToKeep: (hp.max_saves_to_keep as number) ?? 0,
-            },
-          },
-          // The persisted request carries the prompts — they drive the samples
-          // grid's column headers after a refresh.
-          samplePrompts: (cfg.sample_prompts as string[]) ?? [],
-        },
-        progress: active.progress
-          ? buildProgress(active.job_id, active.progress)
-          : null,
-      };
-      dispatch(addJob(job));
-    } else if (existing.startedAt) {
-      ws.startedAtByJob.set(active.job_id, existing.startedAt);
-    }
-
-    // Only attach a WS if the job is still in-flight.
-    if (active.status === 'training' || active.status === 'preparing') {
-      ensureProgressSocket(dispatch, sidecarPort);
+      ensureProgressSocket(dispatch, getState, sidecarPort);
       // Surface the activity panel so the refresh doesn't silently drop it.
       dispatch(openPanel());
     }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// hydrateTrainingHistory — rebuild past runs from the sidecar's records.
+// ---------------------------------------------------------------------------
+
+/** Terminal statuses as the sidecar reports them. */
+function isTerminalEntry(entry: SidecarJobEntry): boolean {
+  return (
+    entry.status === 'completed' ||
+    entry.status === 'failed' ||
+    entry.status === 'cancelled'
+  );
+}
+
+/**
+ * Load every finished run the sidecar has on record into the history archive
+ * and the activity panel.
+ *
+ * The sidecar's `<training>/jobs/*.json` files are the single source of truth
+ * for run history. This used to be a localStorage archive, which drifted from
+ * disk in both directions — runs survived in the browser after their files were
+ * deleted, and vanished when the browser store was cleared or a different
+ * browser was used, despite every run's samples and outputs still sitting on
+ * disk. Reading the runs back from the sidecar removes the second copy that
+ * drift needs.
+ *
+ * `dismissed` on the record is what keeps a run out of the activity panel while
+ * leaving it in run history, so a card the user cleared stays cleared across
+ * reloads without the run being lost.
+ *
+ * Best-effort: if the sidecar can't be reached (not running yet — this fires on
+ * mount) the archive stays empty rather than showing a partial history, and the
+ * next mount picks it up. Nothing is written back, so a failed read can't
+ * destroy anything.
+ */
+export function hydrateTrainingHistory(): AppThunk {
+  return async (dispatch) => {
+    let entries: SidecarJobEntry[];
+    try {
+      const data = await fetchJson<{ jobs?: SidecarJobEntry[] }>(
+        '/api/training/jobs',
+      );
+      entries = data.jobs ?? [];
+    } catch (err) {
+      console.warn(
+        '[training] Could not load run history from the sidecar — ' +
+          'past runs will appear once it is reachable.',
+        err,
+      );
+      return;
+    }
+
+    const archived: TrainingHistoryEntry[] = entries
+      .filter(isTerminalEntry)
+      .map((entry) => ({
+        ...trainingJobFromSidecar(entry),
+        dismissedFromPanel: entry.dismissed ?? false,
+      }));
+    if (archived.length === 0) return;
+
+    // History first: recording a run that finishes this session reads the
+    // archive to decide whether it's already known, so it must be populated
+    // before any terminal transition can fire.
+    dispatch(restoreHistory(archived));
+    // The panel shows the ones the user hasn't cleared. `restoreJobs` merges
+    // without overwriting, so a live job already in the store is left alone.
+    dispatch(
+      restoreJobs(archived.filter((entry) => !entry.dismissedFromPanel)),
+    );
   };
 }

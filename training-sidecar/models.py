@@ -96,6 +96,20 @@ class DatasetEntry(BaseModel):
     flip_v_augment: bool = False
 
 
+class ProjectRef(BaseModel):
+    """The saved training project a run was launched from.
+
+    Snapshotted at launch rather than looked up later: a project can be
+    renamed, re-versioned or deleted while its runs live on, and a past run
+    should still say what it was trained from. `id` is what the client matches
+    a project's own runs on, since it survives a rename where `name` doesn't.
+    """
+
+    id: Optional[str] = None
+    name: str
+    version: int = 1
+
+
 class StartJobRequest(BaseModel):
     project_path: str
     provider: ProviderType
@@ -110,6 +124,19 @@ class StartJobRequest(BaseModel):
     # backends parse off a prompt line. Absent/short = fall back to the run's
     # default sample size, which is what clients predating this field send.
     sample_sizes: list[list[int]] = []
+    # Client-owned metadata the sidecar stores verbatim and never interprets.
+    # Both exist so a run's record on disk can rebuild the client's whole view
+    # of it without a browser-side archive: `project` is what the project menu
+    # filters its own runs on, and `form_snapshot` is the launch form exactly as
+    # submitted, kept so a past run's settings can be loaded back into the form.
+    project: Optional[ProjectRef] = None
+    form_snapshot: Optional[dict] = None
+    # The client's own summary of the run, as it renders it. Stored so a run
+    # read back off disk redisplays exactly as it did live — rebuilding it from
+    # the fields above is lossy (no datasets, one resolution, no expert
+    # settings), which would make a reloaded run's detail view quietly poorer
+    # than the same run before the reload.
+    client_config: Optional[dict] = None
 
     def sample_size_at(
         self, index: int, default_w: int, default_h: int
@@ -186,6 +213,15 @@ class JobProgress(BaseModel):
 
 
 class JobState(BaseModel):
+    """A training run's durable record — the single source of truth for it.
+
+    Written to `<training>/jobs/<job_id>.json` at launch and updated as the run
+    progresses, so it outlives the sidecar process, the browser tab and the
+    browser itself. Everything the client renders for a run is reconstructable
+    from here, which is why the client-side fields (`project`, `form_snapshot`)
+    ride along even though the sidecar never reads them.
+    """
+
     job_id: str
     status: JobStatus
     provider: ProviderType
@@ -194,6 +230,15 @@ class JobState(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     progress: JobProgress
+    # Carried through from the launch request — see StartJobRequest.
+    project: Optional[ProjectRef] = None
+    form_snapshot: Optional[dict] = None
+    client_config: Optional[dict] = None
+    # Cleared from the activity panel by the user. The run stays on disk and in
+    # run history; this only keeps its card out of the panel and stops the
+    # single-job status view offering it, so a refresh doesn't re-surface it.
+    # Deleting a run for good is a separate, explicit action in run history.
+    dismissed: bool = False
 
 
 class HealthResponse(BaseModel):

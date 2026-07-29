@@ -28,11 +28,8 @@ import {
   loadPersistedDownloads,
   reconcileDownloadsWithServer,
 } from '@/app/store/jobs/persistence';
-import {
-  dismissAllFromPanel,
-  restoreHistory,
-} from '@/app/store/training-history';
-import { loadPersistedTrainingHistory } from '@/app/store/training-history/persistence';
+import { hydrateTrainingHistory } from '@/app/store/training/training-runtime';
+import { dismissAllFromPanel } from '@/app/store/training-history';
 
 import { Button } from '../button';
 import { DownloadJobCard } from './download-job-card';
@@ -58,7 +55,9 @@ const ActivityPanelComponent = () => {
     pathname.startsWith('/tagging') || pathname.startsWith('/training');
   const bottomClass = hasBottomShelf ? 'bottom-16' : 'bottom-4';
 
-  // Restore persisted downloads and terminal training jobs on mount.
+  // Restore past training runs and persisted downloads on mount. Training runs
+  // are read back from the sidecar (the source of truth for them); downloads
+  // still persist to localStorage, being a purely client-side concern.
   // Downloads that were `running` when the page closed are restored as-is,
   // then reconciled against the server's active-download set: another tab
   // may still own the stream, in which case we leave the job alone. Only
@@ -68,24 +67,16 @@ const ActivityPanelComponent = () => {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    // Seed the durable history archive first, before any newly-terminal run
-    // this session gets recorded (which persists the whole slice) — otherwise
-    // an unrestored slice would overwrite the stored archive with just the
-    // current session's runs.
-    const history = loadPersistedTrainingHistory();
-    if (history.length > 0) dispatch(restoreHistory(history));
+    // Past training runs come from the sidecar, which holds each one's durable
+    // record on disk — it seeds both the run-history archive and the panel's
+    // terminal-training rows (skipping runs the user has cleared). Async and
+    // self-contained, so it doesn't gate the download restore below.
+    dispatch(hydrateTrainingHistory());
 
-    // The history archive is the single persisted home for terminal training
-    // runs, so seed the activity panel's terminal-training rows from it,
-    // skipping any the user previously cleared. The panel-only
-    // `dismissedFromPanel` flag rides along inertly — the jobs slice never
-    // reads or persists it.
     const downloads = loadPersistedDownloads();
-    const training = history.filter((entry) => !entry.dismissedFromPanel);
-    const persisted = [...downloads, ...training];
-    if (persisted.length === 0) return;
+    if (downloads.length === 0) return;
 
-    dispatch(restoreJobs(persisted));
+    dispatch(restoreJobs(downloads));
     if (downloads.some((j) => j.status === 'interrupted')) {
       dispatch(openPanel());
     }
@@ -129,13 +120,13 @@ const ActivityPanelComponent = () => {
 
   const handleClearAll = useCallback(() => {
     dispatch(clearCompletedJobs());
-    // Terminal training runs live in the durable history archive, not the jobs
-    // slice's persistence. Mark them dismissed so they stay out of the panel
-    // across refreshes (they remain in the Run History view).
+    // Terminal training runs are owned by the sidecar, not the jobs slice's
+    // persistence. Mark them dismissed locally for an immediate response…
     dispatch(dismissAllFromPanel());
-    // Tell the sidecar to drop any terminal active_job too, so a refresh
-    // doesn't re-hydrate one we just cleared. The endpoint is a no-op when
-    // the sidecar isn't running or has nothing to clear.
+    // …and on their durable records, which is what makes it stick across a
+    // refresh. Dismissing is not deleting: the runs stay in the Run History
+    // view, and only an explicit delete there removes them. The endpoint is a
+    // no-op when the sidecar isn't running or has nothing to dismiss.
     fetch('/api/training/clear', { method: 'POST' }).catch(() => {});
   }, [dispatch]);
 

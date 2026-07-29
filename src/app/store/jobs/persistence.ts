@@ -5,12 +5,11 @@
  *
  * - **Downloads**: all download jobs (including completed) are persisted so
  *   the activity panel shows history until the user explicitly clears it.
- * - **Training**: terminal training runs are NOT persisted here. They live in
- *   the durable `trainingHistory` slice (`training-history/persistence.ts` →
- *   `img-tagger:training-history`), which is the single source of truth; the
- *   activity panel seeds its terminal-training rows from that archive on load.
- *   In-flight training is owned by the Python sidecar and restored via
- *   `hydrateActiveTraining`.
+ * - **Training**: not persisted here, or anywhere client-side. Every training
+ *   run — in-flight or long finished — is owned by the Python sidecar, which
+ *   keeps each one's durable record in `<training>/jobs/<job_id>.json`. The
+ *   activity panel and Run History are both projections of that, restored via
+ *   `hydrateTrainingHistory` and `hydrateActiveTraining` on mount.
  */
 
 import type { DownloadJob, Job } from './types';

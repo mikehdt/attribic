@@ -1,16 +1,26 @@
 /**
  * Training run history slice.
  *
- * A durable archive of terminal training runs (completed/failed/cancelled),
- * separate from the transient `jobs` slice. The activity panel's "Clear all"
- * wipes the jobs slice; this one survives so the Training menu's "Run History"
- * view keeps a lasting record. Entries are snapshots of the `TrainingJob` at
- * the moment it finished, so the detail view can render them exactly like a
- * live job (loss graph, params, log).
+ * An in-memory projection of the terminal training runs (completed/failed/
+ * cancelled) the sidecar holds on disk, separate from the transient `jobs`
+ * slice. The activity panel's "Clear all" wipes the jobs slice; this one
+ * survives so the Training menu's "Run History" view keeps a lasting record.
+ * Entries are `TrainingJob` snapshots, so the detail view can render an
+ * archived run exactly like a live one (loss graph, params, log).
  *
- * Recording happens in `middleware/job-persistence.ts`, which upserts any
- * terminal training job into this slice; persistence lives in
- * `training-history/persistence.ts`.
+ * **Not persisted.** The durable record of a run is the sidecar's
+ * `<training>/jobs/<job_id>.json`, which is the single source of truth; this
+ * slice is rebuilt from it on mount by `hydrateTrainingHistory`. It previously
+ * persisted to localStorage as a second store, which drifted from disk in both
+ * directions — runs outliving their deleted files, and runs vanishing with a
+ * cleared browser store despite their outputs still being on disk.
+ *
+ * Two paths write here. `middleware/job-persistence.ts` upserts a run the
+ * moment it goes terminal, so the archive updates without waiting for a
+ * reload; `hydrateTrainingHistory` seeds the whole archive from the sidecar on
+ * mount. Mutations that must outlive the session (dismiss, delete) are
+ * mirrored to the sidecar by their dispatcher — this slice only holds the
+ * client's copy.
  */
 
 import {
@@ -86,8 +96,10 @@ const trainingHistorySlice = createSlice({
     /**
      * Repoint a stored run's samples at their archived paths once the
      * terminal-time move completes. Only touches `progress.samples`; the rest
-     * of the snapshot (and `dismissedFromPanel`) is untouched. Being a
-     * trainingHistory/ mutation, it re-persists like any other.
+     * of the snapshot (and `dismissedFromPanel`) is untouched. The sidecar
+     * archives samples as it collects them, so its own record already carries
+     * the archived paths — this keeps the current session in step without
+     * waiting for a reload to pick them up.
      */
     updateEntrySamples: (
       state,
@@ -109,8 +121,9 @@ const trainingHistorySlice = createSlice({
     },
 
     /**
-     * Merge persisted entries in on load. Only fills gaps — never overwrites a
-     * snapshot already recorded this session, so a fresher in-memory run wins.
+     * Merge the sidecar's records in on load. Only fills gaps — never
+     * overwrites a snapshot already recorded this session, so a run that
+     * finished while the page was open keeps its live, fuller state.
      */
     restoreHistory: (state, action: PayloadAction<TrainingHistoryEntry[]>) => {
       for (const entry of action.payload) {

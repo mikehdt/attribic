@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { NextResponse } from 'next/server';
 
+import { connectSidecar } from '@/app/services/training/sidecar-manager';
 import { getTrainingJobsDir } from '@/app/services/training/training-root';
 
 /** True if `target` resolves to a path at or below `root`. */
@@ -25,9 +26,15 @@ const isSafeJobId = (id: string): boolean =>
  * a run's images with it — the sample deletion fired alongside is the narrower
  * `samples/`-only path, and whichever lands first makes the other a no-op.
  *
- * Fired fire-and-forget when a run leaves Run History. Idempotent: nonexistent
- * paths still succeed. Only ever called for terminal runs — a live job's config
- * is still in use by its training subprocess.
+ * Also tells the sidecar to forget the run. That call is what makes the delete
+ * stick: the sidecar holds every run in memory and serves them from `/jobs`, so
+ * removing only the files would let the next listing write the record straight
+ * back — the run would return from the dead on the next sidecar restart.
+ *
+ * Fired fire-and-forget when a run leaves Run History, which is the only path
+ * that destroys a run; clearing a card from the activity panel merely dismisses
+ * it. Idempotent: nonexistent paths still succeed. Only ever called for terminal
+ * runs — a live job's config is still in use by its training subprocess.
  */
 export async function DELETE(
   _request: Request,
@@ -46,6 +53,21 @@ export async function DELETE(
 
     if (!isWithin(jobsDir, configDir) || !isWithin(jobsDir, stateFile)) {
       return new NextResponse('Access denied', { status: 403 });
+    }
+
+    // Drop the sidecar's in-memory copy first. If this fails we still remove
+    // the files — a stale entry the user can dismiss beats leaving the run's
+    // samples on disk with no way to reach them.
+    const sidecar = await connectSidecar();
+    if (sidecar.status === 'ready') {
+      try {
+        await fetch(
+          `http://127.0.0.1:${sidecar.port}/jobs/${encodeURIComponent(jobId)}`,
+          { method: 'DELETE' },
+        );
+      } catch {
+        // Sidecar unreachable mid-call — fall through to the file removal.
+      }
     }
 
     // force:true makes missing paths a no-op, so deletion is idempotent.

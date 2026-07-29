@@ -254,6 +254,10 @@ export function TrainingJobCard({
                     {progress!.phase ?? 'Training'}
                   </span>
                 )
+              ) : isCompleted ? (
+                <span className="truncate text-green-600 dark:text-green-400">
+                  Completed
+                </span>
               ) : isFailed ? (
                 <span className="truncate text-rose-600 dark:text-rose-400">
                   Failed

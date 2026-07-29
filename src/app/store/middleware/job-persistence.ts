@@ -32,7 +32,6 @@ import {
   recordTrainingRun,
   updateEntrySamples,
 } from '../training-history';
-import { persistTrainingHistory } from '../training-history/persistence';
 
 /** Statuses at which a training run is finished and worth archiving. */
 const TERMINAL_TRAINING_STATUSES = new Set([
@@ -188,17 +187,6 @@ jobPersistenceMiddleware.startListening({
       listenerApi.getState() as RootState,
       listenerApi.dispatch,
     );
-  },
-});
-
-// Persist the history archive whenever it changes.
-jobPersistenceMiddleware.startListening({
-  predicate: (action) =>
-    typeof action.type === 'string' &&
-    action.type.startsWith('trainingHistory/'),
-  effect: (_action, listenerApi) => {
-    const state = listenerApi.getState() as RootState;
-    persistTrainingHistory(state.trainingHistory.entries);
   },
 });
 
