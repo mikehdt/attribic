@@ -57,7 +57,7 @@ function ColumnHeader({ column }: { column: SampleColumn }) {
     <div role="columnheader" className="min-w-0 self-end">
       <span
         title={column.label}
-        className="block truncate text-sm font-medium text-slate-600 dark:text-slate-300"
+        className="block truncate px-2 text-xs font-medium text-slate-600 dark:text-slate-300"
       >
         {column.label}
       </span>
@@ -81,7 +81,7 @@ function GeneratingCell({
   const determinate = progress != null && progress.total > 0;
   return (
     <div
-      className="flex h-28 w-full flex-col items-center justify-center gap-2 rounded border border-dashed border-violet-400 px-3 dark:border-violet-500/70"
+      className="flex h-28 w-full flex-col items-center justify-center gap-2 rounded border border-dashed border-violet-400 px-3 pt-4.5 dark:border-violet-500/70"
       title={`Generating ${label}`}
     >
       {determinate ? (
@@ -97,7 +97,7 @@ function GeneratingCell({
       <span className="text-xs text-violet-600 tabular-nums dark:text-violet-400">
         {determinate
           ? `Step ${progress.current}/${progress.total}`
-          : 'Generating…'}
+          : 'Generating...'}
       </span>
     </div>
   );

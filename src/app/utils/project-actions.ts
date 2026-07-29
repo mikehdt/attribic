@@ -460,7 +460,7 @@ export const saveAutoTaggerSettings = async (
   }
 };
 
-type ProjectFolderDetail = {
+export type ProjectFolderDetail = {
   name: string;
   imageCount: number;
   detectedRepeats: number;
@@ -586,36 +586,31 @@ export const getProjectDimensionHistogram = async (
 export type ProjectDatasetScan = {
   /** Whether the project folder still exists under the projects root. */
   exists: boolean;
-  /** Assets found across the root and any repeat subfolders. */
-  assetCount: number;
-  dimensionHistogram: Record<string, number>;
+  /** Root and repeat subfolders as they are on disk right now. */
+  folders: ProjectFolderDetail[];
 };
 
 /**
  * Re-scan a project folder that a training config has attached as a dataset.
  *
- * Existence and asset count come back alongside the histogram because a
- * histogram alone can't explain itself: a moved folder, an emptied one, and a
- * folder of videos all scan to `{}`. The training form needs to tell a config
- * that has lost its images from one that never had size data.
+ * This is the readdir half of a rescan, deliberately kept apart from
+ * {@link getProjectDimensionHistogram}: this one is a directory listing and
+ * returns in microseconds, while the histogram opens every image. The form
+ * needs the folder breakdown before it can render a dataset at all, so pairing
+ * them would make every project load wait on the slow one.
+ *
+ * `exists` distinguishes a folder that's been moved or renamed from one that's
+ * simply been emptied — both come back with no folders, and only one of them
+ * is worth telling the user their dataset is missing.
  */
-export const scanProjectDataset = async (
+export const scanDatasetFolders = async (
   projectName: string,
 ): Promise<ProjectDatasetScan> => {
   const { projectsFolder } = getServerConfig();
 
   if (!fs.existsSync(path.join(projectsFolder, projectName))) {
-    return { exists: false, assetCount: 0, dimensionHistogram: {} };
+    return { exists: false, folders: [] };
   }
 
-  const [folders, dimensionHistogram] = await Promise.all([
-    getProjectFolders(projectName),
-    getProjectDimensionHistogram(projectName),
-  ]);
-
-  return {
-    exists: true,
-    assetCount: folders.reduce((sum, folder) => sum + folder.imageCount, 0),
-    dimensionHistogram,
-  };
+  return { exists: true, folders: await getProjectFolders(projectName) };
 };

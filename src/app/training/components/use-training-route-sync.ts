@@ -123,11 +123,15 @@ export function useTrainingRouteSync(): void {
       let cancelled = false;
       void dispatch(
         loadProjectBySlug(target.slug!, target.version ?? undefined),
-      ).then((ok) => {
+      ).then((result) => {
         isResolvingRef.current = false;
         setResolveCount((n) => n + 1);
         if (cancelled) return;
-        if (!ok) {
+        // Only leave the URL when the server confirmed there's nothing there.
+        // A failed request has already toasted its own reason, and the project
+        // may be perfectly fine — bouncing to /training on it would look like
+        // the project had been deleted.
+        if (result === 'not-found') {
           dispatch(
             addToast({
               children: `No training project found at “${target.slug}”`,

@@ -196,7 +196,7 @@ const SamplingSectionComponent = ({
             {prompts.length > 0 ? ' from these prompts:' : '.'}
           </p>
           {prompts.length > 0 && (
-            <ul className="list-inside list-disc space-y-0.5">
+            <ul className="ml-4 list-disc space-y-0.5">
               {prompts.map((prompt, i) => {
                 const [w, h] = resolveSampleSize(prompt.aspect, sampleBase);
                 return (

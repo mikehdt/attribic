@@ -11,14 +11,19 @@ import type {
   TrainingProjectSummary,
   TrainingProjectVersion,
 } from '@/app/services/training-projects/disk-schema';
-import { scanProjectDataset } from '@/app/utils/project-actions';
+import { fetchJson, isJsonStatus } from '@/app/utils/fetch-json';
+import {
+  getProjectDimensionHistogram,
+  scanDatasetFolders,
+} from '@/app/utils/project-actions';
 
 import type { AppThunk } from '../index';
 import { addToast } from '../toasts';
 import {
   clearLoadedProject,
   hydrateFromProject,
-  setDatasetScan,
+  reconcileDatasetFolders,
+  setDatasetHistogram,
   stampSaved,
 } from './index';
 import { forgetRecentProject, recordRecentProject } from './recent-projects';
@@ -48,64 +53,87 @@ function adoptProject(
   };
 }
 
-async function parseOrThrow<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `Request failed: ${res.status}`);
-  }
-  return (await res.json()) as T;
-}
-
 // --- Disk scans (derived from disk, never persisted) ---
 
 /**
- * Rescan every attached dataset from disk: image dimensions, plus whether the
- * folder is still there and what it holds.
+ * Read one attached dataset off disk: which folders exist, how many images
+ * each holds, and the image sizes across them.
  *
- * Scan results are captured once when a dataset is picked and are stripped on
- * save, so without this a config would render size information about a folder
- * as it looked at some arbitrary point in the past. They drive the
- * native-resolution mismatch warning, so a stale one can claim a dataset is
- * correctly sized when it no longer is — and the folder-gone warning, which
- * needs the current state of the disk by definition. Scans run in parallel and
- * are header-only reads, so this is cheap enough to do on every load.
+ * A saved config records which folders to train on and how to weight them; it
+ * doesn't record what's inside them, so everything descriptive is stripped on
+ * save and re-read here. Without this the form would render a folder list, per
+ * folder image counts, step totals and a bucket preview describing the project
+ * as it looked at some arbitrary point in the past — all of it presented as
+ * current, and none of it invalidated when the images change.
  *
- * A folder that fails to scan outright (permissions, I/O) is skipped rather
+ * The two halves are dispatched separately because they cost wildly different
+ * amounts: the folder listing is a readdir and lands immediately, while the
+ * histogram opens a header per image. Waiting for the second to show the first
+ * would leave every project load briefly claiming an empty dataset.
+ *
+ * A folder that fails to scan outright (permissions, I/O) is left alone rather
  * than blanked — the rest of the datasets still refresh. A folder that's simply
  * absent is not a failure: it comes back as a scan saying so, which is what the
  * missing-dataset warning is built on.
  */
+const scanDataset =
+  (folderName: string): AppThunk =>
+  async (dispatch) => {
+    try {
+      const { exists, folders } = await scanDatasetFolders(folderName);
+      dispatch(reconcileDatasetFolders({ folderName, exists, folders }));
+    } catch {
+      // Leave the existing folders alone; a failed read shouldn't wipe them.
+      return;
+    }
+
+    try {
+      const dimensionHistogram = await getProjectDimensionHistogram(folderName);
+      dispatch(setDatasetHistogram({ folderName, dimensionHistogram }));
+    } catch {
+      // Bucket preview keeps whatever it had; the folder list is current.
+    }
+  };
+
+/**
+ * Read every dataset that hasn't been read yet.
+ *
+ * This is the one that runs on a load, and it's deliberately idempotent: a
+ * dataset that already carries a scan is skipped, so it can be driven from an
+ * effect and re-entered as often as the form re-renders (see
+ * `useDatasetScanSync`). That's what makes a scan the client dropped —
+ * loading a project rewrites the URL, and the navigation that follows can
+ * take an in-flight request with it — recoverable rather than terminal.
+ */
+export const ensureDatasetScans =
+  (): AppThunk => async (dispatch, getState) => {
+    const pending = getState().trainingConfig.form.datasets.filter(
+      (ds) => !ds.scan,
+    );
+    await Promise.all(
+      pending.map((ds) => dispatch(scanDataset(ds.folderName))),
+    );
+  };
+
+/**
+ * Re-read every attached dataset, scanned or not — the Dataset section's
+ * rescan button, for when the files have changed under a form that's already
+ * looked at them.
+ */
 export const refreshDatasetScans =
   (): AppThunk => async (dispatch, getState) => {
     const { datasets } = getState().trainingConfig.form;
-    if (datasets.length === 0) return;
-
     await Promise.all(
-      datasets.map(async (ds) => {
-        try {
-          const { exists, assetCount, dimensionHistogram } =
-            await scanProjectDataset(ds.folderName);
-          dispatch(
-            setDatasetScan({
-              folderName: ds.folderName,
-              dimensionHistogram,
-              scan: { exists, assetCount },
-            }),
-          );
-        } catch {
-          // Leave the existing scan alone; a failed read shouldn't wipe it.
-        }
-      }),
+      datasets.map((ds) => dispatch(scanDataset(ds.folderName))),
     );
   };
 
 // --- List (not a thunk — plain fetch for UI consumption) ---
 
 export async function fetchProjectList(): Promise<TrainingProjectSummary[]> {
-  const res = await fetch('/api/training/projects');
-  const { projects } = await parseOrThrow<{
+  const { projects } = await fetchJson<{
     projects: TrainingProjectSummary[];
-  }>(res);
+  }>('/api/training/projects');
   return projects;
 }
 
@@ -118,15 +146,13 @@ export const loadProject =
       const url = version
         ? `/api/training/projects/${encodeURIComponent(id)}?version=${version}`
         : `/api/training/projects/${encodeURIComponent(id)}`;
-      const res = await fetch(url);
-      const { meta, version: v } = await parseOrThrow<ProjectResponse>(res);
+      const { meta, version: v } = await fetchJson<ProjectResponse>(url);
       dispatch(
         hydrateFromProject({
           form: v.form,
           loadedProject: adoptProject(meta, v),
         }),
       );
-      void dispatch(refreshDatasetScans());
     } catch (error) {
       dispatch(
         addToast({
@@ -141,37 +167,41 @@ export const loadProject =
  * Load a project by its URL slug rather than its id.
  *
  * Used when the URL is the source of truth — a refresh or a bookmark on
- * `/training/my-project/v2`, where the client has a slug and no id. Resolves
- * to false when nothing matches, letting the caller send the user back to the
- * unsaved form rather than leaving them on a URL that points at nothing.
+ * `/training/my-project/v2`, where the client has a slug and no id.
+ *
+ * `not-found` is reserved for a JSON 404, the handler's own word that no such
+ * project exists — that's what lets the caller send the user back to the
+ * unsaved form. Anything else resolves to `error`: a 404 that isn't JSON never
+ * reached the handler (the dev server failing to match its own route looks
+ * identical from here), and treating that as "no such project" evicts the user
+ * from a URL whose project is sitting on disk.
  */
+export type LoadBySlugResult = 'loaded' | 'not-found' | 'error';
+
 export const loadProjectBySlug =
-  (slug: string, version?: number): AppThunk<Promise<boolean>> =>
+  (slug: string, version?: number): AppThunk<Promise<LoadBySlugResult>> =>
   async (dispatch) => {
     try {
       const query = version ? `?version=${version}` : '';
-      const res = await fetch(
+      const { meta, version: v } = await fetchJson<ProjectResponse>(
         `/api/training/projects/by-slug/${encodeURIComponent(slug)}${query}`,
       );
-      if (res.status === 404) return false;
-
-      const { meta, version: v } = await parseOrThrow<ProjectResponse>(res);
       dispatch(
         hydrateFromProject({
           form: v.form,
           loadedProject: adoptProject(meta, v),
         }),
       );
-      void dispatch(refreshDatasetScans());
-      return true;
+      return 'loaded';
     } catch (error) {
+      if (isJsonStatus(error, 404)) return 'not-found';
       dispatch(
         addToast({
           children: `Failed to load project: ${errorMessage(error)}`,
           variant: 'error',
         }),
       );
-      return false;
+      return 'error';
     }
   };
 
@@ -191,7 +221,7 @@ export const saveCurrentVersion =
       return;
     }
     try {
-      const res = await fetch(
+      const { meta, version } = await fetchJson<ProjectResponse>(
         `/api/training/projects/${encodeURIComponent(loaded.id)}/versions/${loaded.version}`,
         {
           method: 'PUT',
@@ -199,7 +229,6 @@ export const saveCurrentVersion =
           body: JSON.stringify({ form, label }),
         },
       );
-      const { meta, version } = await parseOrThrow<ProjectResponse>(res);
       dispatch(stampSaved(adoptProject(meta, version)));
     } catch (error) {
       dispatch(
@@ -217,19 +246,20 @@ export const saveAsNewProject =
   (name: string, form: FormState, label: string | null = null): AppThunk =>
   async (dispatch) => {
     try {
-      const res = await fetch('/api/training/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, form, label }),
-      });
-      const { meta, version } = await parseOrThrow<ProjectResponse>(res);
+      const { meta, version } = await fetchJson<ProjectResponse>(
+        '/api/training/projects',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, form, label }),
+        },
+      );
       dispatch(
         hydrateFromProject({
           form: version.form,
           loadedProject: adoptProject(meta, version),
         }),
       );
-      void dispatch(refreshDatasetScans());
       dispatch(addToast({ children: `Saved as new project “${meta.name}”` }));
     } catch (error) {
       dispatch(
@@ -247,7 +277,7 @@ export const saveAsNewVersion =
   (projectId: string, form: FormState, label: string | null = null): AppThunk =>
   async (dispatch) => {
     try {
-      const res = await fetch(
+      const { meta, version } = await fetchJson<ProjectResponse>(
         `/api/training/projects/${encodeURIComponent(projectId)}/versions`,
         {
           method: 'POST',
@@ -255,14 +285,12 @@ export const saveAsNewVersion =
           body: JSON.stringify({ form, label }),
         },
       );
-      const { meta, version } = await parseOrThrow<ProjectResponse>(res);
       dispatch(
         hydrateFromProject({
           form: version.form,
           loadedProject: adoptProject(meta, version),
         }),
       );
-      void dispatch(refreshDatasetScans());
       dispatch(
         addToast({
           children: `Saved as v${version.version} of “${meta.name}”`,
@@ -288,7 +316,7 @@ export const replaceExistingProject =
   ): AppThunk =>
   async (dispatch) => {
     try {
-      const res = await fetch(
+      const { meta, version } = await fetchJson<ProjectResponse>(
         `/api/training/projects/${encodeURIComponent(projectId)}/replace`,
         {
           method: 'POST',
@@ -296,14 +324,12 @@ export const replaceExistingProject =
           body: JSON.stringify({ form, ...options }),
         },
       );
-      const { meta, version } = await parseOrThrow<ProjectResponse>(res);
       dispatch(
         hydrateFromProject({
           form: version.form,
           loadedProject: adoptProject(meta, version),
         }),
       );
-      void dispatch(refreshDatasetScans());
       dispatch(addToast({ children: `Replaced project “${meta.name}”` }));
     } catch (error) {
       dispatch(
@@ -321,7 +347,7 @@ export const renameProject =
   (id: string, name: string): AppThunk =>
   async (dispatch, getState) => {
     try {
-      const res = await fetch(
+      const { meta } = await fetchJson<{ meta: TrainingProjectMeta }>(
         `/api/training/projects/${encodeURIComponent(id)}`,
         {
           method: 'PATCH',
@@ -329,7 +355,6 @@ export const renameProject =
           body: JSON.stringify({ name }),
         },
       );
-      const { meta } = await parseOrThrow<{ meta: TrainingProjectMeta }>(res);
 
       // Mirror the rename into loadedProject if it's the one we have loaded.
       const loaded = getState().trainingConfig.loadedProject;
@@ -352,7 +377,9 @@ export const setVersionLabel =
   (id: string, version: number, label: string | null): AppThunk =>
   async (dispatch, getState) => {
     try {
-      const res = await fetch(
+      const { version: updated } = await fetchJson<{
+        version: TrainingProjectVersion;
+      }>(
         `/api/training/projects/${encodeURIComponent(id)}/versions/${version}`,
         {
           method: 'PATCH',
@@ -360,9 +387,6 @@ export const setVersionLabel =
           body: JSON.stringify({ label }),
         },
       );
-      const { version: updated } = await parseOrThrow<{
-        version: TrainingProjectVersion;
-      }>(res);
 
       const loaded = getState().trainingConfig.loadedProject;
       if (loaded && loaded.id === id && loaded.version === version) {
@@ -384,11 +408,10 @@ export const deleteProject =
   (id: string): AppThunk =>
   async (dispatch, getState) => {
     try {
-      const res = await fetch(
+      await fetchJson<{ ok: boolean }>(
         `/api/training/projects/${encodeURIComponent(id)}`,
         { method: 'DELETE' },
       );
-      await parseOrThrow<{ ok: boolean }>(res);
       forgetRecentProject(id);
 
       const loaded = getState().trainingConfig.loadedProject;
@@ -412,11 +435,10 @@ export const deleteVersion =
   (id: string, version: number): AppThunk =>
   async (dispatch, getState) => {
     try {
-      const res = await fetch(
+      const { meta } = await fetchJson<{ meta: TrainingProjectMeta }>(
         `/api/training/projects/${encodeURIComponent(id)}/versions/${version}`,
         { method: 'DELETE' },
       );
-      const { meta } = await parseOrThrow<{ meta: TrainingProjectMeta }>(res);
 
       // If we just deleted the loaded version, hop to the latest remaining.
       const loaded = getState().trainingConfig.loadedProject;

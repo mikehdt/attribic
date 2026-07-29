@@ -17,7 +17,6 @@ import { useConfirmAction } from '@/app/shared/use-confirm-action';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { addToast } from '@/app/store/toasts/reducers';
 import { hydrateFromRun } from '@/app/store/training-config';
-import { refreshDatasetScans } from '@/app/store/training-config/thunks';
 import {
   clearHistory,
   deleteHistoryEntry,
@@ -195,10 +194,10 @@ export function TrainingHistoryModal() {
   const handleReuse = useCallback(
     (entry: TrainingHistoryEntry) => {
       if (!entry.formSnapshot) return;
+      // An archived run's datasets are as old as the run; hydrating drops what
+      // it claimed about them, and `useDatasetScanSync` re-reads the folders so
+      // one that's since moved is flagged rather than silently trained against.
       dispatch(hydrateFromRun(entry.formSnapshot));
-      // An archived run's datasets are as old as the run — rescan so a folder
-      // that's since moved is flagged rather than silently trained against.
-      void dispatch(refreshDatasetScans());
       dispatch(
         addToast({
           children: `Loaded settings from “${entry.config?.outputName || 'training run'}”`,

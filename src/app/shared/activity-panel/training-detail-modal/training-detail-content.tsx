@@ -1,4 +1,5 @@
 import { ImagesIcon } from 'lucide-react';
+import { type ReactNode, useMemo } from 'react';
 
 import type { TrainingJob } from '@/app/store/jobs';
 
@@ -8,7 +9,10 @@ import {
   formatMemory,
   formatPercent,
   formatTemperature,
+  isTemperatureWarning,
 } from '../../stats/format';
+import { memoryPercent, toSeries, useStatsHistory } from '../../stats/history';
+import { SparklineDot, StatSparkline } from '../../stats/stat-sparkline';
 import { useStats } from '../../stats/use-stats';
 import {
   deriveExpectedCheckpointCount,
@@ -32,7 +36,8 @@ import { useTrainingDetailView } from './use-training-detail-view';
 
 /**
  * One host-load box: headline utilisation, an optional right-aligned
- * temperature, and the matching memory figure underneath.
+ * temperature, the matching memory figure underneath, and the rolling load
+ * graph behind the lot.
  *
  * These are **machine-wide** numbers, not this run's — the GPU figures include
  * anything else on the card, and the queue shares one GPU between training and
@@ -46,6 +51,7 @@ function HostStat({
   memoryLabel,
   usedMb,
   totalMb,
+  chart,
 }: {
   label: string;
   percent: number | null;
@@ -53,21 +59,33 @@ function HostStat({
   memoryLabel: string;
   usedMb: number | null;
   totalMb: number | null;
+  chart?: ReactNode;
 }) {
+  const tooHot = isTemperatureWarning(temperatureC);
   return (
     <Stat
       label={label}
+      background={chart}
+      tone={tooHot ? 'warning' : 'default'}
       value={
         <span className="flex flex-col gap-0.5">
-          <span className="flex items-baseline">
+          <span className="flex items-baseline gap-1.5">
+            <SparklineDot variant="line" />
             {formatPercent(percent)}
             {temperatureC != null && (
-              <span className="ml-auto pl-1.5 text-xs font-normal text-slate-400">
+              <span
+                className={`ml-auto pl-1.5 text-xs font-normal ${
+                  tooHot
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-slate-400'
+                }`}
+              >
                 {formatTemperature(temperatureC)}
               </span>
             )}
           </span>
-          <span className="text-xs font-normal text-slate-400">
+          <span className="flex items-center gap-1.5 text-xs font-normal text-slate-400">
+            <SparklineDot variant="area" />
             {memoryLabel} {formatMemory(usedMb, totalMb)}
           </span>
         </span>
@@ -94,6 +112,28 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
     job?.status === 'running' || job?.status === 'preparing',
   );
   const hostGpu = stats?.gpus[0] ?? null;
+
+  // Rolling load history for the sparklines behind the host boxes. Shared and
+  // time-based, so it survives this modal closing and reopening; the right
+  // edge is pinned to the newest sample so the trace scrolls as polls land.
+  const history = useStatsHistory();
+  const load = useMemo(
+    () => ({
+      now: history.length > 0 ? history[history.length - 1].t : 0,
+      cpu: toSeries(history, (s) => s.cpuPercent),
+      ram: toSeries(history, (s) =>
+        memoryPercent(s.memoryUsedMb, s.memoryTotalMb),
+      ),
+      gpu: toSeries(history, (s) => s.gpus[0]?.utilization ?? null),
+      vram: toSeries(history, (s) =>
+        memoryPercent(
+          s.gpus[0]?.memoryUsedMb ?? null,
+          s.gpus[0]?.memoryTotalMb ?? null,
+        ),
+      ),
+    }),
+    [history],
+  );
 
   if (!job || !progress) return null;
 
@@ -441,6 +481,9 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
               memoryLabel="RAM"
               usedMb={stats.memoryUsedMb}
               totalMb={stats.memoryTotalMb}
+              chart={
+                <StatSparkline now={load.now} line={load.cpu} area={load.ram} />
+              }
             />
             {hostGpu && (
               <HostStat
@@ -450,6 +493,13 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
                 memoryLabel="VRAM"
                 usedMb={hostGpu.memoryUsedMb}
                 totalMb={hostGpu.memoryTotalMb}
+                chart={
+                  <StatSparkline
+                    now={load.now}
+                    line={load.gpu}
+                    area={load.vram}
+                  />
+                }
               />
             )}
           </>

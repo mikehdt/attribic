@@ -14,10 +14,7 @@ import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { Modal } from '@/app/shared/modal';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectLoadedProject } from '@/app/store/training-config';
-import {
-  fetchProjectList,
-  loadProject,
-} from '@/app/store/training-config/thunks';
+import { loadProject } from '@/app/store/training-config/thunks';
 
 import { DatasetThumbs } from './dataset-thumbs';
 import {
@@ -25,7 +22,9 @@ import {
   ModelBackendBadges,
   modelLabel,
 } from './model-backend-badges';
+import { ProjectListError } from './project-list-error';
 import { RadioRow } from './radio-row';
+import { useTrainingProjectList } from './use-training-project-list';
 
 type LoadProjectModalProps = {
   isOpen: boolean;
@@ -165,11 +164,7 @@ export const LoadProjectModal = ({
   const dispatch = useAppDispatch();
   const loadedProject = useAppSelector(selectLoadedProject);
 
-  const [projects, setProjects] = useState<TrainingProjectSummary[]>([]);
-  // Starts true so the loader is visible on first open; only reset to
-  // false inside the fetch callback to keep the effect body free of
-  // synchronous setState (which causes a cascading-render warning).
-  const [isLoading, setIsLoading] = useState(true);
+  const { projects, status, error, reload } = useTrainingProjectList(isOpen);
   const [query, setQuery] = useState('');
   // Defaults match the order the list endpoint already returns.
   const [sortField, setSortField] = useState<SortField>('recent');
@@ -177,27 +172,17 @@ export const LoadProjectModal = ({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
 
+  // Seed the selection from each freshly-arrived list: the loaded project if
+  // it's still there, otherwise the first entry.
   useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    fetchProjectList()
-      .then((list) => {
-        if (cancelled) return;
-        setProjects(list);
-        const initial = loadedProject
-          ? (list.find((p) => p.id === loadedProject.id) ?? list[0])
-          : list[0];
-        setSelectedId(initial?.id ?? null);
-        setSelectedVersion(initial?.latestVersion ?? null);
-        setIsLoading(false);
-      })
-      .catch(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, loadedProject]);
+    if (status !== 'ready') return;
+    const initial = loadedProject
+      ? (projects.find((p) => p.id === loadedProject.id) ?? projects[0])
+      : projects[0];
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- Selection follows the fetched list, which has no render-time source */
+    setSelectedId(initial?.id ?? null);
+    setSelectedVersion(initial?.latestVersion ?? null);
+  }, [projects, status, loadedProject]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -247,8 +232,12 @@ export const LoadProjectModal = ({
           Load project
         </h2>
 
-        {isLoading ? (
+        {status === 'loading' ? (
           <p className="py-2 text-sm text-slate-400">Loading…</p>
+        ) : status === 'error' ? (
+          <div className="w-full">
+            <ProjectListError error={error} onRetry={reload} />
+          </div>
         ) : projects.length === 0 ? (
           <p className="py-2 text-sm text-slate-400">
             No saved projects yet. Use <strong>Save As…</strong> to create one.

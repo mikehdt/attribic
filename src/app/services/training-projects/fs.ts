@@ -14,7 +14,11 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { getTrainingProjectsDir } from '@/app/services/training/training-root';
-import type { FormState } from '@/app/store/training-config/types';
+import type {
+  DatasetFolder,
+  DatasetSource,
+  FormState,
+} from '@/app/store/training-config/types';
 import { slugify } from '@/app/utils/slug';
 
 import type {
@@ -105,24 +109,56 @@ async function readVersion(
 /**
  * Strip fields derived from the files on disk rather than chosen by the user.
  *
- * `dimensionHistogram` is a snapshot of the image sizes in a project folder,
- * and `scan` records whether that folder was there at all. Persisting either
- * means a config saved today keeps asserting yesterday's disk after the folder
- * changes, with nothing to invalidate it — and they drive the
- * native-resolution mismatch and missing-dataset warnings, so a stale copy can
- * quietly claim a dataset is fine when it isn't. Both are cheap to rescan
- * (header-only reads), so they're re-derived on load instead of stored.
+ * A saved config names the folders it trains on; it does not own their
+ * contents. Anything that describes those contents is therefore a reading with
+ * a timestamp, and persisting it means a config saved today keeps asserting
+ * yesterday's disk after the folder changes, with nothing to invalidate it:
+ *
+ * - `dimensionHistogram` — image sizes; drives the native-resolution mismatch
+ *   warning, so a stale copy can call a dataset correctly sized when it isn't.
+ * - `scan` — whether the folder was there at all, and how much it held.
+ * - per-folder `imageCount` — goes stale the moment an image is added or
+ *   deleted, and feeds the step and epoch maths.
+ * - per-folder `detectedRepeats` — parsed from the folder's own name, so
+ *   renaming `5_concept` to `10_concept` leaves a saved config quietly
+ *   training at the old weight.
+ *
+ * What survives is what the user actually chose: which folders, and each
+ * folder's `overrideRepeats` and augmentation. Everything above is re-derived
+ * on load by `reconcileDatasetFolders`, off one directory listing.
+ *
+ * The result is deliberately not a `FormState` — it's missing required fields
+ * by design, and typing it as one would let a stale value be read back as
+ * authoritative somewhere.
  */
-function stripDerived(form: FormState): FormState {
+type PersistedDataset = Omit<
+  DatasetSource,
+  'folders' | 'dimensionHistogram' | 'scan'
+> & {
+  folders: Omit<DatasetFolder, 'imageCount' | 'detectedRepeats'>[];
+};
+
+type PersistedForm = Omit<FormState, 'datasets'> & {
+  datasets: PersistedDataset[];
+};
+
+function stripDerived(form: FormState): PersistedForm {
+  // Omit by destructuring rather than listing what to keep: a field added to
+  // DatasetFolder later is a user setting until someone says otherwise, and
+  // this way it persists by default instead of vanishing unnoticed.
+  /* eslint-disable @typescript-eslint/no-unused-vars -- names bind only to drop the field */
   return {
     ...form,
-    datasets: form.datasets.map((dataset) => {
-      const stripped = { ...dataset };
-      delete stripped.dimensionHistogram;
-      delete stripped.scan;
-      return stripped;
-    }),
+    datasets: form.datasets.map(
+      ({ dimensionHistogram, scan, folders, ...dataset }) => ({
+        ...dataset,
+        folders: folders.map(
+          ({ imageCount, detectedRepeats, ...folder }) => folder,
+        ),
+      }),
+    ),
   };
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 }
 
 async function writeVersion(

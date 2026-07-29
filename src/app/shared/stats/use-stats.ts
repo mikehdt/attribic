@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { recordStatsSample } from './history';
+
 /** One GPU's current load. Every figure is optional — nvidia-smi answers
  * `[N/A]` for anything a given card or driver doesn't expose. */
 export type GpuStats = {
@@ -71,7 +73,11 @@ export const useStats = (enabled: boolean) => {
     try {
       const res = await fetch('/api/training/sidecar/stats');
       if (!res.ok) return; // sidecar down (503) — keep the last sample
-      setStats(toStats((await res.json()) as StatsResponse));
+      const next = toStats((await res.json()) as StatsResponse);
+      setStats(next);
+      // Feeds the shared rolling buffer the sparklines draw from — every
+      // consumer contributes to one timeline rather than each keeping its own.
+      recordStatsSample(next);
     } catch {
       // Transient — keep the last known figures.
     }

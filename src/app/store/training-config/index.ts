@@ -27,6 +27,7 @@ import {
   type SampleAspect,
 } from '@/app/services/training/sample-sizes';
 import type { TrainingProvider } from '@/app/services/training/types';
+import { parseSubfolder } from '@/app/utils/subfolder-utils';
 
 import type { RootState } from '../index';
 import {
@@ -38,7 +39,6 @@ import {
 import type {
   AppModelDefaults,
   DatasetFolder,
-  DatasetScan,
   DurationMode,
   FolderAugmentation,
   FormState,
@@ -429,36 +429,93 @@ const trainingConfigSlice = createSlice({
         thumbnail: action.payload.thumbnail,
         thumbnailVersion: action.payload.thumbnailVersion,
         dimensionHistogram: action.payload.dimensionHistogram,
+        // The picker read these folders off disk moments ago, so record that
+        // as the dataset's scan rather than leaving it unread — otherwise the
+        // scan-sync effect immediately opens every image header again for a
+        // project it already has current numbers for.
+        scan: {
+          exists: true,
+          assetCount: action.payload.folders.reduce(
+            (sum, f) => sum + f.imageCount,
+            0,
+          ),
+        },
         folders: action.payload.folders.map((f) => ({ ...f, ...baseAugment })),
       });
     },
 
     /**
-     * Record what a fresh disk scan found for a dataset: its dimension
-     * histogram, plus whether the folder is still there and how much it holds.
+     * Replace a dataset's folder list with what a fresh disk scan found.
      *
-     * Both are derived from the files on disk, not user config — they're
-     * deliberately not persisted (see `writeVersion`) and a rescan must never
-     * make a clean project look dirty. So the baseline snapshot is updated in
-     * lockstep with the form, keeping them out of the dirty comparison.
+     * The folders themselves — which exist, how many images each holds, and
+     * what repeat count their name declares — are readings of the disk, not
+     * config. Only the user's per-folder choices carry across, matched up by
+     * name: a folder that's appeared since the last load arrives with the
+     * model's default augmentation, and one that's gone drops out entirely
+     * rather than lingering as a row describing a directory that isn't there.
+     *
+     * Applied to the baseline snapshot in lockstep with the form. Everything
+     * written here is derived, so a rescan must never be what makes a clean
+     * project look dirty — and any real edit the user has made survives,
+     * because it lives in the fields carried across on both sides.
      *
      * Keyed by folderName rather than index: the scan is async, and datasets
      * can be added or removed while it's in flight.
      */
-    setDatasetScan: (
+    reconcileDatasetFolders: (
+      state,
+      action: PayloadAction<{
+        folderName: string;
+        exists: boolean;
+        folders: Omit<
+          DatasetFolder,
+          keyof FolderAugmentation | 'overrideRepeats'
+        >[];
+      }>,
+    ) => {
+      const { folderName, exists, folders } = action.payload;
+      const fallback = defaultFolderAugmentation(
+        getDefaults(state.form.modelId),
+      );
+
+      for (const form of [state.form, state.baselineSnapshot]) {
+        const dataset = form?.datasets.find((d) => d.folderName === folderName);
+        if (!dataset) continue;
+
+        const previous = new Map(dataset.folders.map((f) => [f.name, f]));
+        dataset.folders = folders.map((scanned) => {
+          const existing = previous.get(scanned.name);
+          return {
+            ...scanned,
+            overrideRepeats: existing?.overrideRepeats ?? null,
+            ...(existing ? extractAugment(existing) : fallback),
+          };
+        });
+        dataset.scan = {
+          exists,
+          assetCount: folders.reduce((sum, f) => sum + f.imageCount, 0),
+        };
+      }
+    },
+
+    /**
+     * Record a dataset's image-size histogram from a fresh disk scan. Split
+     * from the folder reconcile above because it costs a header read per image
+     * where that costs one directory listing — the form renders on the folders
+     * and fills in the bucket preview when this lands.
+     */
+    setDatasetHistogram: (
       state,
       action: PayloadAction<{
         folderName: string;
         dimensionHistogram: Record<string, number>;
-        scan: DatasetScan;
       }>,
     ) => {
-      const { folderName, dimensionHistogram, scan } = action.payload;
+      const { folderName, dimensionHistogram } = action.payload;
       for (const form of [state.form, state.baselineSnapshot]) {
         const dataset = form?.datasets.find((d) => d.folderName === folderName);
         if (!dataset) continue;
         dataset.dimensionHistogram = dimensionHistogram;
-        dataset.scan = scan;
       }
     },
 
@@ -549,7 +606,7 @@ const trainingConfigSlice = createSlice({
         ...defaultsToFormState(getDefaults(incoming.modelId), incoming.modelId),
         ...incoming,
       };
-      const form = coerceProvider(merged);
+      const form = normalizeDatasets(coerceProvider(merged));
       state.form = form;
       state.loadedProject = action.payload.loadedProject;
       state.baselineSnapshot = form;
@@ -568,7 +625,7 @@ const trainingConfigSlice = createSlice({
         ...defaultsToFormState(getDefaults(incoming.modelId), incoming.modelId),
         ...incoming,
       };
-      state.form = coerceProvider(merged);
+      state.form = normalizeDatasets(coerceProvider(merged));
       state.loadedProject = null;
       state.baselineSnapshot = null;
     },
@@ -606,7 +663,8 @@ export const {
   setSamplePrompt,
   setSamplePromptSize,
   addDataset,
-  setDatasetScan,
+  reconcileDatasetFolders,
+  setDatasetHistogram,
   removeDataset,
   setFolderRepeats,
   updateFolderAugment,
@@ -630,6 +688,14 @@ export const selectForm = (state: RootState) => state.trainingConfig.form;
 export const selectLoadedProject = (state: RootState) =>
   state.trainingConfig.loadedProject;
 
+/**
+ * The attached datasets alone. Narrower than {@link selectForm} on purpose:
+ * the scan-sync effect watches these and must not re-run for every keystroke
+ * elsewhere in the form.
+ */
+export const selectDatasets = (state: RootState) =>
+  state.trainingConfig.form.datasets;
+
 export const selectAppModelDefaults = (state: RootState) =>
   state.trainingConfig.appModelDefaults;
 
@@ -646,19 +712,18 @@ export const selectDatasetStats = createSelector(selectForm, datasetTotals);
 export type DatasetIssue = {
   projectName: string;
   folderName: string;
-  /** Images the saved config claims this dataset has. */
-  savedImageCount: number;
   /** `missing` — folder gone; `empty` — folder still there, nothing in it. */
   reason: 'missing' | 'empty';
 };
 
 /**
- * Datasets whose saved image counts are no longer backed by anything on disk.
+ * Attached datasets with nothing behind them on disk.
  *
- * Image counts are persisted with the config but the files aren't, so a folder
- * that's been moved, renamed, or emptied since the save leaves the form
- * claiming a dataset it can't actually train on. Left unflagged that surfaces
- * only as an oddly generic bucket list, and the run fails at the sidecar.
+ * A config references a folder by name; the images aren't part of it. So a
+ * folder that's been moved, renamed, or emptied since the save leaves the form
+ * pointing at a dataset it can't actually train on. Left unflagged that
+ * surfaces only as an oddly generic bucket list, and the run fails at the
+ * sidecar minutes later.
  *
  * Only datasets that have actually been rescanned are considered — a freshly
  * picked one has no scan yet, and its folder was on disk moments ago anyway.
@@ -668,16 +733,9 @@ export const selectDatasetIssues = createSelector(selectForm, (form) => {
   for (const dataset of form.datasets) {
     if (!dataset.scan || dataset.scan.assetCount > 0) continue;
 
-    const savedImageCount = dataset.folders.reduce(
-      (sum, folder) => sum + folder.imageCount,
-      0,
-    );
-    if (savedImageCount === 0) continue;
-
     issues.push({
       projectName: dataset.projectName,
       folderName: dataset.folderName,
-      savedImageCount,
       reason: dataset.scan.exists ? 'empty' : 'missing',
     });
   }
@@ -812,6 +870,34 @@ function coerceProvider(form: FormState): FormState {
     return { ...form, selectedProvider: model.providers[0] };
   }
   return form;
+}
+
+/**
+ * Drop everything a form arriving from outside claims about the files on disk,
+ * mirroring the `stripDerived` that takes it off on the way out.
+ *
+ * `detectedRepeats` is recoverable here and now — it's the number prefixed to
+ * the folder's own name — but the image counts, sizes and folder listing all
+ * genuinely need the disk, so they start empty and `ensureDatasetScans` fills
+ * them in. Clearing rather than trusting matters most for the two sources that
+ * *can* still carry them: an archived run, whose numbers are as old as the run,
+ * and a config saved before the strip existed. Leaving those in place would
+ * also mark the dataset as already scanned, so nothing would ever go and check.
+ */
+function normalizeDatasets(form: FormState): FormState {
+  return {
+    ...form,
+    datasets: form.datasets.map((dataset) => ({
+      ...dataset,
+      dimensionHistogram: undefined,
+      scan: undefined,
+      folders: (dataset.folders ?? []).map((folder) => ({
+        ...folder,
+        imageCount: 0,
+        detectedRepeats: parseSubfolder(folder.name)?.repeatCount ?? 1,
+      })),
+    })),
+  };
 }
 
 /** Fill empty model paths from app-level defaults, preserving user edits. */

@@ -3,7 +3,6 @@
 import { FolderPlusIcon, SaveIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import type { TrainingProjectSummary } from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Input } from '@/app/shared/input/input';
@@ -11,14 +10,15 @@ import { Modal } from '@/app/shared/modal';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectForm, selectLoadedProject } from '@/app/store/training-config';
 import {
-  fetchProjectList,
   replaceExistingProject,
   saveAsNewProject,
   saveAsNewVersion,
 } from '@/app/store/training-config/thunks';
 import { slugify } from '@/app/utils/slug';
 
+import { ProjectListError } from './project-list-error';
 import { RadioRow } from './radio-row';
+import { useTrainingProjectList } from './use-training-project-list';
 
 type SaveAsModalProps = {
   isOpen: boolean;
@@ -46,8 +46,7 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
   const form = useAppSelector(selectForm);
   const loadedProject = useAppSelector(selectLoadedProject);
 
-  const [projects, setProjects] = useState<TrainingProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const { projects, status, error, reload } = useTrainingProjectList(isOpen);
   const [selected, setSelected] = useState<string>(NEW_PROJECT);
   const [targetMode, setTargetMode] = useState<TargetMode>('newVersion');
   const [name, setName] = useState('');
@@ -55,31 +54,29 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
   const [isSaving, setIsSaving] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
 
-  // Load the project list whenever the modal opens.
+  // Reset form state on open.
   useEffect(() => {
     if (!isOpen) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form reset and data fetch on modal open
-    setIsLoading(true);
-    fetchProjectList()
-      .then((list) => {
-        setProjects(list);
-        // With a project loaded, the common intent is another version of it —
-        // preselect it. Guard against a project deleted since it was loaded.
-        setSelected(
-          loadedProject && list.some((p) => p.id === loadedProject.id)
-            ? loadedProject.id
-            : NEW_PROJECT,
-        );
-      })
-      .finally(() => setIsLoading(false));
-
-    // Reset form state on open
+    /* eslint-disable react-hooks/set-state-in-effect -- Intentional form reset on modal open */
     setSelected(loadedProject?.id ?? NEW_PROJECT);
     setTargetMode('newVersion');
     setName('');
     setLabel('');
     setConfirmReplace(false);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [isOpen, loadedProject]);
+
+  // With a project loaded, the common intent is another version of it —
+  // preselect it once the list confirms it's still there.
+  useEffect(() => {
+    if (status !== 'ready' || !loadedProject) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Selection follows the fetched list, which has no render-time source
+    setSelected(
+      projects.some((p) => p.id === loadedProject.id)
+        ? loadedProject.id
+        : NEW_PROJECT,
+    );
+  }, [projects, status, loadedProject]);
 
   const isNew = selected === NEW_PROJECT;
   const selectedProject = useMemo(
@@ -115,6 +112,10 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
 
   const canSubmit = (() => {
     if (isSaving) return false;
+    // Without the list we can't tell a free name from a taken one, and the
+    // destination choices aren't on screen to pick from — saving here would be
+    // a decision made on absent information.
+    if (status !== 'ready') return false;
     if (isNew) return hasName && !nameTaken && !nameUnsluggable;
     if (!selectedProject) return false;
     if (targetMode === 'replace') return confirmReplace;
@@ -174,8 +175,10 @@ export const SaveAsModal = ({ isOpen, onClose }: SaveAsModalProps) => {
             Destination
           </p>
 
-          {isLoading ? (
+          {status === 'loading' ? (
             <p className="py-2 text-sm text-slate-400">Loading projects…</p>
+          ) : status === 'error' ? (
+            <ProjectListError error={error} onRetry={reload} />
           ) : (
             <div
               className="flex max-h-64 flex-col gap-1 overflow-auto"

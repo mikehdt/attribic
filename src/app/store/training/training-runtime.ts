@@ -11,6 +11,7 @@ import type {
   TrainingProgress,
   TrainingProvider,
 } from '@/app/services/training/types';
+import { fetchJson } from '@/app/utils/fetch-json';
 
 import type { AppThunk, RootState } from '../index';
 import { addJob, openPanel, removeJob, updateTrainingProgress } from '../jobs';
@@ -115,6 +116,11 @@ function closeSocket() {
   }
   ws.socket = null;
   ws.port = null;
+}
+
+/** Message text for a toast — bare, without the `Error:` class prefix. */
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function mapStatus(s: SidecarJobStatus): TrainingJobStatus {
@@ -353,29 +359,19 @@ export function startTraining(
     // is currently running rather than being rejected.
 
     // Ensure the sidecar is running before we POST /api/training/start.
+    // The route answers 503 when the spawn failed, so a non-ready sidecar
+    // arrives here as a throw carrying the sidecar's own error text.
     let sidecarPort = 9733;
     try {
-      const res = await fetch('/api/training/sidecar', { method: 'POST' });
-      const data = (await res.json()) as {
-        status: string;
-        port: number;
-        error: string | null;
-      };
-      if (data.status !== 'ready') {
-        dispatch(
-          addToast({
-            variant: 'error',
-            children: `Training sidecar failed to start: ${data.error ?? 'unknown error'}`,
-          }),
-        );
-        return;
-      }
+      const data = await fetchJson<{ port: number }>('/api/training/sidecar', {
+        method: 'POST',
+      });
       sidecarPort = data.port;
     } catch (err) {
       dispatch(
         addToast({
           variant: 'error',
-          children: `Could not reach training sidecar: ${err}`,
+          children: `Could not start the training sidecar: ${errorText(err)}`,
         }),
       );
       return;
@@ -384,21 +380,19 @@ export function startTraining(
     // POST /api/training/start — server translates to sidecar shape.
     let jobId: string;
     try {
-      const res = await fetch('/api/training/start', {
+      const data = await fetchJson<{
+        job_id?: string;
+        sidecar_port?: number;
+      }>('/api/training/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
       });
-      const data = (await res.json()) as {
-        job_id?: string;
-        error?: string;
-        sidecar_port?: number;
-      };
-      if (!res.ok || !data.job_id) {
+      if (!data.job_id) {
         dispatch(
           addToast({
             variant: 'error',
-            children: `Training failed to start: ${data.error ?? 'unknown error'}`,
+            children: 'Training failed to start: no job id returned',
           }),
         );
         return;
@@ -409,7 +403,7 @@ export function startTraining(
       dispatch(
         addToast({
           variant: 'error',
-          children: `Failed to start training: ${err}`,
+          children: `Failed to start training: ${errorText(err)}`,
         }),
       );
       return;
@@ -499,6 +493,25 @@ export function clearTrainingJob(jobId: string): AppThunk {
 // hydrateActiveTraining — recover an in-flight job after page refresh.
 // ---------------------------------------------------------------------------
 
+/**
+ * Delays between hydrate attempts. Hydrate fires once, on app mount, against a
+ * server that may still be warming up — a dev server compiling these routes for
+ * the first time, or a sidecar mid-handshake. A single attempt that gives up
+ * permanently leaves the activity panel empty for the life of the page even
+ * though the run is perfectly healthy, so failures are retried a few times
+ * before we accept them.
+ */
+const HYDRATE_RETRY_DELAYS_MS = [500, 2000, 5000];
+
+type ActiveJobResponse = {
+  active: boolean;
+  job_id?: string;
+  status?: SidecarJobStatus;
+  config?: Record<string, unknown>;
+  progress?: SidecarJobProgress;
+  started_at?: string;
+};
+
 export function hydrateActiveTraining(): AppThunk {
   return async (dispatch, getState) => {
     // If we already have a socket open, nothing to do.
@@ -513,35 +526,41 @@ export function hydrateActiveTraining(): AppThunk {
     } | null = null;
     let sidecarPort = 9733;
 
-    try {
-      const [statusRes, sidecarRes] = await Promise.all([
-        fetch('/api/training/status'),
-        fetch('/api/training/sidecar'),
-      ]);
-      const statusData = (await statusRes.json()) as {
-        active: boolean;
-        job_id?: string;
-        status?: SidecarJobStatus;
-        config?: Record<string, unknown>;
-        progress?: SidecarJobProgress;
-        started_at?: string;
-      };
-      const sidecarData = (await sidecarRes.json()) as { port?: number };
-      if (sidecarData.port) sidecarPort = sidecarData.port;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const [statusData, sidecarData] = await Promise.all([
+          fetchJson<ActiveJobResponse>('/api/training/status'),
+          fetchJson<{ port?: number }>('/api/training/sidecar'),
+        ]);
+        if (sidecarData.port) sidecarPort = sidecarData.port;
 
-      if (statusData.active && statusData.job_id && statusData.status) {
-        active = {
-          job_id: statusData.job_id,
-          status: statusData.status,
-          config: statusData.config,
-          progress: statusData.progress,
-          started_at: statusData.started_at,
-        };
+        if (statusData.active && statusData.job_id && statusData.status) {
+          active = {
+            job_id: statusData.job_id,
+            status: statusData.status,
+            config: statusData.config,
+            progress: statusData.progress,
+            started_at: statusData.started_at,
+          };
+        }
+        break;
+      } catch (err) {
+        const delay = HYDRATE_RETRY_DELAYS_MS[attempt];
+        if (delay === undefined) {
+          console.warn(
+            `[training] hydrate failed after ${HYDRATE_RETRY_DELAYS_MS.length + 1} attempts — ` +
+              'an in-flight run will not show in the activity panel until reload.',
+            err,
+          );
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
-    } catch (err) {
-      console.warn('[training] hydrate failed:', err);
-      return;
     }
+
+    // A socket may have opened while we were retrying — a start dispatched
+    // from the same mount already owns the stream.
+    if (ws.socket && ws.socket.readyState <= WebSocket.OPEN) return;
 
     if (!active) return;
 

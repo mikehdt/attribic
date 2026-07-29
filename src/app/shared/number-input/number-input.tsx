@@ -39,6 +39,21 @@ type NumberInputProps = Omit<
 };
 
 /**
+ * Text shapes a numeric draft is allowed to pass through on its way to a
+ * number: digits, one decimal point and an exponent for floats, digits alone
+ * for ints, plus a leading `-` where negatives are in range. Deliberately
+ * looser than "parses to a number" so partial entries like `0.`, `1e-` and an
+ * empty field survive; anything outside these shapes never reaches the input.
+ */
+const DRAFT_SHAPES = {
+  int: { signed: /^-?\d*$/, unsigned: /^\d*$/ },
+  float: {
+    signed: /^-?\d*\.?\d*(?:[eE][-+]?\d*)?$/,
+    unsigned: /^\d*\.?\d*(?:[eE][-+]?\d*)?$/,
+  },
+} as const;
+
+/**
  * A numeric text input that can be emptied mid-edit without fighting you.
  *
  * Committing straight to the store behind a `parseFloat` guard drops anything
@@ -49,6 +64,12 @@ type NumberInputProps = Omit<
  *
  * Instead the raw text is held locally while the field is being edited and
  * pushed to the consumer on every keystroke that parses to an accepted number.
+ * Keystrokes that would put non-numeric text in the field are refused outright
+ * rather than held in the draft and stripped later, so a typo never shows as
+ * text the field is going to silently discard. Values that are numeric but out
+ * of range are still allowed to sit in the draft — `5` has to be typeable on
+ * the way to `50` in a field with a minimum of 10.
+ *
  * Blurring drops the draft so the display snaps back to whatever the consumer
  * actually holds — abandoning a field mid-edit restores the last valid value
  * rather than leaving it empty.
@@ -74,7 +95,27 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
 
     const handleChange = useCallback(
       (e: ChangeEvent<HTMLInputElement>) => {
-        const raw = e.target.value;
+        const el = e.target;
+        const raw = el.value;
+
+        // Negatives are only typeable where they're actually in range.
+        const negatable = min === undefined || min < 0;
+        const shape = DRAFT_SHAPES[kind][negatable ? 'signed' : 'unsigned'];
+        if (!shape.test(raw)) {
+          // Refuse the edit: put the previous text back and leave the caret
+          // where the rejected characters would have gone. Rewriting the DOM
+          // value is enough because state hasn't changed, so React won't
+          // re-render over it.
+          const restored = draft ?? String(value);
+          el.value = restored;
+          if (!spinner) {
+            const typed = (el.selectionStart ?? raw.length) - raw.length;
+            const caret = Math.max(0, restored.length + typed);
+            el.setSelectionRange(caret, caret);
+          }
+          return;
+        }
+
         setDraft(raw);
         const parsed = kind === 'int' ? parseInt(raw, 10) : parseFloat(raw);
         if (!Number.isFinite(parsed)) return;
@@ -83,7 +124,7 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
         if (validate && !validate(parsed)) return;
         onChange(parsed);
       },
-      [kind, max, min, onChange, validate],
+      [draft, kind, max, min, onChange, spinner, validate, value],
     );
 
     const handleBlur = useCallback(

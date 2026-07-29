@@ -17,3 +17,13 @@ export const formatMemory = (usedMb: number | null, totalMb: number | null) =>
 
 export const formatTemperature = (value: number | null) =>
   value == null ? '—' : `${Math.round(value)}°C`;
+
+/**
+ * Where a card starts flagging heat. Consumer GPUs happily sustain the high
+ * 70s under a long training run, so this sits above that — it marks "worth a
+ * look at your airflow", not "shut it down".
+ */
+const TEMPERATURE_WARNING_C = 80;
+
+export const isTemperatureWarning = (value: number | null | undefined) =>
+  value != null && value >= TEMPERATURE_WARNING_C;

@@ -31,10 +31,9 @@ const DatasetIssueWarningComponent = ({ issues }: DatasetIssueWarningProps) => (
           <span className="font-medium">{issue.projectName}</span>{' '}
           <span className="text-slate-400">
             {issue.reason === 'missing'
-              ? 'folder is missing'
-              : 'folder is empty'}{' '}
-            — this config expects {issue.savedImageCount.toLocaleString()}{' '}
-            {issue.savedImageCount === 1 ? 'image' : 'images'} in{' '}
+              ? 'folder is missing from the projects folder'
+              : 'folder holds no images'}
+            {' — '}
             <span className="break-all">{issue.folderName}</span>
           </span>
         </li>

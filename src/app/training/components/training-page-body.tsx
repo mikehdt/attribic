@@ -7,6 +7,7 @@ import { startTraining } from '@/app/store/training/training-runtime';
 import type { FormState } from '@/app/store/training-config/types';
 
 import { TrainingConfigForm } from './training-config-form/training-config-form';
+import { useDatasetScanSync } from './use-dataset-scan-sync';
 import { useTrainingRouteSync } from './use-training-route-sync';
 
 /**
@@ -20,6 +21,9 @@ export const TrainingPageBody = () => {
   const dispatch = useAppDispatch();
 
   useTrainingRouteSync();
+  // Sits alongside the route sync because it's the same event: the URL move
+  // that sync performs is what a load's dataset scan has to survive.
+  useDatasetScanSync();
 
   const handleStartTraining = useCallback(
     (config: Record<string, unknown>, formSnapshot: FormState) => {

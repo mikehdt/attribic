@@ -242,8 +242,6 @@ const DatasetSectionComponent = ({
                     </button>
                   </div>
 
-                  {/* The folder rows below still show the counts the config was
-                    saved with — say so, or they read as a live reading. */}
                   {issue && (
                     <div className="mb-2 flex items-start gap-1.5 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5">
                       <FolderXIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
@@ -252,10 +250,8 @@ const DatasetSectionComponent = ({
                           ? 'This folder is missing from the projects folder.'
                           : 'This folder no longer contains any images.'}{' '}
                         <span className="text-slate-400">
-                          The counts below are what the saved config expects,
-                          not what’s on disk — training is blocked until the
-                          images are back (then rescan) or the dataset is
-                          removed.
+                          Training is blocked until the images are back (then
+                          rescan) or the dataset is removed.
                         </span>
                       </p>
                     </div>
@@ -336,7 +332,6 @@ const DatasetSectionComponent = ({
                   folderName={ef.path}
                   detectedRepeats={1}
                   effectiveRepeats={ef.overrideRepeats ?? 1}
-                  imageCount={ef.imageCount}
                   augmentation={ef}
                   showRepeats={showRepeats}
                   isExpanded={expanded.has(`extra|${ef.path}`)}

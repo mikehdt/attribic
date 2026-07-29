@@ -22,7 +22,7 @@ export type DatasetSource = {
   folders: DatasetFolder[];
 };
 
-export type DatasetScan = {
+type DatasetScan = {
   /** Whether the project folder still exists under the projects root. */
   exists: boolean;
   /** Assets found on disk, across the root and any repeat subfolders. */
@@ -39,6 +39,17 @@ export type FolderAugmentation = {
   isRegularization: boolean;
 };
 
+/**
+ * One trainable folder: the project root, or a `{n}_label` repeat subdirectory.
+ *
+ * `name` identifies it and the rest of the fields are the user's choices, but
+ * `imageCount` and `detectedRepeats` are readings of the disk — the count of
+ * what's in the folder, and the repeat prefix parsed off its name. Both are
+ * stripped on save and re-derived on load (see `stripDerived` and
+ * `reconcileDatasetFolders`); persisting them means a config keeps asserting
+ * yesterday's folder after images are added, removed, or the folder is renamed
+ * from `5_x` to `10_x` — which silently trains at the wrong weight.
+ */
 export type DatasetFolder = {
   name: string;
   imageCount: number;
@@ -48,7 +59,6 @@ export type DatasetFolder = {
 
 export type ExtraFolder = {
   path: string;
-  imageCount?: number;
   overrideRepeats: number | null;
 } & FolderAugmentation;
 

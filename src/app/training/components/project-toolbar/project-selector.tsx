@@ -10,17 +10,8 @@ import {
   SaveIcon,
   Trash2Icon,
 } from 'lucide-react';
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
 
-import type { TrainingProjectSummary } from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
 import { Input } from '@/app/shared/input/input';
 import { Popup, usePopup } from '@/app/shared/popup';
@@ -32,7 +23,6 @@ import {
 } from '@/app/store/training-config';
 import { loadRecentProjects } from '@/app/store/training-config/recent-projects';
 import {
-  fetchProjectList,
   loadProject,
   renameProject,
   setVersionLabel,
@@ -41,7 +31,9 @@ import type { LoadedProject } from '@/app/store/training-config/types';
 
 import { MENU_HEADING_CLASS, MENU_ITEM_CLASS } from './menu-styles';
 import { ModelBackendBadges } from './model-backend-badges';
+import { ProjectListError } from './project-list-error';
 import { RecentRuns } from './recent-runs';
+import { useTrainingProjectList } from './use-training-project-list';
 
 /** How many recent projects the menu lists (fewer than are stored). */
 const MAX_RECENT_SHOWN = 3;
@@ -168,9 +160,10 @@ const PopupContent = ({
   onClose,
 }: PopupContentProps) => {
   const dispatch = useAppDispatch();
-  const [projects, setProjects] = useState<TrainingProjectSummary[] | null>(
-    null,
-  );
+  // Fetch the fresh project list on mount (popup just opened). It backs both
+  // the loaded project's version list and the recent-projects section.
+  const { projects, status, error, reload } = useTrainingProjectList(true);
+  const isReady = status === 'ready';
   // Read once: the popup remounts on every open, so this is always current
   // without having to watch localStorage.
   const [recents] = useState(loadRecentProjects);
@@ -179,28 +172,12 @@ const PopupContent = ({
   const [labelEditVersion, setLabelEditVersion] = useState<number | null>(null);
   const [labelValue, setLabelValue] = useState('');
 
-  // Fetch the fresh project list on mount (popup just opened). It backs both
-  // the loaded project's version list and the recent-projects section.
-  useEffect(() => {
-    let cancelled = false;
-    fetchProjectList()
-      .then((list) => {
-        if (!cancelled) setProjects(list);
-      })
-      .catch(() => {
-        if (!cancelled) setProjects([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const summary = useMemo(
     () =>
-      loadedProject && projects
+      loadedProject && isReady
         ? (projects.find((p) => p.id === loadedProject.id) ?? null)
         : null,
-    [projects, loadedProject],
+    [projects, isReady, loadedProject],
   );
 
   /**
@@ -210,7 +187,7 @@ const PopupContent = ({
    * project's latest.
    */
   const recentEntries = useMemo(() => {
-    if (!projects) return [];
+    if (!isReady) return [];
     const out: { id: string; name: string; version: number }[] = [];
     for (const entry of recents) {
       // The loaded project already sits at the top of this menu.
@@ -224,7 +201,7 @@ const PopupContent = ({
       if (out.length === MAX_RECENT_SHOWN) break;
     }
     return out;
-  }, [projects, recents, loadedProject]);
+  }, [projects, isReady, recents, loadedProject]);
 
   const handleOpenRecent = (id: string, version: number) => {
     onClose();
@@ -271,6 +248,12 @@ const PopupContent = ({
 
   return (
     <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-700">
+      {status === 'error' && (
+        <div className="p-2">
+          <ProjectListError error={error} onRetry={reload} />
+        </div>
+      )}
+
       {loadedProject && (
         <>
           <div className="p-2">

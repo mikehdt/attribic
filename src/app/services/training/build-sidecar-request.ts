@@ -28,7 +28,6 @@ type ClientFolderAugmentation = {
 
 type ClientDatasetFolder = {
   name: string;
-  imageCount: number;
   detectedRepeats: number;
   overrideRepeats: number | null;
   loraWeight: number;

@@ -3,7 +3,6 @@
 import { Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import type { TrainingProjectSummary } from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
 import { Modal } from '@/app/shared/modal';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
@@ -11,11 +10,12 @@ import { selectLoadedProject } from '@/app/store/training-config';
 import {
   deleteProject,
   deleteVersion,
-  fetchProjectList,
 } from '@/app/store/training-config/thunks';
 
 import { ModelBackendBadges } from './model-backend-badges';
+import { ProjectListError } from './project-list-error';
 import { RadioRow } from './radio-row';
+import { useTrainingProjectList } from './use-training-project-list';
 
 type DeleteProjectModalProps = {
   isOpen: boolean;
@@ -32,29 +32,30 @@ export const DeleteProjectModal = ({
   const dispatch = useAppDispatch();
   const loadedProject = useAppSelector(selectLoadedProject);
 
-  const [summary, setSummary] = useState<TrainingProjectSummary | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const { projects, status, error, reload } = useTrainingProjectList(
+    isOpen && loadedProject !== null,
+  );
   const [target, setTarget] = useState<Target>('project');
   const [confirmed, setConfirmed] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !loadedProject) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form reset and data fetch on modal open
-    setIsLoading(true);
+    if (!isOpen) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- Intentional form reset on modal open */
     setTarget('project');
     setConfirmed(false);
-    fetchProjectList()
-      .then((list) => {
-        setSummary(list.find((p) => p.id === loadedProject.id) ?? null);
-      })
-      .finally(() => setIsLoading(false));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [isOpen, loadedProject]);
 
   if (!loadedProject) return null;
 
+  const summary = projects.find((p) => p.id === loadedProject.id) ?? null;
   const versions = summary?.versions ?? [];
   const onlyOneVersion = versions.length <= 1;
+  // An unread list means an unknown version count, and this dialog's whole job
+  // is to say exactly what's about to be destroyed. "Deletes all 0 versions"
+  // next to a live Delete button is the one wording we must never ship.
+  const canDelete = status === 'ready' && confirmed && !isDeleting;
 
   const handleSubmit = async () => {
     setIsDeleting(true);
@@ -90,8 +91,12 @@ export const DeleteProjectModal = ({
           Choose what to delete from “{loadedProject.name}”.
         </p>
 
-        {isLoading ? (
+        {status === 'loading' ? (
           <p className="py-2 text-sm text-slate-400">Loading…</p>
+        ) : status === 'error' ? (
+          <div className="w-full">
+            <ProjectListError error={error} onRetry={reload} />
+          </div>
         ) : (
           <div
             className="flex w-full flex-col gap-1"
@@ -186,7 +191,7 @@ export const DeleteProjectModal = ({
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={!confirmed || isDeleting}
+            disabled={!canDelete}
             neutralDisabled
             color="rose"
             size="md"
