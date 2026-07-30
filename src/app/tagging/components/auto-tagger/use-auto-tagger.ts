@@ -20,6 +20,7 @@ import {
   getPendingTagResults,
   summarisePendingResults,
 } from '@/app/services/auto-tagger/pending-tag-results';
+import { readTaggingSseEvents } from '@/app/services/auto-tagger/sse-stream';
 import {
   hasBatchBeenAdopted,
   markBatchAdopted,
@@ -503,7 +504,11 @@ export function useAutoTagger({
 
       if (outcome.status === 'failed') {
         dispatch(
-          failTagging({ id: jobId, error: outcome.error, summary: summaryData }),
+          failTagging({
+            id: jobId,
+            error: outcome.error,
+            summary: summaryData,
+          }),
         );
         return;
       }
@@ -602,100 +607,81 @@ export function useAutoTagger({
         markBatchAdopted(jobId);
         attachFailuresRef.current.delete(jobId);
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
         let finished = false;
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            let event;
-            try {
-              event = JSON.parse(line.slice(6));
-            } catch (parseErr) {
-              console.warn('Failed to parse attach SSE event:', parseErr);
-              continue;
-            }
-
-            if (event.type === 'queued') {
-              dispatch(
-                updateTaggingProgress({
-                  id: jobId,
-                  progress: {
-                    current: event.current ?? 0,
-                    total: event.total ?? batch.total,
-                    queued: { position: event.position ?? 1 },
+        for await (const event of readTaggingSseEvents(response.body)) {
+          if (event.type === 'queued') {
+            dispatch(
+              updateTaggingProgress({
+                id: jobId,
+                progress: {
+                  current: event.current,
+                  total: event.total || batch.total,
+                  queued: { position: event.position },
+                },
+              }),
+            );
+          } else if (event.type === 'loading') {
+            dispatch(
+              updateTaggingProgress({
+                id: jobId,
+                progress: {
+                  current: 0,
+                  total: batch.total,
+                  loading: {
+                    message: event.message,
+                    current: event.current,
+                    total: event.total,
                   },
-                }),
-              );
-            } else if (event.type === 'loading') {
-              dispatch(
-                updateTaggingProgress({
-                  id: jobId,
-                  progress: {
-                    current: 0,
-                    total: batch.total,
-                    loading: {
-                      message: event.message ?? 'Loading model',
-                      current: event.current ?? 0,
-                      total: event.total ?? 0,
-                    },
-                  },
-                }),
-              );
-            } else if (event.type === 'progress' || event.type === 'loaded') {
-              dispatch(
-                updateTaggingProgress({
-                  id: jobId,
-                  progress: {
-                    current: event.current ?? 0,
-                    total: event.total ?? batch.total,
-                  },
-                }),
-              );
-            } else if (event.type === 'result') {
-              appendPendingTagResult(projectFolderName, {
+                },
+              }),
+            );
+          } else if (event.type === 'progress' || event.type === 'loaded') {
+            dispatch(
+              updateTaggingProgress({
+                id: jobId,
+                progress: {
+                  current: event.current,
+                  total: event.total || batch.total,
+                  currentFileId: event.fileId,
+                },
+              }),
+            );
+          } else if (event.type === 'result') {
+            appendPendingTagResult(projectFolderName, {
+              fileId: event.fileId,
+              tags: event.tags,
+              caption: event.caption,
+              position,
+            });
+            dispatch(
+              recordTaggingResult({
+                id: jobId,
                 fileId: event.fileId,
+                fileName: event.fileName,
                 tags: event.tags,
                 caption: event.caption,
-                position,
-              });
-              dispatch(
-                recordTaggingResult({
-                  id: jobId,
-                  fileId: event.fileId,
-                  fileName: event.fileName,
-                  tags: event.tags,
-                  caption: event.caption,
-                }),
-              );
-            } else if (event.type === 'error' && event.fileId) {
-              console.warn(`Error captioning ${event.fileId}:`, event.error);
-              imageErrorsRef.current.get(jobId)?.push({
-                fileId: event.fileId,
-                error: event.error,
-              });
-            } else if (event.type === 'error') {
-              throw new Error(event.error);
-            } else if (event.type === 'complete') {
-              finished = true;
-              await flushAndFinalise(projectFolderName, jobId, {
-                status: 'completed',
-              });
-            } else if (event.type === 'cancelled') {
-              finished = true;
-              dispatch(cancelTagging(jobId));
-              await flushAndFinalise(projectFolderName, jobId, {
-                status: 'cancelled',
-              });
-            }
+              }),
+            );
+          } else if (event.type === 'error' && event.fileId) {
+            console.warn(`Error captioning ${event.fileId}:`, event.error);
+            imageErrorsRef.current.get(jobId)?.push({
+              fileId: event.fileId,
+              error: event.error,
+            });
+          } else if (event.type === 'error') {
+            throw new Error(event.error);
+          } else if (event.type === 'complete') {
+            finished = true;
+            await flushAndFinalise(projectFolderName, jobId, {
+              status: 'completed',
+            });
+          } else if (event.type === 'cancelled') {
+            finished = true;
+            dispatch(cancelTagging(jobId));
+            await flushAndFinalise(projectFolderName, jobId, {
+              status: 'cancelled',
+            });
           }
         }
 
@@ -918,9 +904,6 @@ export function useAutoTagger({
         throw new Error('No response body');
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
       let receivedComplete = false;
       // Flip from `preparing` → `running` once the backend emits its first
       // signal of any kind. Until then the progress UI shows a "Starting..."
@@ -954,209 +937,167 @@ export function useAutoTagger({
           requestAnimationFrame(() => setTimeout(resolve, 350));
         });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-
-          // Parse inside its own guard so that the `throw` for a
-          // batch-level error event below escapes to the outer catch —
-          // sharing a try with JSON.parse swallowed it as a parse warning.
-          let event;
-          try {
-            event = JSON.parse(line.slice(6));
-          } catch (parseErr) {
-            console.warn('Failed to parse SSE event:', line, parseErr);
-            continue;
-          }
-
-          if (event.type === 'queued') {
-            // Waiting in the sidecar's job queue behind other GPU work.
-            promoteToRunning();
-            dispatch(
-              updateTaggingProgress({
-                id: jobId,
-                progress: {
-                  current: event.current ?? 0,
-                  total: event.total ?? selectedAssets.length,
-                  queued: { position: event.position ?? 1 },
-                },
-              }),
-            );
-          } else if (event.type === 'loading') {
-            promoteToRunning();
-            lastLoadingMessage = event.message ?? 'Loading model';
-            // Model-loading sub-state — show a spinner with the shard
-            // progress while the sidecar reads weights into GPU/RAM.
-            dispatch(
-              updateTaggingProgress({
-                id: jobId,
-                progress: {
-                  current: 0,
-                  total: selectedAssets.length,
-                  loading: {
-                    message: lastLoadingMessage,
-                    current: event.current ?? 0,
-                    total: event.total ?? 0,
-                  },
-                },
-              }),
-            );
-          } else if (event.type === 'loaded') {
-            // Loading → tagging transition. Force the loading bar to
-            // 100% (some sidecar backends end on a non-100% shard tick),
-            // pause briefly so the user perceives "loaded", then drop
-            // the loading sub-state to reveal the image counter.
-            promoteToRunning();
-            dispatch(
-              updateTaggingProgress({
-                id: jobId,
-                progress: {
-                  current: event.current ?? 0,
-                  total: selectedAssets.length,
-                  loading: {
-                    message: lastLoadingMessage,
-                    current: 1,
-                    total: 1,
-                  },
-                },
-              }),
-            );
-            await settleFrame();
-            // The user may have hit Cancel during the pause; bail out
-            // of the transition rather than blowing away cancelled
-            // state with a fresh progress dispatch.
-            if (abortController.signal.aborted) continue;
-            dispatch(
-              updateTaggingProgress({
-                id: jobId,
-                progress: {
-                  current: event.current ?? 0,
-                  total: event.total ?? selectedAssets.length,
-                  currentFileId: event.fileId,
-                },
-              }),
-            );
-          } else if (event.type === 'progress') {
-            promoteToRunning();
-            dispatch(
-              updateTaggingProgress({
-                id: jobId,
-                progress: {
+      for await (const event of readTaggingSseEvents(response.body)) {
+        if (event.type === 'queued') {
+          // Waiting in the sidecar's job queue behind other GPU work.
+          promoteToRunning();
+          dispatch(
+            updateTaggingProgress({
+              id: jobId,
+              progress: {
+                current: event.current,
+                total: event.total || selectedAssets.length,
+                queued: { position: event.position },
+              },
+            }),
+          );
+        } else if (event.type === 'loading') {
+          promoteToRunning();
+          lastLoadingMessage = event.message;
+          // Model-loading sub-state — show a spinner with the shard
+          // progress while the sidecar reads weights into GPU/RAM.
+          dispatch(
+            updateTaggingProgress({
+              id: jobId,
+              progress: {
+                current: 0,
+                total: selectedAssets.length,
+                loading: {
+                  message: lastLoadingMessage,
                   current: event.current,
                   total: event.total,
-                  currentFileId: event.fileId,
-                  // `loading` intentionally omitted — the first real
-                  // progress event clears the loading overlay.
                 },
-              }),
-            );
-          } else if (event.type === 'result') {
-            // Persist to localStorage — the single source of truth.
-            // Event may carry either tags (ONNX) or caption (VLM).
-            appendPendingTagResult(projectFolderName, {
+              },
+            }),
+          );
+        } else if (event.type === 'loaded') {
+          // Loading → tagging transition. Force the loading bar to
+          // 100% (some sidecar backends end on a non-100% shard tick),
+          // pause briefly so the user perceives "loaded", then drop
+          // the loading sub-state to reveal the image counter.
+          promoteToRunning();
+          dispatch(
+            updateTaggingProgress({
+              id: jobId,
+              progress: {
+                current: event.current,
+                total: selectedAssets.length,
+                loading: {
+                  message: lastLoadingMessage,
+                  current: 1,
+                  total: 1,
+                },
+              },
+            }),
+          );
+          await settleFrame();
+          // The user may have hit Cancel during the pause; bail out
+          // of the transition rather than blowing away cancelled
+          // state with a fresh progress dispatch.
+          if (abortController.signal.aborted) continue;
+          dispatch(
+            updateTaggingProgress({
+              id: jobId,
+              progress: {
+                current: event.current,
+                total: event.total || selectedAssets.length,
+                currentFileId: event.fileId,
+              },
+            }),
+          );
+        } else if (event.type === 'progress') {
+          promoteToRunning();
+          dispatch(
+            updateTaggingProgress({
+              id: jobId,
+              progress: {
+                current: event.current,
+                total: event.total,
+                currentFileId: event.fileId,
+                // `loading` intentionally omitted — the first real
+                // progress event clears the loading overlay.
+              },
+            }),
+          );
+        } else if (event.type === 'result') {
+          // Persist to localStorage — the single source of truth.
+          // Event may carry either tags (ONNX) or caption (VLM).
+          appendPendingTagResult(projectFolderName, {
+            fileId: event.fileId,
+            tags: event.tags,
+            caption: event.caption,
+            position,
+          });
+          // Mirror the latest result into the job so the activity panel's
+          // detail view can show it. Display-only, and deliberately not the
+          // path results take to the assets slice — that stays the
+          // end-of-batch flush out of localStorage.
+          dispatch(
+            recordTaggingResult({
+              id: jobId,
               fileId: event.fileId,
+              fileName: event.fileName,
               tags: event.tags,
               caption: event.caption,
-              position,
-            });
-            // Mirror the latest result into the job so the activity panel's
-            // detail view can show it. Display-only, and deliberately not the
-            // path results take to the assets slice — that stays the
-            // end-of-batch flush out of localStorage.
-            dispatch(
-              recordTaggingResult({
-                id: jobId,
-                fileId: event.fileId,
-                fileName: event.fileName,
-                tags: event.tags,
-                caption: event.caption,
-              }),
-            );
-          } else if (event.type === 'error' && event.fileId) {
-            // Per-image error — collect for this job's summary
-            console.warn(`Error tagging ${event.fileId}:`, event.error);
-            imageErrorsRef.current.get(jobId)?.push({
-              fileId: event.fileId,
-              error: event.error,
-            });
-          } else if (event.type === 'error') {
-            throw new Error(event.error);
-          } else if (event.type === 'complete') {
-            receivedComplete = true;
-            batchTerminatedServerSide = true;
-            // 350ms pause between the final progress event and the
-            // summary view so the progress bar visibly hits 100%.
-            // Awaited (not fire-and-forget) so the outer try/finally
-            // doesn't drop this job's abort signal before the delayed
-            // `completeTagging` lands — flushAndFinalise's cancel check
-            // needs it, and the model unload in the finally must not run
-            // ahead of the completion.
-            await flushAndFinalise(projectFolderName, jobId, {
-              status: 'completed',
-              completionDelayMs: 350,
-            });
+            }),
+          );
+        } else if (event.type === 'error' && event.fileId) {
+          // Per-image error — collect for this job's summary
+          console.warn(`Error tagging ${event.fileId}:`, event.error);
+          imageErrorsRef.current.get(jobId)?.push({
+            fileId: event.fileId,
+            error: event.error,
+          });
+        } else if (event.type === 'error') {
+          throw new Error(event.error);
+        } else if (event.type === 'complete') {
+          receivedComplete = true;
+          batchTerminatedServerSide = true;
+          // 350ms pause between the final progress event and the
+          // summary view so the progress bar visibly hits 100%.
+          // Awaited (not fire-and-forget) so the outer try/finally
+          // doesn't drop this job's abort signal before the delayed
+          // `completeTagging` lands — flushAndFinalise's cancel check
+          // needs it, and the model unload in the finally must not run
+          // ahead of the completion.
+          await flushAndFinalise(projectFolderName, jobId, {
+            status: 'completed',
+            completionDelayMs: 350,
+          });
 
-            // Save settings as defaults for this project
-            const settingsToSave: AutoTaggerSettings = {
-              defaultModelId: selectedModelId,
-              generalThreshold: options.generalThreshold,
-              characterThreshold: options.characterThreshold,
-              removeUnderscore: options.removeUnderscore,
-              includeCharacterTags: options.includeCharacterTags,
-              includeRatingTags: options.includeRatingTags,
-              excludeTags: options.excludeTags,
-              tagInsertMode: options.tagInsertMode,
-              // `prompt` is deliberately not saved: the project's canonical
-              // prompt is authored from the project menu, and a run's edits
-              // apply to that run only.
-              maxTokens: vlmOptions.maxTokens,
-              temperature: vlmOptions.temperature,
-              injectTriggerPhrases: vlmOptions.injectTriggerPhrases,
-              triggerPhraseInsertMode: vlmOptions.triggerPhraseInsertMode,
-              video: vlmOptions.video,
-            };
-            saveAutoTaggerSettings(projectFolderName, settingsToSave).catch(
-              console.error,
-            );
-          } else if (event.type === 'cancelled') {
-            // Batch cancelled on the sidecar side (queue removal or a
-            // cancel from another tab) — treat like a local cancel:
-            // keep whatever results already landed. The job status update
-            // is dispatched here because no local abort handler ran.
-            receivedComplete = true;
-            batchTerminatedServerSide = true;
-            dispatch(cancelTagging(jobId));
-            await flushAndFinalise(projectFolderName, jobId, {
-              status: 'cancelled',
-            });
-          }
-        }
-      }
-
-      // Process any remaining data in buffer
-      if (buffer.startsWith('data: ')) {
-        try {
-          const event = JSON.parse(buffer.slice(6));
-          if (event.type === 'result') {
-            appendPendingTagResult(projectFolderName, {
-              fileId: event.fileId,
-              tags: event.tags,
-              caption: event.caption,
-              position,
-            });
-          } else if (event.type === 'complete') {
-            receivedComplete = true;
-          }
-        } catch (parseErr) {
-          console.warn('Failed to parse final SSE event:', buffer, parseErr);
+          // Save settings as defaults for this project
+          const settingsToSave: AutoTaggerSettings = {
+            defaultModelId: selectedModelId,
+            generalThreshold: options.generalThreshold,
+            characterThreshold: options.characterThreshold,
+            removeUnderscore: options.removeUnderscore,
+            includeCharacterTags: options.includeCharacterTags,
+            includeRatingTags: options.includeRatingTags,
+            excludeTags: options.excludeTags,
+            tagInsertMode: options.tagInsertMode,
+            // `prompt` is deliberately not saved: the project's canonical
+            // prompt is authored from the project menu, and a run's edits
+            // apply to that run only.
+            maxTokens: vlmOptions.maxTokens,
+            temperature: vlmOptions.temperature,
+            injectTriggerPhrases: vlmOptions.injectTriggerPhrases,
+            triggerPhraseInsertMode: vlmOptions.triggerPhraseInsertMode,
+            video: vlmOptions.video,
+          };
+          saveAutoTaggerSettings(projectFolderName, settingsToSave).catch(
+            console.error,
+          );
+        } else if (event.type === 'cancelled') {
+          // Batch cancelled on the sidecar side (queue removal or a
+          // cancel from another tab) — treat like a local cancel:
+          // keep whatever results already landed. The job status update
+          // is dispatched here because no local abort handler ran.
+          receivedComplete = true;
+          batchTerminatedServerSide = true;
+          dispatch(cancelTagging(jobId));
+          await flushAndFinalise(projectFolderName, jobId, {
+            status: 'cancelled',
+          });
         }
       }
 

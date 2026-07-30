@@ -20,10 +20,12 @@ import path from 'path';
 
 import { displayName } from '@/app/services/auto-tagger/display-name';
 import { attachCaptionBatch } from '@/app/services/auto-tagger/providers/vlm/client';
+import { translateVlmBatchEvents } from '@/app/services/auto-tagger/providers/vlm/sse-translate';
 import {
   attachOnnxBatch,
   hasOnnxBatch,
 } from '@/app/services/auto-tagger/providers/wd14/batch-store';
+import type { TaggingSseEvent } from '@/app/services/auto-tagger/types';
 import { getProjectsFolder } from '@/app/services/config/server-config';
 
 export async function GET(request: NextRequest) {
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const sendEvent = (event: Record<string, unknown>) => {
+      const sendEvent = (event: TaggingSseEvent) => {
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
         );
@@ -86,81 +88,43 @@ export async function GET(request: NextRequest) {
         // snapshot. Needed to name thumbnails project-relative — a bare
         // basename 404s for assets in repeat subfolders.
         let projectPath: string | undefined;
+        // Processing order, also from the snapshot: the live route knows the
+        // batch's items because it sent them, a reattach has to be told.
+        let itemIds: string[] = [];
 
-        for await (const event of attachCaptionBatch(batchId)) {
-          if ('snapshot' in event) {
-            total = event.total;
-            if (event.project) {
-              projectPath = path.resolve(
-                getProjectsFolder() || 'public/assets',
-                event.project,
-              );
-            }
-            if (event.status === 'queued' && event.position) {
-              sendEvent({
-                type: 'queued',
-                position: event.position,
-                current: 0,
-                total,
-              });
-            }
-            continue;
-          }
+        // Shared with the translator, which advances `completed` per image and
+        // fills in `total` once the snapshot lands.
+        const counters = { total: 0, completed: 0 };
 
-          if ('queued' in event) {
-            sendEvent({
-              type: 'queued',
-              position: event.position,
-              current: completed,
-              total,
-            });
-            continue;
-          }
-
-          if ('loading' in event) {
-            sendEvent({
-              type: 'loading',
-              message: event.message,
-              current: event.current,
-              total: event.total,
-            });
-            continue;
-          }
-
-          if ('loadingComplete' in event) {
-            sendEvent({ type: 'loaded', current: completed, total });
-            continue;
-          }
-
-          if ('cancelled' in event) {
-            sendEvent({ type: 'cancelled', current: completed, total });
+        for await (const event of translateVlmBatchEvents(
+          attachCaptionBatch(batchId),
+          {
+            counters,
+            onSnapshot: (snapshot) => {
+              if (snapshot.project) {
+                projectPath = path.resolve(
+                  getProjectsFolder() || 'public/assets',
+                  snapshot.project,
+                );
+              }
+              itemIds = snapshot.itemIds ?? [];
+            },
+            // The sidecar stores the path each item resolved to (poster frame
+            // or original image), so replayed results name a thumbnail
+            // exactly like the live stream does.
+            fileNameFor: ({ imagePath }) =>
+              imagePath ? displayName(imagePath, projectPath) : undefined,
+            itemIdAt: (index) => itemIds[index],
+          },
+        )) {
+          sendEvent(event);
+          if (event.type === 'cancelled') {
             controller.close();
             return;
           }
-
-          if ('error' in event) {
-            sendEvent({
-              type: 'error',
-              fileId: event.itemId,
-              error: event.error,
-            });
-          } else {
-            // The sidecar stores the path each item resolved to (poster frame
-            // or original image), so replayed results can name a thumbnail
-            // exactly like the live stream does.
-            sendEvent({
-              type: 'result',
-              fileId: event.itemId,
-              fileName: displayName(event.imagePath, projectPath),
-              caption: event.caption,
-            });
-          }
-
-          completed++;
-          sendEvent({ type: 'progress', current: completed, total });
         }
 
-        sendEvent({ type: 'complete', total });
+        sendEvent({ type: 'complete', total: counters.total });
         controller.close();
       } catch (err) {
         try {

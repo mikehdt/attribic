@@ -10,6 +10,7 @@ import path from 'path';
 import { isSupportedVideoExtension } from '@/app/constants';
 import type {
   TaggerOptions,
+  TaggingSseEvent,
   TagResult,
   VlmOptions,
 } from '@/app/services/auto-tagger';
@@ -23,6 +24,7 @@ import { displayName } from '@/app/services/auto-tagger/display-name';
 import { checkModelStatus } from '@/app/services/auto-tagger/model-manager';
 import type { CaptionBatchItem } from '@/app/services/auto-tagger/providers/vlm/client';
 import { captionBatchViaSidecar } from '@/app/services/auto-tagger/providers/vlm/client';
+import { translateVlmBatchEvents } from '@/app/services/auto-tagger/providers/vlm/sse-translate';
 import {
   appendOnnxResult,
   createOnnxBatch,
@@ -58,35 +60,6 @@ type BatchTagRequest = {
    * `vlmOptions.injectTriggerPhrases` is true. Ignored by ONNX batches.
    */
   triggerPhrases?: string[];
-};
-
-type BatchProgressEvent = {
-  type:
-    | 'progress'
-    | 'result'
-    | 'complete'
-    | 'error'
-    | 'loading'
-    | 'loaded'
-    | 'queued'
-    | 'cancelled';
-  /** 1-indexed queue position, on `queued` events only. */
-  position?: number;
-  current?: number;
-  total?: number;
-  fileId?: string;
-  /**
-   * On `result` events — the name of the file that was actually fed to the
-   * model, for the client to render a thumbnail from. See {@link displayName}.
-   */
-  fileName?: string;
-  /** ONNX tagger result — comma-separated tags for the image */
-  tags?: string[];
-  /** VLM captioner result — natural-language caption for the image */
-  caption?: string;
-  error?: string;
-  /** Free-form status text for `loading` events (e.g. "Loading checkpoint shards") */
-  message?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -283,7 +256,7 @@ export async function POST(request: NextRequest) {
         // Once the browser is gone `enqueue` throws, so events from then on
         // go to the store only. Explicit cancellation is /batch/cancel.
         let clientGone = false;
-        const sendEvent = (event: BatchProgressEvent) => {
+        const sendEvent = (event: TaggingSseEvent) => {
           if (clientGone) return;
           try {
             controller.enqueue(
@@ -336,7 +309,7 @@ export async function POST(request: NextRequest) {
     // Returns 'cancelled' when a /batch/cancel landed mid-run; undefined for a
     // normal run (the caller emits `complete`). Mirrors runVlmBatch.
     async function runOnnxBatch(
-      sendEvent: (event: BatchProgressEvent) => void,
+      sendEvent: (event: TaggingSseEvent) => void,
     ): Promise<'cancelled' | undefined> {
       for (let i = 0; i < assets.length; i++) {
         // There's no way to interrupt an in-flight ONNX inference, so a
@@ -437,7 +410,7 @@ export async function POST(request: NextRequest) {
     // Returns 'cancelled' when the sidecar reports the batch was cancelled;
     // undefined for a normal run (the caller emits `complete`).
     async function runVlmBatch(
-      sendEvent: (event: BatchProgressEvent) => void,
+      sendEvent: (event: TaggingSseEvent) => void,
     ): Promise<'cancelled' | undefined> {
       // Build the item list for the sidecar. Each item carries the asset's
       // fileId as its item_id, so every progress event and stored result
@@ -489,6 +462,7 @@ export async function POST(request: NextRequest) {
       // Per-image events come back keyed by itemId only; keep the path each
       // one resolved to so results can name a thumbnail (poster vs. original).
       const pathByItemId = new Map(items.map((i) => [i.itemId, i.path]));
+      const itemIds = items.map((i) => i.itemId);
 
       // NOTE: the client's abort (tab close, navigation) deliberately does
       // NOT cancel the sidecar batch any more. The batch keeps running,
@@ -500,96 +474,33 @@ export async function POST(request: NextRequest) {
       // Starts at the dropped-video count so the numerator still reaches
       // `total` (dropped videos were errored above before the sidecar runs).
       const dropped = assets.length - items.length;
-      let completed = dropped;
 
-      const generator = captionBatchViaSidecar(
-        resolvedModel,
-        items,
-        vlmOptions,
-        batchId,
-        projectFolderName,
-      );
-
-      for await (const event of generator) {
-        // Waiting in the sidecar's job queue behind other GPU work
-        // (training run, another caption batch). Forwarded so the UI can
-        // show "Queued — position N" instead of a dead "Starting..." bar.
-        if ('queued' in event) {
-          sendEvent({
-            type: 'queued',
-            position: event.position,
-            current: completed,
-            total,
-          });
-          continue;
-        }
-
-        // Loading progress from the sidecar — forwarded as-is so the UI
-        // can show "Loading checkpoint shards 1/2" during the first-use
-        // model load. No completion-count bump; loading is a side-channel.
-        if ('loading' in event) {
-          sendEvent({
-            type: 'loading',
-            message: event.message,
-            current: event.current,
-            total: event.total,
-          });
-          continue;
-        }
-
-        // Sidecar-side cancellation (queue removal, cancel from another
-        // tab). Tell the browser explicitly — a bare `complete` here made
-        // a cancelled batch look like a finished one.
-        if ('cancelled' in event) {
-          sendEvent({ type: 'cancelled', current: completed, total });
-          return 'cancelled';
-        }
-
-        // Load complete — emit a `loaded` event so the client can show the
-        // loading bar at 100% briefly before transitioning to the
-        // image-counter view. The client handles the 100%-fill + brief
-        // pause + switch-to-tagging dance; doing it server-side would
-        // hold the SSE stream open while the sidecar starts inference.
-        if ('loadingComplete' in event) {
-          sendEvent({
-            type: 'loaded',
-            current: completed,
-            total,
-            fileId: items[0]?.itemId,
-          });
-          continue;
-        }
-
-        // Per-image events arrive tagged with the asset's fileId (item_id).
-        if ('error' in event) {
-          sendEvent({
-            type: 'error',
-            fileId: event.itemId,
-            error: event.error,
-          });
-        } else {
-          const resolvedPath = pathByItemId.get(event.itemId);
-          sendEvent({
-            type: 'result',
-            fileId: event.itemId,
-            fileName: resolvedPath
+      // The sidecar-event → SSE mapping is shared with the reattach route (the
+      // two had already drifted); only the context differs. This route knows
+      // the batch's items because it sent them.
+      for await (const event of translateVlmBatchEvents(
+        captionBatchViaSidecar(
+          resolvedModel,
+          items,
+          vlmOptions,
+          batchId,
+          projectFolderName,
+        ),
+        {
+          counters: { total, completed: dropped },
+          fileNameFor: ({ itemId }) => {
+            const resolvedPath = pathByItemId.get(itemId);
+            return resolvedPath
               ? displayName(resolvedPath, projectPath)
-              : undefined,
-            caption: event.caption,
-          });
-        }
-
-        // Advance completion count after each event (success or error).
-        // The sidecar processes items in order, so the next item's fileId
-        // makes an accurate "currently processing" label.
-        completed++;
-        const nextFileId = items[completed - dropped]?.itemId ?? event.itemId;
-        sendEvent({
-          type: 'progress',
-          current: completed,
-          total,
-          fileId: nextFileId,
-        });
+              : undefined;
+          },
+          itemIdAt: (index) => itemIds[index],
+        },
+      )) {
+        sendEvent(event);
+        // Said explicitly by the sidecar (queue removal, a cancel from another
+        // tab); the caller must not follow it with a `complete`.
+        if (event.type === 'cancelled') return 'cancelled';
       }
     }
 

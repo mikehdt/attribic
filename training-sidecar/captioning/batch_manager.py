@@ -93,6 +93,9 @@ class CaptionBatchManager:
             "error": state.error,
             "queue_position": self.registry.queue_position(state.batch_id),
             "results": list(state.results),
+            # Processing order, so a reattaching client can name the image
+            # currently in flight instead of showing a blank label.
+            "item_ids": list(state.item_ids),
         }
 
     def list_batches(self, project: Optional[str] = None) -> list[dict]:

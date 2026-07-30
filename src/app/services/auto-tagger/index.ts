@@ -12,6 +12,7 @@ export type {
   AutoTaggerSettings,
   ProviderType,
   TaggerOptions,
+  TaggingSseEvent,
   TagInsertMode,
   TagResult,
   TriggerPhraseInsertMode,
@@ -19,11 +20,9 @@ export type {
   VlmVideoOptions,
   VlmVideoQuality,
 } from './types';
-export {
-  DEFAULT_TAGGER_OPTIONS,
-  DEFAULT_VLM_OPTIONS,
-  VLM_VIDEO_QUALITY_PIXELS,
-} from './types';
+// VLM_VIDEO_QUALITY_PIXELS is deliberately not re-exported — its only consumer
+// (the VLM client) sits beside it and imports from './types' directly.
+export { DEFAULT_TAGGER_OPTIONS, DEFAULT_VLM_OPTIONS } from './types';
 
 // Model Registry (client-safe utilities - no fs operations)
 export {

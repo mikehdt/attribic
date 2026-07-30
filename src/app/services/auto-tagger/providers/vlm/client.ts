@@ -83,7 +83,7 @@ type QueuedStatus = {
 };
 
 /** First event from `attachCaptionBatch` — where the batch stands right now. */
-type SnapshotStatus = {
+export type SnapshotStatus = {
   snapshot: true;
   status: BatchStatus;
   current: number;
@@ -91,9 +91,15 @@ type SnapshotStatus = {
   position?: number;
   /** Project folder name the batch was started for, if the sidecar has it. */
   project?: string;
+  /**
+   * The batch's item ids in processing order, so a reattaching client can
+   * label the image currently in flight (the live stream knows this from the
+   * request it sent; a reattach has to be told).
+   */
+  itemIds?: string[];
 };
 
-type BatchEvent =
+export type BatchEvent =
   | CaptionResult
   | CaptionErrorEvent
   | LoadingStatus
@@ -163,6 +169,8 @@ type BatchSnapshot = {
     caption?: string | null;
     error?: string | null;
   }[];
+  /** Present from sidecars new enough to report processing order. */
+  item_ids?: string[];
 };
 
 /** Listing entry returned by GET /caption/batches. */
@@ -530,6 +538,7 @@ export async function* attachCaptionBatch(
       position:
         snapshot.queue_position > 0 ? snapshot.queue_position : undefined,
       project: snapshot.project ?? undefined,
+      itemIds: snapshot.item_ids,
     };
 
     // Replay accumulated per-image outcomes.

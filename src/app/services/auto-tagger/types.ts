@@ -214,3 +214,38 @@ export type AutoTaggerSettings = {
   defaultModelId?: string;
 } & Partial<Omit<TaggerOptions, 'includeTags'>> & // includeTags not saved (session only)
   Partial<VlmOptions>;
+
+/**
+ * The SSE vocabulary a batch stream speaks — one shape per event type, shared
+ * by the producers (`/api/auto-tagger/batch` and `/batch/attach`) and the
+ * client that consumes them. Both routes previously built these shapes inline
+ * from a single loose type with every field optional, and the client parsed
+ * them into `any`; a field one route forgot to send was invisible on both
+ * sides. Discriminating on `type` means the compiler now decides which fields
+ * an event has.
+ *
+ * Live and reattached streams are deliberately identical, so the client
+ * processes both with the same code whichever provider ran the batch.
+ */
+export type TaggingSseEvent =
+  /** Waiting in the sidecar's GPU queue. `position` is 1-indexed. */
+  | { type: 'queued'; position: number; current: number; total: number }
+  /** Model load progress. `current`/`total` count shards, not images. */
+  | { type: 'loading'; message: string; current: number; total: number }
+  /** Model load finished; `fileId` is the image about to be processed. */
+  | { type: 'loaded'; current: number; total: number; fileId?: string }
+  /** One image finished (successfully or not). `current` = images done. */
+  | { type: 'progress'; current: number; total: number; fileId?: string }
+  /** A per-image result. Carries `tags` (ONNX) or `caption` (VLM). */
+  | {
+      type: 'result';
+      fileId: string;
+      /** File actually fed to the model, for the thumbnail. */
+      fileName?: string;
+      tags?: string[];
+      caption?: string;
+    }
+  /** With `fileId`: this image failed. Without: the whole batch failed. */
+  | { type: 'error'; fileId?: string; error: string }
+  | { type: 'cancelled'; current: number; total: number }
+  | { type: 'complete'; total: number };
