@@ -3,8 +3,6 @@
 import {
   ArrowLeftIcon,
   HistoryIcon,
-  PlayIcon,
-  ServerOffIcon,
   SlidersHorizontalIcon,
   Trash2Icon,
 } from 'lucide-react';
@@ -16,10 +14,6 @@ import { TrainingDetailTabs } from '@/app/shared/activity-panel/training-detail-
 import { Button } from '@/app/shared/button';
 import { Modal } from '@/app/shared/modal';
 import { useConfirmAction } from '@/app/shared/use-confirm-action';
-import {
-  type SidecarStatus,
-  useSidecarStatus,
-} from '@/app/shared/use-sidecar-status';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { removeJob } from '@/app/store/jobs';
 import { addToast } from '@/app/store/toasts/reducers';
@@ -161,48 +155,6 @@ function HistoryRow({
 }
 
 /**
- * Sidecar readout for the list view. Run history is the sidecar's `jobs/*.json`
- * records read back — so with no sidecar, the list is only whatever this
- * session happened to watch finish, and a cold start shows nothing at all.
- * Without this note that state is indistinguishable from "you have never
- * trained anything", which is what it used to look like.
- */
-function SidecarNote({
-  status,
-  busy,
-  onStart,
-}: {
-  status: SidecarStatus;
-  busy: boolean;
-  onStart: () => void;
-}) {
-  // Nothing to say while it's up, and nothing worth saying before the first
-  // status read comes back — a note that flashes on every open is just noise.
-  if (status === 'ready' || status === 'unknown') return null;
-
-  const starting = status === 'starting';
-
-  return (
-    <div className="mb-3 flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
-      <ServerOffIcon className="h-4 w-4 shrink-0 text-amber-500" />
-      <p className="flex-1 text-sm text-(--foreground)/70">
-        {starting
-          ? 'Starting the training sidecar — past runs will appear once it’s up.'
-          : status === 'error'
-            ? 'The training sidecar couldn’t be started, so past runs can’t be read from disk.'
-            : 'The training sidecar isn’t running. Past runs are stored by it, so this list may be incomplete.'}
-      </p>
-      {!starting && (
-        <Button size="sm" color="amber" onClick={onStart} disabled={busy}>
-          <PlayIcon />
-          {status === 'error' ? 'Try again' : 'Start sidecar'}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/**
  * Run-history modal. Lists archived training runs (durable — not affected by
  * the activity panel's "Clear all"); clicking a run swaps the modal to its
  * detail view in place, reusing the same body the activity panel shows for a
@@ -222,23 +174,13 @@ export function TrainingHistoryModal() {
     : null;
   const selectedWide = selected != null && showsSamplesView(selected);
 
-  // Sidecar status, polled only while this view is open. The list can't be
-  // trusted without one, so the user gets told — and gets a way to start it.
-  const {
-    status: sidecarStatus,
-    action: sidecarAction,
-    start: startSidecar,
-  } = useSidecarStatus(isOpen);
-
-  // Re-read the sidecar's records whenever there's a sidecar to read them from:
-  // each time the view opens, and again if one comes up while it's open (the
-  // note's Start button, or the app-launch warm-up landing late). Gating on
-  // `ready` keeps this from burning the thunk's retry ladder against a sidecar
-  // we already know is down. Idempotent — it only fills gaps.
+  // Re-read history from disk each time the view opens, in case a run
+  // finished or was archived elsewhere since the last open. Idempotent — it
+  // only fills gaps.
   useEffect(() => {
-    if (!isOpen || sidecarStatus !== 'ready') return;
+    if (!isOpen) return;
     void dispatch(hydrateTrainingHistory());
-  }, [isOpen, sidecarStatus, dispatch]);
+  }, [isOpen, dispatch]);
 
   const handleClose = useCallback(() => {
     closeModal();
@@ -316,17 +258,10 @@ export function TrainingHistoryModal() {
             </h2>
           </div>
 
-          <SidecarNote
-            status={sidecarStatus}
-            busy={sidecarAction !== null}
-            onStart={startSidecar}
-          />
-
           {history.length === 0 ? (
             <p className="py-10 text-center text-sm text-slate-400">
-              {sidecarStatus === 'ready' || sidecarStatus === 'unknown'
-                ? 'No training runs yet. Completed, failed, and cancelled runs will appear here.'
-                : 'No runs to show. Past runs are read back from the training sidecar.'}
+              No training runs yet. Completed, failed, and cancelled runs will
+              appear here.
             </p>
           ) : (
             <>

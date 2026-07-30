@@ -26,10 +26,11 @@ const isSafeJobId = (id: string): boolean =>
  * a run's images with it — the sample deletion fired alongside is the narrower
  * `samples/`-only path, and whichever lands first makes the other a no-op.
  *
- * Also tells the sidecar to forget the run. That call is what makes the delete
- * stick: the sidecar holds every run in memory and serves them from `/jobs`, so
- * removing only the files would let the next listing write the record straight
- * back — the run would return from the dead on the next sidecar restart.
+ * Also tells the sidecar to forget the run, which is what makes the delete stick
+ * while one is running: it holds every run in memory and rewrites the record on
+ * its next persist for that job, so a later "clear all" would put the file we
+ * just removed straight back. With no sidecar up, removing the files is the
+ * whole job — the listing route reads the records themselves.
  *
  * Fired fire-and-forget when a run leaves Run History, which is the only path
  * that destroys a run; clearing a card from the activity panel merely dismisses

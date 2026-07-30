@@ -1,45 +1,33 @@
 import { NextResponse } from 'next/server';
 
-import { connectSidecar } from '@/app/services/training/sidecar-manager';
+import { listJobRecords } from '@/app/services/training/job-records';
 
 /**
- * GET /api/training/jobs — every training job the sidecar is tracking.
+ * GET /api/training/jobs — every training run on record.
  *
- * The twin of `/api/training/status`, which returns only the sidecar's single
- * "focus" job. The client reconciles against this list after its progress
- * WebSocket reconnects, where any of the queued / running / just-finished jobs
- * may have moved on while the stream was down.
+ * Read straight from `<training>/jobs/*.json`, which is where the sidecar keeps
+ * the durable record of every run anyway. That's deliberate: the sidecar only
+ * spawns on demand and idle-exits, so asking it would answer "no runs" for the
+ * whole of a cold start — indistinguishable from an empty history, and
+ * indistinguishable to the client from a real answer.
  *
- * Read-only, like the status route: connects to a running sidecar (or an
- * orphan) but never spawns one, and answers an empty list rather than an error
- * when there's nothing to reach.
+ * The twin of `/api/training/status`, which returns only the single "focus" run
+ * and stays sidecar-first because it answers what is running *now*. This one is
+ * run history plus the queue: the client reconciles against it after its
+ * progress WebSocket reconnects, where any of the queued / running /
+ * just-finished runs may have moved on while the stream was down.
  */
-export async function GET() {
-  const sidecar = await connectSidecar();
-  if (sidecar.status !== 'ready') {
-    return NextResponse.json(
-      { jobs: [], sidecar_status: sidecar.status },
-      { status: 200 },
-    );
-  }
+/**
+ * Never cached. This handler used to be dynamic only as a side effect of calling
+ * the sidecar over `fetch`; a pure `fs` read with no dynamic API in play is
+ * exactly the shape Next is free to evaluate once and serve forever, which would
+ * freeze run history at whatever was on disk at build time. The sidecar rewrites
+ * these files continuously (progress every few seconds, terminal transitions,
+ * `_recover_state` on boot), so every request has to read them again.
+ */
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-  try {
-    const res = await fetch(`http://127.0.0.1:${sidecar.port}/jobs`);
-    if (!res.ok) {
-      // Most likely an older sidecar that predates this route — answer the
-      // documented shape so the caller reads it as "nothing to reconcile"
-      // rather than having to recognise a sidecar error body.
-      return NextResponse.json(
-        { jobs: [], error: `Sidecar returned ${res.status}` },
-        { status: 200 },
-      );
-    }
-    const data = await res.json();
-    return NextResponse.json(data);
-  } catch (error) {
-    return NextResponse.json(
-      { jobs: [], error: `Failed to reach sidecar: ${error}` },
-      { status: 200 },
-    );
-  }
+export async function GET() {
+  return NextResponse.json({ jobs: await listJobRecords() });
 }

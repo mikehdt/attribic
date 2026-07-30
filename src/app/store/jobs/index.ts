@@ -65,6 +65,15 @@ const jobsSlice = createSlice({
         id: string;
         status: JobStatus;
         error?: string | null;
+        /**
+         * When the run actually ended, for a terminal status recovered from a
+         * durable record rather than watched live. Omit it for a live
+         * transition, which ends now by definition. Passing it explicitly as
+         * `null` says "ended, but at an unknown time" — an interrupted run whose
+         * record never got a completion stamp — which reads more honestly as no
+         * duration than as a fabricated one.
+         */
+        completedAt?: number | null;
       }>,
     ) => {
       const job = state.jobs[action.payload.id];
@@ -88,7 +97,10 @@ const jobsSlice = createSlice({
         action.payload.status === 'failed' ||
         action.payload.status === 'cancelled'
       ) {
-        job.completedAt = Date.now();
+        // Tested against undefined, not truthiness: an explicit `null` has to
+        // survive as "ended at an unknown time".
+        const { completedAt } = action.payload;
+        job.completedAt = completedAt === undefined ? Date.now() : completedAt;
       }
     },
 

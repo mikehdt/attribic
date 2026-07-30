@@ -155,6 +155,29 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /**
+ * Is a sidecar process alive right now? Cheap and synchronous — no health
+ * request, no spawn.
+ *
+ * The PID file is written by the sidecar itself on boot, so this covers both a
+ * sidecar we spawned and an orphan left by a Node restart. Callers use it to
+ * decide who owns the on-disk job records: a non-terminal record is only a live
+ * run while there's a process to own it, and Node may only write to those files
+ * when there isn't (see services/training/job-records.ts).
+ */
+export function isSidecarProcessAlive(): boolean {
+  if (state.process?.pid && isProcessAlive(state.process.pid)) return true;
+  try {
+    const pidPath = getPidPath();
+    if (!fs.existsSync(pidPath)) return false;
+    const pid = parseInt(fs.readFileSync(pidPath, 'utf-8').trim(), 10);
+    return !Number.isNaN(pid) && isProcessAlive(pid);
+  } catch {
+    // Unreadable PID file — treat as no sidecar rather than guessing.
+    return false;
+  }
+}
+
+/**
  * Try to reconnect to an existing sidecar (e.g. after Node.js restart).
  */
 async function tryReconnect(): Promise<boolean> {

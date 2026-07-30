@@ -59,8 +59,9 @@ const ActivityPanelComponent = () => {
   const bottomClass = hasBottomShelf ? 'bottom-16' : 'bottom-4';
 
   // Restore past training runs and persisted downloads on mount. Training runs
-  // are read back from the sidecar (the source of truth for them); downloads
-  // still persist to localStorage, being a purely client-side concern.
+  // are read back from their records under `.training/jobs` (the source of truth
+  // for them); downloads still persist to localStorage, being a purely
+  // client-side concern.
   // Downloads that were `running` when the page closed are restored as-is,
   // then reconciled against the server's active-download set: another tab
   // may still own the stream, in which case we leave the job alone. Only
@@ -68,20 +69,15 @@ const ActivityPanelComponent = () => {
   const restoredRef = useRef(false);
   const historyRef = useRef(false);
   useEffect(() => {
-    // Past training runs come from the sidecar, which holds each one's durable
-    // record on disk — it seeds both the run-history archive and the panel's
-    // terminal-training rows (skipping runs the user has cleared). Async and
-    // self-contained, so it doesn't gate the download restore below.
-    //
-    // Latched only on a read the sidecar answered: it spawns on demand and
-    // idle-exits, so a cold start reads "no runs" from a sidecar that isn't
-    // there. Unlatching on failure lets a later mount try again; launching a run
-    // re-fires it directly, and opening Run History re-reads.
+    // Past training runs are read from their durable records on disk — that
+    // seeds both the run-history archive and the panel's terminal-training rows
+    // (skipping runs the user has cleared). Async and self-contained, so it
+    // doesn't gate the download restore below. One read is enough: the route
+    // owns the records rather than proxying a sidecar that may not be up, so
+    // there's no "asked too early" case to retry.
     if (!historyRef.current) {
       historyRef.current = true;
-      void dispatch(hydrateTrainingHistory()).then((hydrated) => {
-        if (!hydrated) historyRef.current = false;
-      });
+      void dispatch(hydrateTrainingHistory());
     }
 
     if (restoredRef.current) return;
@@ -134,14 +130,17 @@ const ActivityPanelComponent = () => {
 
   const handleClearAll = useCallback(() => {
     dispatch(clearCompletedJobs());
-    // Terminal training runs are owned by the sidecar, not the jobs slice's
-    // persistence. Mark them dismissed locally for an immediate response…
+    // Terminal training runs live on their own durable records, not in the jobs
+    // slice's persistence. Mark them dismissed locally for an immediate response…
     dispatch(dismissAllFromPanel());
-    // …and on their durable records, which is what makes it stick across a
-    // refresh. Dismissing is not deleting: the runs stay in the Run History
-    // view, and only an explicit delete there removes them. Delivery-checked —
-    // a dismiss that doesn't land is a card that comes back on reload.
-    void dismissTrainingJobs();
+    // …and on the records, which is what makes it stick across a refresh.
+    // Dismissing is not deleting: the runs stay in the Run History view, and only
+    // an explicit delete there removes them. Delivery-checked, and a dismissal
+    // that didn't land is re-read rather than assumed — the cards come back,
+    // which is what the records actually say.
+    void dismissTrainingJobs().then((recorded) => {
+      if (!recorded) void dispatch(hydrateTrainingHistory());
+    });
   }, [dispatch]);
 
   // Which job's enlarge modal is open, if any. Rendered here — above the
