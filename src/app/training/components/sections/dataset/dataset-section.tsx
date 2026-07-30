@@ -294,7 +294,7 @@ const DatasetSectionComponent = ({
                     </div>
                   )}
 
-                  <div className="divide-y divide-slate-300 dark:divide-slate-700">
+                  <div className="dark:border-t-slate-70 divide-y divide-slate-300 border-t border-t-slate-300 dark:divide-slate-700 dark:border-t-slate-700">
                     {ds.folders.map((folder) => (
                       <FolderRow
                         key={folder.name}
@@ -361,7 +361,7 @@ const DatasetSectionComponent = ({
                 Extra Folders
               </span>
             </div>
-            <div className="divide-y divide-slate-300 dark:divide-slate-700">
+            <div className="dark:border-t-slate-70 divide-y divide-slate-300 border-t border-t-slate-300 dark:divide-slate-700 dark:border-t-slate-700">
               {extraFolders.map((ef, i) => (
                 <FolderRow
                   key={ef.path}
