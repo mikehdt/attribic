@@ -19,15 +19,44 @@ tag ids; keyboard drag needed a pointer-free collision/placement path, not
 just reachability; `promoteToRunning` needed an abort guard to fully close
 the cancel race.
 
-**Deferred to the P3 session:** all of P3, plus two behaviour-neutral P4
-items that are really structural churn — modal reset-idiom convergence
-(copy-tags was converged opportunistically; the rest ride with P3) and
-save-button colour unification (possibly intentional colour-coding — decide
-then). The `use-range-toggle` CustomEvent refactor also rides with P3.
-
 **Still owed:** a manual pass over keyboard drag-reorder (tab to chip →
 Space/Enter → arrows) and the caption draft debounce/flush, next time the
 app is running.
+
+## P3 session (2026-07-30)
+
+**Done:** 3.1 (one typed `fetchAutoTaggerModels` thunk replacing four
+hand-rolled fetches, plus a shared `useAutoTaggerLaunch` for the two entry
+points), 3.2 (one `translateVlmBatchEvents` for both routes), 3.3 (shared
+`readTaggingSseEvents` consumer + a `TaggingSseEvent` union used by routes and
+client), 3.4 (`comparators.ts`, `useFilterListEffects`, `FilterSearchInput`),
+3.6 (dead slice state adopted by the thunk rather than deleted — `isLoading`
+gates it, `selectModelsError` is rendered), 3.7 (selector factories take the
+key as a selector argument), 3.9 (`selectBucketCounts`), and the 3.10 list
+bar the two noted below.
+
+Fixing 3.2 properly needed the sidecar snapshot to report `item_ids`: the
+reattach route couldn't name the in-flight image at all, which is why it had
+drifted. That also fixed the `loaded` event naming `items[0]` after a
+mid-queue resume.
+
+**Found already fixed** (recorded here so the next pass doesn't re-check):
+2.7's closed-modal selector gating, 2.10's aria-labels, `views/error.tsx`'s
+`Error` shadowing, the `Asset` memo's `blurDataUrl`, copy-tags' `isOpen`
+reset keying, bucket-crop's dark-mode variants, `filter-list/README.md`, and
+all the named `text-xs` offenders except `edit-tags-modal`.
+
+**Deliberately not done:**
+
+- **The full `text-xs` sweep.** 209 occurrences across 73 files remain, most
+  of them badges, count pills and chart axis labels where the small size is a
+  density choice rather than an accident. The specific offenders this review
+  named are fixed; a blanket pass is a design decision, not a nit.
+- **`use-range-toggle`'s document-level CustomEvent** (P4) and the
+  save-button colour unification — both still open, both judgement calls.
+- **`cancel/route.ts` returning 200 for unknown ids** — superseded by the
+  reliability review's delivery-checked cancel (it now 502s on undeliverable
+  cancels rather than reporting a fake success).
 
 ---
 

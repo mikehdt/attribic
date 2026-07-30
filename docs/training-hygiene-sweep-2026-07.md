@@ -28,7 +28,7 @@ future field can go missing the same way.
 a job id and never sent it; the routes forwarded nothing. The sidecar then fell
 back to its "focus" job — the running one, else the oldest queued — so with two
 jobs queued, cancelling the second one cancelled the running one instead.
-`clearTrainingJob` had the same shape, where omitting the id means "clear *all*
+`clearTrainingJob` had the same shape, where omitting the id means "clear _all_
 terminal jobs".
 
 The sidecar already supported per-job targeting (`cancel_job(job_id)` handles
@@ -183,7 +183,7 @@ would be a marginal win.
 - Knip still reports dead exports outside the training stack — in
   `services/auto-tagger`, `store/assets`, `tagging/utils` and `utils/`. Out of
   scope for this sweep.
-- `workers/onnx-tagger.js` is knip's one unused *file*; it's loaded at runtime by
+- `workers/onnx-tagger.js` is knip's one unused _file_; it's loaded at runtime by
   path rather than imported, so this is a known false positive.
 
 ---

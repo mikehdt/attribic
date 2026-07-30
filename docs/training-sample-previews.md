@@ -239,7 +239,7 @@ step 250     [img]                    [img]                  [img]
 ### Lightbox — in-place, not a second modal
 
 Clicking a thumbnail swaps the tab body (or overlays `absolute inset-0`
-within the modal) to a single large image — a *modality within the space*,
+within the modal) to a single large image — a _modality within the space_,
 no modal-over-modal:
 
 - Meta bar: step/epoch stamp, full prompt text.
@@ -267,12 +267,12 @@ no modal-over-modal:
 
 ## 7. Decisions (settled 2026-07-24)
 
-| # | Question | Decision |
-|---|----------|----------|
-| 1 | Epochs cadence toggle | **Wire it** — dual-field like save cadence; Kohya gets `--sample_every_n_epochs` natively, ai-toolkit fakes epochs via steps conversion as training duration already does (§1) |
-| 2 | Archive: move at terminal vs leave in place | **Move** (§3) |
-| 3 | Orphaned archive folders after browser-storage loss | **Ignore** — hard to solve properly, user can tidy manually; sidecar-side history later makes it moot |
-| 4 | Modal width | **Widen whole modal** to `max-w-5xl`; mobile best-effort via horizontal scroll on the grid (§5) |
+| #   | Question                                            | Decision                                                                                                                                                                       |
+| --- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Epochs cadence toggle                               | **Wire it** — dual-field like save cadence; Kohya gets `--sample_every_n_epochs` natively, ai-toolkit fakes epochs via steps conversion as training duration already does (§1) |
+| 2   | Archive: move at terminal vs leave in place         | **Move** (§3)                                                                                                                                                                  |
+| 3   | Orphaned archive folders after browser-storage loss | **Ignore** — hard to solve properly, user can tidy manually; sidecar-side history later makes it moot                                                                          |
+| 4   | Modal width                                         | **Widen whole modal** to `max-w-5xl`; mobile best-effort via horizontal scroll on the grid (§5)                                                                                |
 
 ## 8. Out of scope (noted for later)
 

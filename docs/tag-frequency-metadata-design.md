@@ -26,7 +26,7 @@ Key framing (established during design discussion):
 - This is **cosmetic metadata, not training data.** The tag frequency is never read by the
   model at inference — it's a human-facing annotation. The trained weights from ai-toolkit
   are exactly as tag-responsive as Kohya's; only the convenience readout is missing.
-- The caption `.txt` files the user already authored *are* the source of truth; we're just
+- The caption `.txt` files the user already authored _are_ the source of truth; we're just
   surfacing a summary of them into the file's header.
 - Kohya already writes this natively. This feature is **ai-toolkit-only.**
 
@@ -50,10 +50,10 @@ Exposed as a single boolean form field, wired like any other tier-gated hyperpar
   quality footgun.
 - **Visibility: Intermediate tier.** A Simple-tier user never has to reason about
   safetensors headers — they just get the populated tag panel. The knob only appears from
-  Intermediate up, for those who want it *off*.
+  Intermediate up, for those who want it _off_.
 - **Provider-gated to `ai-toolkit`.** Hidden entirely under Kohya (redundant there).
 
-Tier controls *visibility only*, not the value — so "on by default for Simple" and
+Tier controls _visibility only_, not the value — so "on by default for Simple" and
 "toggleable from Intermediate" are the same field, not a conflict.
 
 Two legitimate reasons a user turns it off (justifying the off-switch existing):
@@ -64,17 +64,17 @@ Two legitimate reasons a user turns it off (justifying the off-switch existing):
 
 ### TS wiring touchpoints
 
-| File | Change |
-|---|---|
-| `services/training/field-registry.ts` | `embedTagFrequency: { tier: 'intermediate', group: 'saving', defaultKey: 'embedTagFrequency', providers: ['ai-toolkit'] }` |
-| `store/training-config/types.ts` | add `embedTagFrequency: boolean` |
-| `store/training-config/defaults.ts` | default `true` |
-| `store/training-config/index.ts` | setter action (mirror `setLowVram`) |
-| `sections/saving-section.tsx` | render the checkbox (tier + provider gating come free from the registry) |
-| `services/training/build-sidecar-request.ts` | map into `hyperparameters.embed_tag_frequency` |
+| File                                         | Change                                                                                                                     |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `services/training/field-registry.ts`        | `embedTagFrequency: { tier: 'intermediate', group: 'saving', defaultKey: 'embedTagFrequency', providers: ['ai-toolkit'] }` |
+| `store/training-config/types.ts`             | add `embedTagFrequency: boolean`                                                                                           |
+| `store/training-config/defaults.ts`          | default `true`                                                                                                             |
+| `store/training-config/index.ts`             | setter action (mirror `setLowVram`)                                                                                        |
+| `sections/saving-section.tsx`                | render the checkbox (tier + provider gating come free from the registry)                                                   |
+| `services/training/build-sidecar-request.ts` | map into `hyperparameters.embed_tag_frequency`                                                                             |
 
 Suggested label, framed around the payoff: **"Embed dataset tags in metadata"**, hint
-*"Lets Forge / A1111 show suggested tags for this LoRA."*
+_"Lets Forge / A1111 show suggested tags for this LoRA."_
 
 ## Injection strategy (sidecar / Python)
 
@@ -86,12 +86,12 @@ provider).
 ### Why incremental, not batch-at-end
 
 The obvious spot is the terminal block (after the pid-exit wait, when the final save has
-landed). But injecting *only* there has two problems:
+landed). But injecting _only_ there has two problems:
 
 1. **Cancelled / crashed runs** would leave every already-written checkpoint un-tagged.
 2. **Write burst.** A small dataset trained for hundreds of epochs at one-save-per-epoch would
    rewrite hundreds of files in a single stall at the end. Because safetensors stores metadata
-   in the length-prefixed header, *any* metadata change shifts the tensor blob and forces a
+   in the length-prefixed header, _any_ metadata change shifts the tensor blob and forces a
    **full-file rewrite** — there is no in-place patch. Hundreds of ~200 MB rewrites in one hit
    is a real stall; spread across the run it's negligible.
 
@@ -105,7 +105,7 @@ The provider already detects new checkpoints each poll via the directory diff
 large safetensors **mid-write**, while ai-toolkit still holds the handle. Reading it then would
 get a partial/corrupt file.
 
-Note the collision is *not* two writers deadlocking on one path — our injection never opens the
+Note the collision is _not_ two writers deadlocking on one path — our injection never opens the
 checkpoint for in-place writing. It is **read whole file → write a fresh temp → `os.replace()`**.
 The only failure mode is reading a file ai-toolkit hasn't finished writing. Guard it with a
 **settle check** instead of injecting on first sight:
@@ -116,13 +116,13 @@ The only failure mode is reading a file ai-toolkit hasn't finished writing. Guar
   done. Otherwise record the size and reconsider next poll.
 
 The one-poll delay plus size-stability covers writes that span more than one poll. On Windows,
-`os.replace` onto the target is safe because ai-toolkit never reopens an *old* checkpoint — only
+`os.replace` onto the target is safe because ai-toolkit never reopens an _old_ checkpoint — only
 the one currently being written, which the guard has already excluded.
 
 ### Division of labour
 
 - **Intermediate checkpoints** → injected mid-run via the settle guard, spread out.
-- **Final save** → injected in the terminal block *after* the existing pid-exit wait (~lines
+- **Final save** → injected in the terminal block _after_ the existing pid-exit wait (~lines
   552–581). The process is fully gone by then, so that file is unambiguously safe — no settle
   check needed.
 - **Cancellation (`stopped`)** → hits the same terminal block, so intermediates are already done

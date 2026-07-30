@@ -21,14 +21,14 @@ and the per-folder augmentation UI is never forwarded to the sidecar at all.
 The Node model catalogue (`src/app/services/training/models.ts`) and the sidecar
 `SUPPORTED_MODELS` lists disagree:
 
-| Model | UI provider | Problem |
-|---|---|---|
-| `sdxl`, `illustrious-xl`, `noob-ai-xl` | kohya | Kohya provider (`training-sidecar/providers/kohya.py`) is Anima-only → `Unknown model` |
-| `flux2` (Klein 9B) | ai-toolkit | No entry in `ai_toolkit.py` `SUPPORTED_MODELS` (local ai-toolkit install *does* have arch `flux2_klein_9b`) |
-| `ltx23` | ai-toolkit | No sidecar entry (local install has arch `ltx2.3`) |
+| Model                                  | UI provider | Problem                                                                                                     |
+| -------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `sdxl`, `illustrious-xl`, `noob-ai-xl` | kohya       | Kohya provider (`training-sidecar/providers/kohya.py`) is Anima-only → `Unknown model`                      |
+| `flux2` (Klein 9B)                     | ai-toolkit  | No entry in `ai_toolkit.py` `SUPPORTED_MODELS` (local ai-toolkit install _does_ have arch `flux2_klein_9b`) |
+| `ltx23`                                | ai-toolkit  | No sidecar entry (local install has arch `ltx2.3`)                                                          |
 
 **Decision (Mike, 2026-07-10):** implement Kohya SDXL support (`sdxl_train_network.py` exists in
-the local sd-scripts install), *and* offer ai-toolkit as an alternative backend for the SDXL
+the local sd-scripts install), _and_ offer ai-toolkit as an alternative backend for the SDXL
 family since the sidecar already supports the arch. The backend choice must persist with saved
 projects. Add sidecar ai-toolkit entries for `flux2` and `ltx23`.
 
@@ -48,20 +48,20 @@ on Kohya (sd-scripts `flip_aug` is horizontal-only); hide it where unsupported.
 
 Providers hardcode or ignore many visible fields:
 
-| Field | ai-toolkit | Kohya (Anima) |
-|---|---|---|
-| LR Scheduler / Warmup / Restarts | ignored (not emitted) | ✅ |
-| Weight Decay, Seed | ignored | ✅ |
-| Output Precision (`saveFormat`) | ignored — `save.dtype` hardcoded `float16` | ✅ |
-| Gradient Checkpointing, Cache Latents | ignored — hardcoded `True` | ✅ |
-| Sample Steps, Guidance Scale, Noise Scheduler | ignored — model-family defaults | ignored — `euler_a` hardcoded |
-| Loss Type, Timestep Bias, EMA, Backbone LR | ✅ | ignored |
-| Cache Text Embeddings, Unload Text Encoder | ✅ | ignored (auto-derived) |
-| LoRA Type (LoKr) | ✅ | ignored — `networks.lora_anima` hardcoded |
+| Field                                         | ai-toolkit                                 | Kohya (Anima)                             |
+| --------------------------------------------- | ------------------------------------------ | ----------------------------------------- |
+| LR Scheduler / Warmup / Restarts              | ignored (not emitted)                      | ✅                                        |
+| Weight Decay, Seed                            | ignored                                    | ✅                                        |
+| Output Precision (`saveFormat`)               | ignored — `save.dtype` hardcoded `float16` | ✅                                        |
+| Gradient Checkpointing, Cache Latents         | ignored — hardcoded `True`                 | ✅                                        |
+| Sample Steps, Guidance Scale, Noise Scheduler | ignored — model-family defaults            | ignored — `euler_a` hardcoded             |
+| Loss Type, Timestep Bias, EMA, Backbone LR    | ✅                                         | ignored                                   |
+| Cache Text Embeddings, Unload Text Encoder    | ✅                                         | ignored (auto-derived)                    |
+| LoRA Type (LoKr)                              | ✅                                         | ignored — `networks.lora_anima` hardcoded |
 
 **Fix:** per-provider visibility in the field registry (`providers?: TrainingProvider[]` on
 field meta, applied in `getVisibleFields` alongside tier and `hiddenFields`). Fields dead on
-*both* backends (sample steps / guidance / noise scheduler) are hidden entirely until sweep 2
+_both_ backends (sample steps / guidance / noise scheduler) are hidden entirely until sweep 2
 plumbs them (ai-toolkit sample config and Kohya's prompt-file flags both support them).
 
 Related: the "Musubi Tuner" provider label exists in `types.ts` with no backend behind it.
@@ -70,7 +70,7 @@ Related: the "Musubi Tuner" provider label exists in `types.ts` with no backend 
 
 - Cache Latents: Simple → Advanced (or remove; hardcoded on for ai-toolkit).
 - Output Precision: Simple → Intermediate.
-- Seed: lives in the Sampling section but is the *training* seed (Kohya `--seed`; ai-toolkit's
+- Seed: lives in the Sampling section but is the _training_ seed (Kohya `--seed`; ai-toolkit's
   sample seed is hardcoded 42). Move to Learning.
 - Resolution: consider Intermediate → Simple; it genuinely changes outcomes for novices.
 - **Trigger word** is the one missing Simple-tier feature (ai-toolkit supports `trigger_word`
