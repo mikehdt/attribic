@@ -244,6 +244,17 @@ const jobsSlice = createSlice({
       const job = state.jobs[action.payload.id];
       if (!job || job.type !== 'tagging') return;
 
+      // First terminal status wins — the same rule the progress reducers above
+      // follow. A `complete` event parsed just before the user's cancel landed
+      // must not flip the job back out of `cancelled`, and the original
+      // `completedAt` is when the run actually ended. The summary still
+      // attaches when the earlier transition had none: it's the only record of
+      // what the run produced.
+      if (isTerminalStatus(job.status)) {
+        job.summary ??= action.payload.summary;
+        return;
+      }
+
       job.summary = action.payload.summary;
       job.status = 'completed';
       job.completedAt = Date.now();
@@ -263,6 +274,11 @@ const jobsSlice = createSlice({
       const job = state.jobs[action.payload.id];
       if (!job || job.type !== 'tagging') return;
 
+      if (isTerminalStatus(job.status)) {
+        if (action.payload.summary) job.summary ??= action.payload.summary;
+        return;
+      }
+
       job.status = 'failed';
       job.error = action.payload.error;
       if (action.payload.summary) job.summary = action.payload.summary;
@@ -271,7 +287,7 @@ const jobsSlice = createSlice({
 
     cancelTagging: (state, action: PayloadAction<string>) => {
       const job = state.jobs[action.payload];
-      if (!job || job.type !== 'tagging') return;
+      if (!job || job.type !== 'tagging' || isTerminalStatus(job.status)) return;
 
       job.status = 'cancelled';
       job.completedAt = Date.now();

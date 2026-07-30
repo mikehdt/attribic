@@ -197,6 +197,12 @@ export function useAutoTagger({
     Map<string, { fileId: string; error: string }[]>
   >(new Map());
 
+  // The provider that actually ran each job. The current *selection* isn't it:
+  // a reattached batch ran before this session's selection existed, and the
+  // user can change the selector while a batch streams. Same per-job keying as
+  // the errors above, for the same reason.
+  const jobProviderTypesRef = useRef<Map<string, 'vlm' | 'onnx'>>(new Map());
+
   // Each live job's abort signal. `abortTagging` drops the controller from the
   // controllers module as it aborts, so the signal is held here to stay
   // queryable — it's the only truthful per-job "was this cancelled locally?".
@@ -457,7 +463,8 @@ export function useAutoTagger({
         ...baseSummary,
         errorCount: imageErrors.length,
         errors: [...imageErrors],
-        providerType: selectedProviderType,
+        providerType:
+          jobProviderTypesRef.current.get(jobId) ?? selectedProviderType,
       };
 
       // Which assets actually got something, read before the flush clears the
@@ -574,6 +581,7 @@ export function useAutoTagger({
       const abortController = registerTaggingController(jobId);
       jobAbortSignalsRef.current.set(jobId, abortController.signal);
       imageErrorsRef.current.set(jobId, []);
+      jobProviderTypesRef.current.set(jobId, batch.providerType ?? 'vlm');
       setError(null);
 
       // Deliberately no pre-emptive clear of the staged results: the replay
@@ -740,6 +748,7 @@ export function useAutoTagger({
         removeTaggingController(jobId);
         jobAbortSignalsRef.current.delete(jobId);
         imageErrorsRef.current.delete(jobId);
+        jobProviderTypesRef.current.delete(jobId);
       }
     },
     [
@@ -872,6 +881,9 @@ export function useAutoTagger({
 
     setError(null);
     imageErrorsRef.current.set(jobId, []);
+    if (selectedProviderType) {
+      jobProviderTypesRef.current.set(jobId, selectedProviderType);
+    }
 
     // Whether the batch reached a terminal state on the sidecar (finished,
     // was cancelled, or genuinely errored) — as opposed to this client merely
@@ -1193,6 +1205,7 @@ export function useAutoTagger({
       removeTaggingController(jobId);
       jobAbortSignalsRef.current.delete(jobId);
       imageErrorsRef.current.delete(jobId);
+      jobProviderTypesRef.current.delete(jobId);
 
       // Auto-release the model from GPU/CPU memory if the preference says to,
       // but ONLY once the batch has genuinely finished server-side. Detaching

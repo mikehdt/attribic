@@ -72,8 +72,17 @@ _WATCHDOG_INTERVAL_S = 30.0
 
 async def _idle_watchdog():
     """Exit the process when Node has gone away and there's no work left."""
+    # Set once we've released the caption model during an unclaimed-results
+    # hold, so we don't retry the unload every tick; cleared when a client
+    # comes back.
+    released_model_while_holding = False
+
     while True:
         await asyncio.sleep(_WATCHDOG_INTERVAL_S)
+
+        # Retire long-dead caption batches on the same tick — this is what
+        # eventually lets the unclaimed-results hold below expire.
+        caption_manager.prune_terminal()
 
         # Not managed by a heartbeating Node — leave it alone.
         if not _heartbeat_seen:
@@ -84,6 +93,28 @@ async def _idle_watchdog():
 
         idle_for = time.monotonic() - _last_activity_at
         if idle_for < _IDLE_SHUTDOWN_GRACE_S:
+            released_model_while_holding = False
+            continue
+
+        # A completed batch whose client died still holds the only copy of its
+        # captions (unlike training runs, caption batches aren't persisted).
+        # Exiting here would destroy exactly the results the reattach flow
+        # exists to hand back, so hold the process open until either a client
+        # collects them or the retention TTL retires the batch.
+        if caption_manager.has_unclaimed_results:
+            # Holding the results doesn't mean holding the model — nothing can
+            # ask for inference while the client is gone, so give the VRAM back
+            # rather than pinning several GB for the retention window.
+            if not released_model_while_holding:
+                released_model_while_holding = True
+                try:
+                    await unload_caption_provider()
+                except Exception as err:
+                    print(
+                        "[sidecar] Could not release the caption model while "
+                        f"holding unclaimed results: {err}",
+                        flush=True,
+                    )
             continue
 
         print(

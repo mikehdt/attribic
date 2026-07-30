@@ -9,6 +9,7 @@ but we only run one at a time for now to avoid GPU contention.
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
@@ -19,6 +20,15 @@ from ws_manager import WebSocketManager
 
 # Outcome of a clear request: removed, never existed, or still live.
 ClearBatchResult = Literal["cleared", "not-found", "active"]
+
+# Terminal batches are kept so a client that lost its socket can still collect
+# their results, but not forever: without a bound they accumulate (with every
+# caption they produced) for the life of the process. A client that hasn't
+# reattached within the TTL isn't coming back for this run.
+TERMINAL_BATCH_TTL_S = 30 * 60.0
+# Belt-and-braces cap for a session that churns through batches faster than
+# the TTL retires them. Oldest terminal batches go first.
+MAX_TERMINAL_BATCHES = 20
 
 
 @dataclass
@@ -43,6 +53,9 @@ class BatchState:
     # Model path from the request — reattaching clients derive a display
     # name from it (the original request isn't otherwise recoverable).
     model_path: Optional[str] = None
+    # `time.monotonic()` at the moment the batch went terminal — drives the
+    # retention sweep. None while queued or running.
+    finished_at: Optional[float] = None
 
 
 class CaptionBatchManager:
@@ -54,6 +67,10 @@ class CaptionBatchManager:
         self.ws_manager = ws_manager
         self.registry = registry
         self.batches: dict[str, BatchState] = {}
+        # Strong references to fire-and-forget broadcast tasks. Without these
+        # the event loop holds only a weak reference and the broadcast can be
+        # garbage-collected before it runs.
+        self._background_tasks: set[asyncio.Task] = set()
         # Re-broadcast queue positions whenever the shared queue moves, so
         # queued batches' clients see themselves advance in line.
         registry.add_queue_listener(self._on_queue_change)
@@ -108,7 +125,9 @@ class CaptionBatchManager:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        loop.create_task(self._broadcast_queue_positions())
+        task = loop.create_task(self._broadcast_queue_positions())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _broadcast_queue_positions(self) -> None:
         for state in list(self.batches.values()):
@@ -133,12 +152,59 @@ class CaptionBatchManager:
             b.status in ("queued", "running") for b in self.batches.values()
         )
 
+    @property
+    def has_unclaimed_results(self) -> bool:
+        """True when a terminal batch still holds results nobody collected.
+
+        A client acknowledges collection by clearing the batch, so anything
+        terminal with results left is a run whose client died mid-flight. The
+        idle watchdog checks this before exiting — the in-memory copy is all
+        that survives once the process goes.
+        """
+        return any(
+            b.finished_at is not None and b.results
+            for b in self.batches.values()
+        )
+
+    def _settle(self, state: BatchState, status: str) -> None:
+        """Record a terminal status and stamp it for the retention sweep."""
+        state.status = status
+        state.finished_at = time.monotonic()
+
+    def prune_terminal(self) -> list[str]:
+        """Retire terminal batches past the TTL, then the oldest over the cap.
+
+        Returns the ids removed. Queued/running batches are never touched.
+        """
+        now = time.monotonic()
+        terminal = sorted(
+            (b for b in self.batches.values() if b.finished_at is not None),
+            key=lambda b: b.finished_at or 0.0,
+        )
+        doomed = [
+            b.batch_id
+            for b in terminal
+            if now - (b.finished_at or now) >= TERMINAL_BATCH_TTL_S
+        ]
+        survivors = [b for b in terminal if b.batch_id not in set(doomed)]
+        overflow = max(0, len(survivors) - MAX_TERMINAL_BATCHES)
+        doomed.extend(b.batch_id for b in survivors[:overflow])
+
+        for batch_id in doomed:
+            del self.batches[batch_id]
+            self.registry.remove(batch_id)
+        return doomed
+
     async def start_batch(self, request: CaptionBatchRequest) -> None:
         """Enqueue a batch caption run.
 
         The batch starts in QUEUED lifecycle status. When a worker picks it up,
         the runner loads the model and streams per-image progress.
         """
+        # Retire long-dead batches first so a session that never closes the app
+        # doesn't hold every run's captions for the life of the process.
+        self.prune_terminal()
+
         if request.batch_id in self.batches:
             raise RuntimeError(f"Batch {request.batch_id} already exists")
 
@@ -212,7 +278,7 @@ class CaptionBatchManager:
                 pass
 
         async def broadcast_cancelled() -> None:
-            state.status = "cancelled"
+            self._settle(state, "cancelled")
             self.registry.finish(state.batch_id, LifecycleStatus.CANCELLED)
             await self._broadcast(
                 CaptionBatchProgress(
@@ -329,7 +395,7 @@ class CaptionBatchManager:
                         )
                     )
 
-            state.status = "completed"
+            self._settle(state, "completed")
             self.registry.finish(state.batch_id, LifecycleStatus.COMPLETED)
             await self._broadcast(
                 CaptionBatchProgress(
@@ -344,7 +410,7 @@ class CaptionBatchManager:
             import traceback
 
             traceback.print_exc()
-            state.status = "failed"
+            self._settle(state, "failed")
             state.error = str(err)
             self.registry.finish(state.batch_id, LifecycleStatus.FAILED)
             await self._broadcast(
@@ -369,7 +435,7 @@ class CaptionBatchManager:
             # the terminal state: the Node client is holding a WebSocket open
             # for this batch and hangs forever without one.
             self.registry.cancel_queued(batch_id)
-            state.status = "cancelled"
+            self._settle(state, "cancelled")
             await self._broadcast(
                 CaptionBatchProgress(
                     batch_id=state.batch_id,

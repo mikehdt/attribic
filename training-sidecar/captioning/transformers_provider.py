@@ -310,6 +310,12 @@ class _TqdmStderrHook:
         return getattr(self._original, name)
 
 
+# The stderr swap below is process-wide, so only one hook may be installed at
+# a time. Benign today (one caption worker), but a second worker or a
+# multi-GPU split would otherwise have two loads fighting over sys.stderr.
+_stderr_hook_lock = threading.Lock()
+
+
 @contextlib.contextmanager
 def _broadcast_tqdm(
     on_load_progress: Optional[LoadProgressCallback],
@@ -319,17 +325,30 @@ def _broadcast_tqdm(
     progress lines get forwarded to `on_load_progress`. No monkey-patching
     of transformers or huggingface_hub internals — we just observe the
     bytes tqdm writes.
+
+    Concurrent loads yield unhooked rather than stealing the active hook's
+    callback: losing load-progress granularity beats reporting one batch's
+    shard counts to another batch's client, or restoring a foreign stream.
     """
     if on_load_progress is None:
         yield
         return
 
+    if not _stderr_hook_lock.acquire(blocking=False):
+        yield
+        return
+
     original_stderr = sys.stderr
-    sys.stderr = _TqdmStderrHook(original_stderr, on_load_progress)  # type: ignore[assignment]
+    hook = _TqdmStderrHook(original_stderr, on_load_progress)
+    sys.stderr = hook  # type: ignore[assignment]
     try:
         yield
     finally:
-        sys.stderr = original_stderr
+        # Only unwind our own swap — if something nested a further hook on top
+        # and hasn't unwound yet, clobbering it would lose their original.
+        if sys.stderr is hook:
+            sys.stderr = original_stderr
+        _stderr_hook_lock.release()
 
 
 def _cancel_stopping_criteria(cancel_check: Optional[CancelCheck]) -> Any:

@@ -9,6 +9,16 @@
 
 const STORAGE_PREFIX = 'img-tagger:pending-tags:';
 
+/**
+ * How long an unflushed result is worth keeping. Results are keyed by bare
+ * `fileId` (the project-relative path minus extension), so a result for an
+ * image that has since been deleted or renamed waits forever — and a *new*
+ * image that later takes the same name silently inherits it. A week is long
+ * enough to cover "ran a batch, came back to the project next weekend" and
+ * short enough that nothing inherits tags it never earned.
+ */
+const PENDING_RESULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export type PendingTagResult = {
   fileId: string;
   position: 'start' | 'end';
@@ -16,6 +26,8 @@ export type PendingTagResult = {
   tags?: string[];
   /** VLM captioner result — natural-language caption text */
   caption?: string;
+  /** `Date.now()` when this result was staged — drives TTL expiry on read. */
+  stagedAt?: number;
 };
 
 /**
@@ -35,11 +47,12 @@ export function appendPendingTagResult(
     const existing: PendingTagResult[] = JSON.parse(
       localStorage.getItem(key) || '[]',
     );
+    const stamped = { ...result, stagedAt: Date.now() };
     const index = existing.findIndex((r) => r.fileId === result.fileId);
     if (index === -1) {
-      existing.push(result);
+      existing.push(stamped);
     } else {
-      existing[index] = result;
+      existing[index] = stamped;
     }
     localStorage.setItem(key, JSON.stringify(existing));
   } catch {
@@ -47,13 +60,39 @@ export function appendPendingTagResult(
   }
 }
 
-/** Read all pending results for a project. */
+/**
+ * Read all pending results for a project, dropping any that have aged out.
+ *
+ * Expiry happens on read (and rewrites storage when it bites) because there's
+ * no other pass over this data — a project the user never revisits would keep
+ * its stale results forever otherwise.
+ */
 export function getPendingTagResults(
   projectFolderName: string,
 ): PendingTagResult[] {
   const key = STORAGE_PREFIX + projectFolderName;
   try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
+    const stored: PendingTagResult[] = JSON.parse(
+      localStorage.getItem(key) || '[]',
+    );
+    const now = Date.now();
+    let changed = false;
+
+    const live = stored.filter((result) => {
+      if (typeof result.stagedAt !== 'number') {
+        // Staged before this field existed — start its clock now rather than
+        // expiring a result that might still be wanted.
+        result.stagedAt = now;
+        changed = true;
+        return true;
+      }
+      if (now - result.stagedAt < PENDING_RESULT_TTL_MS) return true;
+      changed = true;
+      return false;
+    });
+
+    if (changed) setPendingTagResults(projectFolderName, live);
+    return live;
   } catch {
     return [];
   }
