@@ -115,9 +115,13 @@ const sizeStyles: Record<DropdownSize, string> = {
 const MIN_MENU_WIDTH = 160;
 
 /**
- * Internal dropdown component that uses the popup context
+ * A reusable dropdown component with listbox semantics and keyboard navigation.
+ * Requires a PopupProvider ancestor in the component tree.
+ *
+ * When only one selectable (non-disabled) item exists, renders as static text
+ * instead of an interactive dropdown.
  */
-function DropdownInternal<T>({
+export function Dropdown<T>({
   items,
   selectedValue,
   onChange,
@@ -443,15 +447,4 @@ function DropdownInternal<T>({
       </Popup>
     </div>
   );
-}
-
-/**
- * A reusable dropdown component with listbox semantics and keyboard navigation.
- * Requires a PopupProvider ancestor in the component tree.
- *
- * When only one selectable (non-disabled) item exists, renders as static text
- * instead of an interactive dropdown.
- */
-export function Dropdown<T>(props: DropdownProps<T>) {
-  return <DropdownInternal {...props} />;
 }

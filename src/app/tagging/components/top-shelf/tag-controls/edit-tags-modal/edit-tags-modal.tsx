@@ -171,7 +171,7 @@ export const EditTagsModal = ({
             })}
           </div>
 
-          <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+          <div className="flex flex-wrap gap-4 text-sm text-slate-500 dark:text-slate-400">
             <p className="w-full">
               Editing a tag will update it across all assets where it appears.
               Multiple tags can be renamed to the same value. Duplicate tags

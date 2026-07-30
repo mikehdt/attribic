@@ -76,7 +76,7 @@ export function ProgressBar({
       aria-valuemax={max}
     >
       {indeterminate ? (
-        <div className="animate-progress-shimmer absolute inset-0 bg-linear-to-r from-transparent via-white/50 to-transparent dark:via-white/15" />
+        <div className="absolute inset-0 animate-progress-shimmer bg-linear-to-r from-transparent via-white/50 to-transparent dark:via-white/15" />
       ) : (
         <div
           className={`h-full transition-all duration-300 ease-out ${fillColorClasses[color]} ${children ? 'flex items-center justify-end' : ''}`}

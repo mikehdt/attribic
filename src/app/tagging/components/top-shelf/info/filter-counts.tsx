@@ -44,7 +44,9 @@ const FilterIndicatorsInfoComponent = () => {
         {
           count: filterCount.filenamePatterns,
           label:
-            filterCount.filenamePatterns === 1 ? 'name search' : 'name searches',
+            filterCount.filenamePatterns === 1
+              ? 'name search'
+              : 'name searches',
           color:
             'bg-violet-50 border-violet-300 text-violet-600 dark:bg-violet-900 dark:text-violet-500',
         },

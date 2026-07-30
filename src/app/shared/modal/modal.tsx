@@ -16,7 +16,6 @@ type ModalProps = {
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
-  animationDuration?: never;
   /** Prevent closing via backdrop click, ESC key, or X button */
   preventClose?: boolean;
   /** ID of the element that labels the dialog (rendered as aria-labelledby) */

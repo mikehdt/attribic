@@ -6,8 +6,7 @@ import { useStats } from './use-stats';
 function StatItem({ label, value }: { label: string; value: string }) {
   return (
     <span>
-      {label}{' '}
-      <span className="font-medium text-(--foreground)">{value}</span>
+      {label} <span className="font-medium text-(--foreground)">{value}</span>
     </span>
   );
 }

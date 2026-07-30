@@ -13,11 +13,7 @@
  */
 
 export type SampleAspect =
-  | 'portrait-tall'
-  | 'portrait'
-  | 'square'
-  | 'landscape'
-  | 'landscape-wide';
+  'portrait-tall' | 'portrait' | 'square' | 'landscape' | 'landscape-wide';
 
 /** What a prompt gets when it has never been given a shape. */
 export const DEFAULT_SAMPLE_ASPECT: SampleAspect = 'square';
@@ -42,7 +38,12 @@ export const SAMPLE_ASPECTS: {
   { value: 'landscape', label: 'Landscape', wMul: 1.125, hMul: 0.875 },
   { value: 'square', label: 'Square', wMul: 1, hMul: 1 },
   { value: 'portrait', label: 'Portrait', wMul: 0.875, hMul: 1.125 },
-  { value: 'portrait-tall', label: 'Tall portrait', wMul: 0.8125, hMul: 1.1875 },
+  {
+    value: 'portrait-tall',
+    label: 'Tall portrait',
+    wMul: 0.8125,
+    hMul: 1.1875,
+  },
 ];
 
 /**

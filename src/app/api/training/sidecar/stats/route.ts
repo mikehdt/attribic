@@ -12,10 +12,7 @@ import { getSidecarSystemStats } from '@/app/services/training/sidecar-manager';
 export async function GET() {
   const stats = await getSidecarSystemStats();
   if (stats === null) {
-    return NextResponse.json(
-      { error: 'Sidecar unavailable' },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: 'Sidecar unavailable' }, { status: 503 });
   }
   return NextResponse.json(stats);
 }

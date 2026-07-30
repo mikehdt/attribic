@@ -358,7 +358,9 @@ function seedJobFromSidecar(
  */
 function trainingJobFromSidecar(entry: SidecarJobEntry): TrainingJob {
   const seededAt = entry.started_at ? Date.parse(entry.started_at) : Date.now();
-  const completedAt = entry.completed_at ? Date.parse(entry.completed_at) : null;
+  const completedAt = entry.completed_at
+    ? Date.parse(entry.completed_at)
+    : null;
 
   // `buildProgress` dates a terminal tick to now, which is right for a live
   // stream and wrong for a record read back off disk — a run that finished last

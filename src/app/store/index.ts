@@ -46,7 +46,9 @@ export type RootState = ReturnType<typeof rootReducer>;
  */
 export const makeStore = (preloadedState?: Partial<RootState>) => {
   return configureStore({
-    devTools: true,
+    // Redux DevTools ship the whole action stream to the extension; that's a
+    // development affordance, not something a production bundle should carry.
+    devTools: process.env.NODE_ENV !== 'production',
     reducer: rootReducer,
     preloadedState,
     middleware: (getDefaultMiddleware) =>

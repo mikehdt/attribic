@@ -9,6 +9,8 @@ import {
 import { Button } from '@/app/shared/button';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { Modal } from '@/app/shared/modal';
+import { useAppDispatch } from '@/app/store/hooks';
+import { addToast } from '@/app/store/toasts';
 
 import { ModelPathField } from '../model-path-field/model-path-field';
 import { useEnsureModelStatuses } from '../model-path-field/use-ensure-model-statuses';
@@ -28,6 +30,7 @@ export function ModelDefaultsModal({
   onClose,
   onSaved,
 }: ModelDefaultsModalProps) {
+  const dispatch = useAppDispatch();
   const [draft, setDraft] = useState<AppModelDefaults>({});
   // Snapshot of what was loaded — used as the reset target so the user
   // can undo in-modal edits back to the last saved value.
@@ -66,15 +69,27 @@ export function ModelDefaultsModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft),
       });
+      // A non-OK answer still parses as JSON, so without this check an error
+      // body was applied as though it were the saved defaults.
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
       const saved = await res.json();
       onSaved(saved);
       onClose();
-    } catch {
-      // TODO: toast error
+    } catch (err) {
+      // Stay open with the draft intact — closing silently looked like a save.
+      dispatch(
+        addToast({
+          children:
+            err instanceof Error
+              ? `Couldn't save model defaults: ${err.message}`
+              : "Couldn't save model defaults",
+          variant: 'error',
+        }),
+      );
     } finally {
       setSaving(false);
     }
-  }, [draft, onClose, onSaved]);
+  }, [dispatch, draft, onClose, onSaved]);
 
   return (
     <Modal

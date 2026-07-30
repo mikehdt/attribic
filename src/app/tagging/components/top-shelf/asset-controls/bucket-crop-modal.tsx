@@ -22,8 +22,8 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
 
   // Parse dimensions from inputs, with fallback to defaults
   const dimensions = useMemo(() => {
-    const width = parseInt(inputWidth) || 1024;
-    const height = parseInt(inputHeight) || 768;
+    const width = parseInt(inputWidth, 10) || 1024;
+    const height = parseInt(inputHeight, 10) || 768;
     return { width, height };
   }, [inputWidth, inputHeight]);
 
@@ -93,7 +93,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
   // Find valid height options for a given width
   const validHeightsForWidth = useMemo(() => {
     if (!widthPriority) return [];
-    const targetWidth = parseInt(inputWidth) || 1024;
+    const targetWidth = parseInt(inputWidth, 10) || 1024;
     const exactMatches = allBuckets
       .filter((bucket) => bucket.width === targetWidth)
       .map((bucket) => bucket.height)
@@ -120,7 +120,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
   // Track if we're showing rounded values for height
   const isHeightRounded = useMemo(() => {
     if (!widthPriority) return false;
-    const targetWidth = parseInt(inputWidth) || 1024;
+    const targetWidth = parseInt(inputWidth, 10) || 1024;
     const exactMatches = allBuckets.filter(
       (bucket) => bucket.width === targetWidth,
     );
@@ -130,7 +130,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
   // Find valid width options for a given height
   const validWidthsForHeight = useMemo(() => {
     if (!heightPriority) return [];
-    const targetHeight = parseInt(inputHeight) || 768;
+    const targetHeight = parseInt(inputHeight, 10) || 768;
     const exactMatches = allBuckets
       .filter((bucket) => bucket.height === targetHeight)
       .map((bucket) => bucket.width)
@@ -158,7 +158,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
   // Track if we're showing rounded values for width
   const isWidthRounded = useMemo(() => {
     if (!heightPriority) return false;
-    const targetHeight = parseInt(inputHeight) || 768;
+    const targetHeight = parseInt(inputHeight, 10) || 768;
     const exactMatches = allBuckets.filter(
       (bucket) => bucket.height === targetHeight,
     );
@@ -218,14 +218,14 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
 
       // If width priority is enabled, auto-select a valid height for the new width
       if (widthPriority) {
-        const targetWidth = parseInt(newWidth) || 1024;
+        const targetWidth = parseInt(newWidth, 10) || 1024;
         const validHeights = allBuckets
           .filter((bucket) => bucket.width === targetWidth)
           .map((bucket) => bucket.height)
           .sort((a, b) => a - b);
 
         if (validHeights.length > 0) {
-          const currentHeight = parseInt(inputHeight);
+          const currentHeight = parseInt(inputHeight, 10);
           // If current height is not valid for new width, select first valid height
           if (!validHeights.includes(currentHeight)) {
             setInputHeight(validHeights[0].toString());
@@ -243,14 +243,14 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
 
       // If height priority is enabled, auto-select a valid width for the new height
       if (heightPriority) {
-        const targetHeight = parseInt(newHeight) || 768;
+        const targetHeight = parseInt(newHeight, 10) || 768;
         const validWidths = allBuckets
           .filter((bucket) => bucket.height === targetHeight)
           .map((bucket) => bucket.width)
           .sort((a, b) => a - b);
 
         if (validWidths.length > 0) {
-          const currentWidth = parseInt(inputWidth);
+          const currentWidth = parseInt(inputWidth, 10);
           // If current width is not valid for new height, select first valid width
           if (!validWidths.includes(currentWidth)) {
             setInputWidth(validWidths[0].toString());
@@ -268,7 +268,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
       if (newValue) {
         setHeightPriority(false);
         // Auto-select first valid height for current width
-        const targetWidth = parseInt(inputWidth) || 1024;
+        const targetWidth = parseInt(inputWidth, 10) || 1024;
         const validHeights = allBuckets
           .filter((bucket) => bucket.width === targetWidth)
           .map((bucket) => bucket.height)
@@ -288,7 +288,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
       if (newValue) {
         setWidthPriority(false);
         // Auto-select first valid width for current height
-        const targetHeight = parseInt(inputHeight) || 768;
+        const targetHeight = parseInt(inputHeight, 10) || 768;
         const validWidths = allBuckets
           .filter((bucket) => bucket.height === targetHeight)
           .map((bucket) => bucket.width)
@@ -374,7 +374,7 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
               </div>
 
               {/* Dimension labels */}
-              <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-center text-xs whitespace-nowrap text-slate-500">
+              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-center text-sm whitespace-nowrap text-slate-500 dark:text-slate-400">
                 {dimensions.width} &times; {dimensions.height}
               </div>
             </div>
@@ -417,8 +417,8 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
                       : width.toString(),
                   }))}
                   selectedValue={
-                    validWidthsForHeight.includes(parseInt(inputWidth))
-                      ? parseInt(inputWidth)
+                    validWidthsForHeight.includes(parseInt(inputWidth, 10))
+                      ? parseInt(inputWidth, 10)
                       : validWidthsForHeight[0]
                   }
                   onChange={handleWidthDropdownChange}
@@ -470,8 +470,8 @@ export const BucketCropModal = ({ isOpen, onClose }: BucketCropModalProps) => {
                       : height.toString(),
                   }))}
                   selectedValue={
-                    validHeightsForWidth.includes(parseInt(inputHeight))
-                      ? parseInt(inputHeight)
+                    validHeightsForWidth.includes(parseInt(inputHeight, 10))
+                      ? parseInt(inputHeight, 10)
                       : validHeightsForWidth[0]
                   }
                   onChange={handleHeightDropdownChange}

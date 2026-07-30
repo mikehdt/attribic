@@ -10,11 +10,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { MenuButton, MenuItem } from '@/app/shared/menu-button';
 import { gatherTags } from '@/app/store/assets';
 import { selectFilterTags } from '@/app/store/filters';
-import {
-  useAppDispatch,
-  useAppSelector,
-  useAppStore,
-} from '@/app/store/hooks';
+import { useAppDispatch, useAppSelector, useAppStore } from '@/app/store/hooks';
 import { selectSelectedAssetsCount } from '@/app/store/selection';
 import {
   selectEffectiveScopeAssetIds,

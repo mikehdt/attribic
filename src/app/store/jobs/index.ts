@@ -287,7 +287,8 @@ const jobsSlice = createSlice({
 
     cancelTagging: (state, action: PayloadAction<string>) => {
       const job = state.jobs[action.payload];
-      if (!job || job.type !== 'tagging' || isTerminalStatus(job.status)) return;
+      if (!job || job.type !== 'tagging' || isTerminalStatus(job.status))
+        return;
 
       job.status = 'cancelled';
       job.completedAt = Date.now();

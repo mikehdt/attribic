@@ -120,10 +120,26 @@ function getSpawnCommand(): { command: string; args: string[] } {
 function killProcessTree(proc: ChildProcess): void {
   if (!proc.pid) return;
   if (process.platform === 'win32') {
-    spawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)]);
+    spawnTaskkill(proc.pid);
   } else {
     proc.kill('SIGTERM');
   }
+}
+
+/**
+ * `taskkill /T` on Windows — the only way to take the whole tree (the sidecar
+ * spawns ai-toolkit and sd-scripts children).
+ *
+ * The error listener is not optional: a ChildProcess that fails to spawn emits
+ * `error`, and an unhandled `error` event is a hard crash of the Node server.
+ */
+function spawnTaskkill(pid: number): void {
+  const killer = spawn('taskkill', ['/F', '/T', '/PID', String(pid)], {
+    windowsHide: true,
+  });
+  killer.on('error', (err) => {
+    console.error(`[sidecar] taskkill failed for pid ${pid}: ${err.message}`);
+  });
 }
 
 /**
@@ -220,6 +236,18 @@ function startHeartbeat(): void {
   void sendHeartbeat();
 }
 
+/**
+ * Stop heartbeating. Called when we deliberately shut the sidecar down, so the
+ * timer isn't left pinging a dead port every 30s for the life of the server —
+ * and so a later spawn gets a fresh immediate ping rather than waiting out the
+ * current interval.
+ */
+function stopHeartbeat(): void {
+  if (!heartbeatTimer) return;
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
 // In-flight startup, shared so concurrent callers await the same spawn
 // instead of the second one seeing 'starting' and bailing with a
 // spurious "not ready" error.
@@ -281,9 +309,11 @@ async function doSpawnSidecar(): Promise<void> {
 
     let stdoutBuffer = '';
 
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
-      stdoutBuffer += text;
+    // Detached once the handshake lands: this buffer accumulates everything the
+    // sidecar ever prints, so leaving the listener attached for a multi-hour
+    // training run grows it without bound (and re-scans it per chunk).
+    const onStdout = (chunk: Buffer) => {
+      stdoutBuffer += chunk.toString();
 
       if (stdoutBuffer.includes('SIDECAR_READY')) {
         clearTimeout(timeout);
@@ -292,9 +322,15 @@ async function doSpawnSidecar(): Promise<void> {
         if (match) {
           state.port = parseInt(match[1], 10);
         }
+        proc.stdout?.off('data', onStdout);
+        stdoutBuffer = '';
+        // Nothing reads stdout from here on, but an unconsumed pipe fills up
+        // and blocks the child's writes — keep it flowing (and discarded).
+        proc.stdout?.resume();
         resolve(true);
       }
-    });
+    };
+    proc.stdout?.on('data', onStdout);
 
     proc.stderr?.on('data', (chunk: Buffer) => {
       // Log stderr but don't treat it as fatal (uvicorn logs to stderr)
@@ -488,6 +524,11 @@ export async function getSidecarSystemStats(): Promise<unknown | null> {
  * Node restart) — then wait until its port is free so a fresh spawn can bind.
  */
 async function killSidecarAndWait(): Promise<void> {
+  // Stop pinging first: a heartbeat landing mid-kill tells the sidecar's
+  // watchdog a client is still present, and after the kill it would just be
+  // fetching a dead port every 30s.
+  stopHeartbeat();
+
   if (state.process) {
     killProcessTree(state.process);
     state.process = null;
@@ -499,7 +540,7 @@ async function killSidecarAndWait(): Promise<void> {
       const pid = parseInt(fs.readFileSync(pidPath, 'utf-8').trim(), 10);
       if (!Number.isNaN(pid) && isProcessAlive(pid)) {
         if (process.platform === 'win32') {
-          spawn('taskkill', ['/F', '/T', '/PID', String(pid)]);
+          spawnTaskkill(pid);
         } else {
           try {
             process.kill(pid, 'SIGTERM');
