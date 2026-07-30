@@ -80,8 +80,11 @@ const scanDataset =
   (folderName: string): AppThunk =>
   async (dispatch) => {
     try {
-      const { exists, folders } = await scanDatasetFolders(folderName);
-      dispatch(reconcileDatasetFolders({ folderName, exists, folders }));
+      const { exists, folders, captionMode } =
+        await scanDatasetFolders(folderName);
+      dispatch(
+        reconcileDatasetFolders({ folderName, exists, captionMode, folders }),
+      );
     } catch {
       // Leave the existing folders alone; a failed read shouldn't wipe them.
       return;

@@ -61,6 +61,7 @@ const TrainingConfigFormComponent = ({
     setModelPath,
     resetSection,
     addDataset,
+    setDatasetCaptionEmission,
     removeDataset,
     rescanDatasets,
     setFolderRepeats,
@@ -215,12 +216,14 @@ const TrainingConfigFormComponent = ({
             datasetIssues={datasetIssues}
             extraFolders={state.extraFolders}
             selectedProvider={state.selectedProvider}
+            modelId={state.modelId}
             viewMode={viewMode}
             hasChanges={sectionHasChanges.dataset}
             visibleFields={visibleFields}
             hiddenChangesCount={hiddenChanges.dataset}
             onAddDataset={addDataset}
             onRemoveDataset={removeDataset}
+            onSetCaptionEmission={setDatasetCaptionEmission}
             onRescanDatasets={rescanDatasets}
             onSetFolderRepeats={setFolderRepeats}
             onUpdateFolderAugment={updateFolderAugment}

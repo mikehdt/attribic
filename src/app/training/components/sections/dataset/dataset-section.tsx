@@ -2,13 +2,18 @@ import {
   FolderIcon,
   FolderOpenIcon,
   FolderXIcon,
+  InfoIcon,
   PlusIcon,
   RefreshCwIcon,
-  XIcon,
+  Trash2Icon,
 } from 'lucide-react';
 import Image from 'next/image';
 import { memo, useCallback, useMemo, useState } from 'react';
 
+import {
+  type CaptionEmission,
+  captionEmissionAdvice,
+} from '@/app/services/training/caption-emission';
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
@@ -17,9 +22,11 @@ import type { TrainingViewMode } from '@/app/store/preferences';
 import type { DatasetIssue } from '@/app/store/training-config';
 import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
-import { ProjectPicker } from '../../project-picker/project-picker';
+import {
+  type PickedProject,
+  ProjectPicker,
+} from '../../project-picker/project-picker';
 import type {
-  DatasetFolder,
   DatasetSource,
   ExtraFolder,
   FolderAugmentation,
@@ -27,6 +34,7 @@ import type {
 } from '../../training-config-form/use-training-config-form';
 import { SectionHeaderExtra } from '../section-header-extra';
 import { SectionResetButton } from '../section-reset-button';
+import { CaptionEmissionControl } from './caption-emission-control';
 import { FolderRow } from './folder-row';
 
 type DatasetSectionProps = {
@@ -35,19 +43,18 @@ type DatasetSectionProps = {
   datasetIssues: DatasetIssue[];
   extraFolders: ExtraFolder[];
   selectedProvider: TrainingProvider;
+  /** Drives the caption-emission default and its mismatch advice. */
+  modelId: string;
   viewMode: TrainingViewMode;
   hasChanges: boolean;
   visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
-  onAddDataset: (
-    folderName: string,
-    displayName: string,
-    folders: Omit<DatasetFolder, keyof FolderAugmentation>[],
-    thumbnail?: boolean,
-    thumbnailVersion?: number,
-    dimensionHistogram?: Record<string, number>,
-  ) => void;
+  onAddDataset: (project: PickedProject) => void;
   onRemoveDataset: (index: number) => void;
+  onSetCaptionEmission: (
+    index: number,
+    emission: CaptionEmission | null,
+  ) => void;
   /** Re-read every attached dataset from disk: image dimensions and presence. */
   onRescanDatasets: () => void;
   onSetFolderRepeats: (
@@ -70,12 +77,14 @@ const DatasetSectionComponent = ({
   datasetIssues,
   extraFolders,
   selectedProvider,
+  modelId,
   viewMode,
   hasChanges,
   visibleFields,
   hiddenChangesCount,
   onAddDataset,
   onRemoveDataset,
+  onSetCaptionEmission,
   onRescanDatasets,
   onSetFolderRepeats,
   onUpdateFolderAugment,
@@ -204,6 +213,11 @@ const DatasetSectionComponent = ({
           <>
             {datasets.map((ds, dsIndex) => {
               const issue = issuesByFolder.get(ds.folderName);
+              const advice = captionEmissionAdvice({
+                captionMode: ds.scan?.captionMode,
+                pinned: ds.captionEmission,
+                modelId,
+              });
               return (
                 <div
                   key={ds.folderName}
@@ -235,15 +249,35 @@ const DatasetSectionComponent = ({
                         {ds.projectName}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveDataset(dsIndex)}
-                      className="cursor-pointer rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-                      title="Remove dataset source"
-                    >
-                      <XIcon className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <CaptionEmissionControl
+                        captionMode={ds.scan?.captionMode}
+                        pinned={ds.captionEmission}
+                        modelId={modelId}
+                        onChange={(emission) =>
+                          onSetCaptionEmission(dsIndex, emission)
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onRemoveDataset(dsIndex)}
+                        className="cursor-pointer rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                        title="Remove dataset source"
+                      >
+                        <Trash2Icon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
+
+                  {/* What the model would rather have had. Informational —
+                      training a tag-captioned set into an NL model is fine to
+                      do deliberately and poor to do by accident. */}
+                  {advice && (
+                    <p className="mb-2 flex items-start justify-end gap-1.5 text-right text-sm text-slate-400">
+                      <InfoIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                      {advice}
+                    </p>
+                  )}
 
                   {issue && (
                     <div className="mb-2 flex items-start gap-1.5 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5">

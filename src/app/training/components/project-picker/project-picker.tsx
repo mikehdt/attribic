@@ -7,6 +7,7 @@ import React, { memo, useMemo, useState } from 'react';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox/checkbox';
 import { Popup } from '@/app/shared/popup';
+import type { CaptionMode } from '@/app/store/project/types';
 import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 import type {
@@ -18,15 +19,19 @@ import { useProjectPicker } from './use-project-picker';
 /** Augmentation is filled in by the reducer — the picker only supplies identity/count/repeats. */
 export type PickedFolder = Omit<DatasetFolder, keyof FolderAugmentation>;
 
+/** Everything the picker knows about a project when it hands one over. */
+export type PickedProject = {
+  folderName: string;
+  displayName: string;
+  folders: PickedFolder[];
+  thumbnail?: boolean;
+  thumbnailVersion?: number;
+  dimensionHistogram?: Record<string, number>;
+  captionMode?: CaptionMode;
+};
+
 type ProjectPickerProps = {
-  onSelect: (
-    folderName: string,
-    displayName: string,
-    folders: PickedFolder[],
-    thumbnail?: boolean,
-    thumbnailVersion?: number,
-    dimensionHistogram?: Record<string, number>,
-  ) => void;
+  onSelect: (project: PickedProject) => void;
   excludeFolders: string[];
   children: React.ReactNode;
   buttonSize?: 'sm' | 'md';

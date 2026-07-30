@@ -1,3 +1,4 @@
+import type { CaptionEmission } from '@/app/services/training/caption-emission';
 import type {
   ConceptualGroup,
   TrainingFieldName,
@@ -7,6 +8,7 @@ import type {
   ModelPaths,
   TrainingProvider,
 } from '@/app/services/training/types';
+import type { CaptionMode } from '@/app/store/project/types';
 
 export type DatasetSource = {
   projectName: string;
@@ -14,6 +16,16 @@ export type DatasetSource = {
   thumbnail?: boolean;
   thumbnailVersion?: number;
   dimensionHistogram?: Record<string, number>;
+  /**
+   * Which half of a hybrid caption this dataset trains on, or null/absent to
+   * follow the selected model's preference.
+   *
+   * An override rather than a value, for the same reason as `overrideRepeats`:
+   * a stored concrete emission goes stale the moment the model changes, and
+   * would quietly keep training the tag half into a model that wants prose.
+   * Only ever set for hybrid projects — see `services/training/caption-emission`.
+   */
+  captionEmission?: CaptionEmission | null;
   /**
    * What the last disk rescan found for this folder. Derived from disk and
    * never persisted (see `stripDerived`); absent until a scan has run.
@@ -27,6 +39,14 @@ type DatasetScan = {
   exists: boolean;
   /** Assets found on disk, across the root and any repeat subfolders. */
   assetCount: number;
+  /**
+   * The project's caption mode as of this scan. Lives here rather than on the
+   * dataset because it is a reading of the tagging project, not a training
+   * choice — a config saved today must not keep asserting `hybrid` after the
+   * project has been retagged. Being inside `scan` is what makes it derived:
+   * `stripDerived` drops the whole field on save.
+   */
+  captionMode?: CaptionMode;
 };
 
 export type FolderAugmentation = {

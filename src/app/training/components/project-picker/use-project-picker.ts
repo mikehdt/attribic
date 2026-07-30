@@ -8,21 +8,14 @@ import {
   type Project,
 } from '@/app/utils/project-actions';
 
-import type { PickedFolder } from './project-picker';
+import type { PickedFolder, PickedProject } from './project-picker';
 
 export function useProjectPicker({
   excludeFolders,
   onSelect,
 }: {
   excludeFolders: string[];
-  onSelect: (
-    folderName: string,
-    displayName: string,
-    folders: PickedFolder[],
-    thumbnail?: boolean,
-    thumbnailVersion?: number,
-    dimensionHistogram?: Record<string, number>,
-  ) => void;
+  onSelect: (project: PickedProject) => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { openPopup, closePopup, getPopupState } = usePopup();
@@ -77,14 +70,17 @@ export function useProjectPicker({
           ...f,
           overrideRepeats: null,
         }));
-        onSelect(
-          project.name,
-          project.title || project.name,
+        onSelect({
+          folderName: project.name,
+          displayName: project.title || project.name,
           folders,
-          project.thumbnail || undefined,
-          project.thumbnailVersion,
+          thumbnail: project.thumbnail || undefined,
+          thumbnailVersion: project.thumbnailVersion,
           dimensionHistogram,
-        );
+          // Already on the list entry, so the dataset card can render its
+          // caption control on the first paint rather than waiting for a rescan.
+          captionMode: project.captionMode,
+        });
         close();
       } finally {
         setSelectingFolder(null);

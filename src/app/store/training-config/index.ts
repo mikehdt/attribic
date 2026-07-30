@@ -12,6 +12,10 @@ import {
   type PayloadAction,
 } from '@reduxjs/toolkit';
 
+import {
+  type CaptionEmission,
+  isEmissionChoosable,
+} from '@/app/services/training/caption-emission';
 import { valuesDiffer } from '@/app/services/training/field-compare';
 import {
   getSectionFields,
@@ -27,6 +31,7 @@ import {
   type SampleAspect,
 } from '@/app/services/training/sample-sizes';
 import type { TrainingProvider } from '@/app/services/training/types';
+import type { CaptionMode } from '@/app/store/project/types';
 import { parseSubfolder } from '@/app/utils/subfolder-utils';
 
 import type { RootState } from '../index';
@@ -417,6 +422,7 @@ const trainingConfigSlice = createSlice({
         thumbnail?: boolean;
         thumbnailVersion?: number;
         dimensionHistogram?: Record<string, number>;
+        captionMode?: CaptionMode;
         folders: Omit<DatasetFolder, keyof FolderAugmentation>[];
       }>,
     ) => {
@@ -429,6 +435,8 @@ const trainingConfigSlice = createSlice({
         thumbnail: action.payload.thumbnail,
         thumbnailVersion: action.payload.thumbnailVersion,
         dimensionHistogram: action.payload.dimensionHistogram,
+        // Unpinned: follow the model's preference until the user says otherwise.
+        captionEmission: null,
         // The picker read these folders off disk moments ago, so record that
         // as the dataset's scan rather than leaving it unread — otherwise the
         // scan-sync effect immediately opens every image header again for a
@@ -439,6 +447,7 @@ const trainingConfigSlice = createSlice({
             (sum, f) => sum + f.imageCount,
             0,
           ),
+          captionMode: action.payload.captionMode,
         },
         folders: action.payload.folders.map((f) => ({ ...f, ...baseAugment })),
       });
@@ -467,13 +476,14 @@ const trainingConfigSlice = createSlice({
       action: PayloadAction<{
         folderName: string;
         exists: boolean;
+        captionMode?: CaptionMode;
         folders: Omit<
           DatasetFolder,
           keyof FolderAugmentation | 'overrideRepeats'
         >[];
       }>,
     ) => {
-      const { folderName, exists, folders } = action.payload;
+      const { folderName, exists, captionMode, folders } = action.payload;
       const fallback = defaultFolderAugmentation(
         getDefaults(state.form.modelId),
       );
@@ -494,7 +504,17 @@ const trainingConfigSlice = createSlice({
         dataset.scan = {
           exists,
           assetCount: folders.reduce((sum, f) => sum + f.imageCount, 0),
+          captionMode,
         };
+
+        // A pin describes a choice between the two halves of a hybrid caption.
+        // Retag the project to a single-caption mode and that choice no longer
+        // exists, so the pin can only be wrong — drop it and let the file's own
+        // content stand. Cleared on the baseline too, so a rescan that finds a
+        // retagged project doesn't read as an unsaved edit.
+        if (captionMode !== undefined && !isEmissionChoosable(captionMode)) {
+          dataset.captionEmission = null;
+        }
       }
     },
 
@@ -521,6 +541,25 @@ const trainingConfigSlice = createSlice({
 
     removeDataset: (state, action: PayloadAction<number>) => {
       state.form.datasets.splice(action.payload, 1);
+    },
+
+    /**
+     * Pin which half of a hybrid caption a dataset trains on.
+     *
+     * `null` means "follow the model's preference" — the control passes it when
+     * the user picks the segment that is already the default, so choosing the
+     * value the model would have chosen anyway doesn't silently pin it against
+     * a later model switch.
+     */
+    setDatasetCaptionEmission: (
+      state,
+      action: PayloadAction<{
+        index: number;
+        emission: CaptionEmission | null;
+      }>,
+    ) => {
+      const dataset = state.form.datasets[action.payload.index];
+      if (dataset) dataset.captionEmission = action.payload.emission;
     },
 
     setFolderRepeats: (
@@ -666,6 +705,7 @@ export const {
   reconcileDatasetFolders,
   setDatasetHistogram,
   removeDataset,
+  setDatasetCaptionEmission,
   setFolderRepeats,
   updateFolderAugment,
   addExtraFolder,

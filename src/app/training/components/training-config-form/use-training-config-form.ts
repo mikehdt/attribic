@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import type { CaptionEmission } from '@/app/services/training/caption-emission';
 import type {
   ModelComponentType,
   ModelDefinition,
@@ -28,6 +29,7 @@ import {
   selectModelDefaults,
   selectSectionHasChanges,
   setAppModelDefaults as setAppModelDefaultsAction,
+  setDatasetCaptionEmission as setDatasetCaptionEmissionAction,
   setField as setFieldAction,
   setFolderRepeats as setFolderRepeatsAction,
   setModel as setModelAction,
@@ -50,6 +52,8 @@ import type {
   ModelPaths,
   SectionName,
 } from '@/app/store/training-config/types';
+
+import type { PickedProject } from '../project-picker/project-picker';
 
 // Convenience re-exports: the section components sit next to this hook and
 // read their prop types through it rather than reaching into the store.
@@ -162,24 +166,15 @@ export function useTrainingConfigForm() {
   }, [dispatch]);
 
   const addDataset = useCallback(
-    (
-      folderName: string,
-      displayName: string,
-      folders: Omit<DatasetFolder, keyof FolderAugmentation>[],
-      thumbnail?: boolean,
-      thumbnailVersion?: number,
-      dimensionHistogram?: Record<string, number>,
-    ) => {
-      dispatch(
-        addDatasetAction({
-          folderName,
-          displayName,
-          folders,
-          thumbnail,
-          thumbnailVersion,
-          dimensionHistogram,
-        }),
-      );
+    (project: PickedProject) => {
+      dispatch(addDatasetAction(project));
+    },
+    [dispatch],
+  );
+
+  const setDatasetCaptionEmission = useCallback(
+    (index: number, emission: CaptionEmission | null) => {
+      dispatch(setDatasetCaptionEmissionAction({ index, emission }));
     },
     [dispatch],
   );
@@ -283,6 +278,7 @@ export function useTrainingConfigForm() {
     resetSection,
     resetAll,
     addDataset,
+    setDatasetCaptionEmission,
     removeDataset,
     rescanDatasets,
     setFolderRepeats,

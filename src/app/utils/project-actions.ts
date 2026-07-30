@@ -588,6 +588,12 @@ export type ProjectDatasetScan = {
   exists: boolean;
   /** Root and repeat subfolders as they are on disk right now. */
   folders: ProjectFolderDetail[];
+  /**
+   * How the project captions its images right now, which decides what a
+   * training run can emit from it. Read here rather than stored in the
+   * training config: the project can be retagged long after a config is saved.
+   */
+  captionMode?: CaptionMode;
 };
 
 /**
@@ -612,5 +618,9 @@ export const scanDatasetFolders = async (
     return { exists: false, folders: [] };
   }
 
-  return { exists: true, folders: await getProjectFolders(projectName) };
+  return {
+    exists: true,
+    folders: await getProjectFolders(projectName),
+    captionMode: readConfig(projectName)?.captionMode ?? 'tags',
+  };
 };
