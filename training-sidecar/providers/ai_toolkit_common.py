@@ -143,6 +143,9 @@ SUPPORTED_MODELS = [
             # passes per sample step, off-recipe output.
             "guidance_scale": 1,
             "sample_steps": 8,
+            # ai-toolkit's own Z-Image presets use `weighted`; `sigmoid` is the
+            # value they set for non-Z-Image archs.
+            "timestep_type": "weighted",
         },
     },
     {

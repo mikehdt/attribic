@@ -1085,6 +1085,17 @@ def _build_config_dict(
     manifests = list(dataset_manifests or [])
     manifests += [None] * (len(request.datasets) - len(manifests))
 
+    # A distilled base (Z-Image Turbo) has a collapsed velocity field, so a LoRA
+    # trained straight against it comes out inert. ai-toolkit's answer is an
+    # "assistant LoRA": merged in at +1.0 up front to de-distil the transformer,
+    # then re-applied at -1.0 while sampling to cancel it out
+    # (`invert_assistant_lora`), leaving only the trained LoRA in the saved
+    # weights. That's ai-toolkit's mechanism, not a universal one — hence it
+    # lives here rather than in the shared request. Omitted entirely when no
+    # adapter is configured; `assistant_lora_path: None` would still send
+    # ai-toolkit down its load path.
+    training_adapter = (hp.get("model_paths") or {}).get("training_adapter")
+
     return {
         "job": "extension",
         "config": {
@@ -1248,7 +1259,10 @@ def _build_config_dict(
                             else {}
                         ),
                         "loss_type": hp.get("loss_type", "mse"),
-                        "timestep_type": hp.get("timestep_type", "sigmoid"),
+                        "timestep_type": hp.get(
+                            "timestep_type",
+                            defaults.get("timestep_type", "sigmoid"),
+                        ),
                         "timestep_bias": hp.get("timestep_bias", "balanced"),
                         # Bias training toward subject content vs style.
                         "content_or_style": hp.get("content_or_style", "balanced"),
@@ -1290,6 +1304,11 @@ def _build_config_dict(
                         ) == "float8",
                         # Low-VRAM mode (ModelConfig.low_vram).
                         "low_vram": hp.get("low_vram", False),
+                        **(
+                            {"assistant_lora_path": training_adapter}
+                            if training_adapter
+                            else {}
+                        ),
                     },
                     **(
                         {

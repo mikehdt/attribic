@@ -410,6 +410,35 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
       { name: 'tokenizer/vocab.json', size: 2_776_833 },
     ],
   },
+  // Z-Image Turbo is guidance/step-distilled, so its velocity field is
+  // collapsed and a LoRA trained directly against it barely moves — the
+  // weights grow but the result is inert at any strength. That problem is the
+  // base model's, not any one trainer's; this adapter is *ai-toolkit's* answer
+  // to it. It merges the adapter in at +1.0 for the duration of training to
+  // de-distil the transformer, then applies it at -1.0 while sampling to undo
+  // it (`invert_assistant_lora`), leaving only the trained LoRA in the saved
+  // weights. Their other route is the separately de-distilled
+  // `ostris/Z-Image-De-Turbo` base, which needs no adapter. A different backend
+  // would need its own approach — this file is not it.
+  //
+  // Lands beside the base pipeline in models/zimage/ — the download engine
+  // only ever deletes files listed in its own manifest, so the two coexist,
+  // and diffusers ignores stray files in a pipeline root.
+  {
+    id: 'dl-zimage-turbo-adapter',
+    name: 'Z-Image Turbo Training Adapter',
+    repoId: 'ostris/zimage_turbo_training_adapter',
+    feature: 'training',
+    architecture: 'zimage',
+    componentType: 'training_adapter',
+    description: 'De-distils Z-Image Turbo for ai-toolkit training (~340 MB)',
+    files: [
+      {
+        name: 'zimage_turbo_training_adapter_v2.safetensors',
+        size: 340_194_488,
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------

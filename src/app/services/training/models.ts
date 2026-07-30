@@ -10,7 +10,7 @@ export type ModelArchitecture =
   'flux' | 'sdxl' | 'zimage' | 'anima' | 'wan' | 'ltx';
 
 export type ModelComponentType =
-  'checkpoint' | 'vae' | 't5' | 'clip_l' | 'ae' | 'qwen';
+  'checkpoint' | 'vae' | 't5' | 'clip_l' | 'ae' | 'qwen' | 'training_adapter';
 
 type ModelComponent = {
   type: ModelComponentType;
@@ -525,11 +525,19 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
         downloadId: 'dl-zimage-turbo',
         hint: 'Diffusers pipeline directory — everything bundled in one download',
       },
+      {
+        type: 'training_adapter',
+        label: 'Training Adapter',
+        required: true,
+        downloadId: 'dl-zimage-turbo-adapter',
+        hint: 'How ai-toolkit de-distils Turbo while training — without it the LoRA comes out inert',
+      },
     ],
     tips: [
       'Fewer sample steps needed (8) due to turbo architecture',
       'Uses unconditioned generation (guidance scale 1.0)',
       'Uses Qwen3-4B as the text encoder — no separate T5/CLIP needed',
+      'ai-toolkit needs the training adapter to de-distil Turbo while training',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
     defaults: {
@@ -537,6 +545,9 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       sampleEvery: 250,
       guidanceScale: 1,
       sampleSteps: 8,
+      // ai-toolkit's own Z-Image presets all use `weighted`; `sigmoid` (our
+      // cross-model default) is the value they set for *non*-Z-Image archs.
+      timestepType: 'weighted',
     },
   },
   {
