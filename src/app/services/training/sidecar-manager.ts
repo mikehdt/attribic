@@ -308,13 +308,22 @@ async function doSpawnSidecar(): Promise<void> {
       clearTimeout(timeout);
       console.log(`[sidecar] Process exited (code=${code}, signal=${signal})`);
       state.process = null;
-      if (state.status !== 'ready') {
+      if (state.status === 'ready' || state.status === 'stopped') {
+        // A sidecar we'd already brought up going away isn't a failure to
+        // start: either it idle-exited, or we killed it and `killSidecarAndWait`
+        // set 'stopped' before this event landed. Reading the exit code as an
+        // error there left every deliberate shutdown reporting "Sidecar exited
+        // with code 1" in the menu.
+        state.status = 'stopped';
+      } else {
         state.status = 'error';
         state.error = `Sidecar exited with code ${code}`;
-        resolve(false);
-      } else {
-        state.status = 'stopped';
       }
+      // Safe to resolve unconditionally — the ready path has already resolved
+      // true, so this only settles a start that died on the way up (including
+      // one killed by a shutdown racing it, which would otherwise sit here
+      // until the ready timeout).
+      resolve(false);
     });
 
     proc.on('error', (err) => {

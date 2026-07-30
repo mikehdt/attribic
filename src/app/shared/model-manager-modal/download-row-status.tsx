@@ -58,13 +58,20 @@ export function DownloadRowStatus({
         <p className="text-xs text-slate-400">{fileCountLabel}</p>
       )}
 
-      <div className="flex flex-wrap justify-between text-xs text-slate-500 tabular-nums">
+      {/* Byte count and current filename stack rather than sharing a line:
+          side by side, a long filename (they routinely exceed this column)
+          wrapped and then overflowed the fixed width, spilling left over the
+          model description. `truncate` is the backstop for any length. */}
+      <div className="flex flex-col gap-0.5 text-xs text-slate-500">
         {progress && total > 0 && (
-          <span className="ml-auto shrink-0 pl-2 text-right">
+          <span className="text-right tabular-nums">
             {formatBytes(bytes)} / {formatBytes(total)} · {pct}%
           </span>
         )}
-        <span>
+        <span
+          className="truncate text-right"
+          title={isRunning ? progress?.currentFile : undefined}
+        >
           {isQueued && 'Queued'}
           {isRunning &&
             (progress?.currentFile ? progress.currentFile : 'Preparing…')}

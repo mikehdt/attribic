@@ -416,26 +416,56 @@ files:
   and cancellation alike, which is exactly the terminal set
   (`_TERMINAL_TRAINING_STATUSES`, `:31`).
 
-### New hazard: the empty half
+### The empty half
 
 A hybrid asset that has tags but no caption yet composes to `""` under
 `natural`. ai-toolkit's inline path skips its `default_caption` fallback, so
-that trains an empty caption silently — the same class of failure this whole
-design exists to prevent, arriving by a different door.
+that trains an empty caption.
 
-So composition needs a pre-flight: count images whose chosen half is empty and
-say so before the run. The assets store already has the shape of this in
-`isAssetTagless` / `selectHasTaglessAssets` (`store/assets/selectors.ts:169`).
-Whether it merely warns or joins `canStart`
-(`training-config-form.tsx:188`, alongside `datasetIssues.length === 0`) is
-worth deciding when it is built; a run that trains half its set on blank
-captions is arguably no more startable than one pointed at a missing folder.
+**Warn, never block.** An empty caption is not automatically a mistake: style
+training on deliberately bare captions is a real workflow, and there is nothing
+to say about an image when the point is the style rather than the content. A
+gate here would be the tool second-guessing the user about their own data, in
+exactly the case where the user is most likely to be right.
+
+So the pre-flight counts images whose chosen half is empty and says so — it does
+not join `canStart` (`training-config-form.tsx`, alongside
+`datasetIssues.length === 0`). The assets store already has the shape of the
+count in `isAssetTagless` / `selectHasTaglessAssets`
+(`store/assets/selectors.ts:169`).
+
+Same reasoning as extra folders below: pass it through and say what you did.
 
 ### Not covered
 
 There is no test suite in the repo, so verification is manual — the `verify`
 skill drives the browser surface, and a `mock`-provider run exercises the
 request path without a GPU.
+
+### Extra folders
+
+A bare folder has no project config, so there is no caption mode to read and no
+control to show. They keep today's behaviour: the emission is whatever the model
+prefers, and since composition is delimiter-driven, a folder of plain `.txt`
+sidecars passes through untouched regardless.
+
+Giving them the full control would mean sniffing each folder for a delimiter —
+new server-side I/O for a case that barely arises. Deliberately not done.
+
+## Build order
+
+**ai-toolkit first, Kohya deferred.** The split is worth making because the two
+halves have very different risk profiles: the ai-toolkit path writes nothing
+into the user's dataset folders at all, so it has no cleanup, no orphans, and
+nothing to leave behind when a run dies. Kohya's composed sidecars are the only
+part of this design that touches the dataset directory, and they are also the
+only part that can be skipped indefinitely if the runs that matter are on
+ai-toolkit.
+
+1. Wire field + `caption_compose.py` + inline manifest captions (ai-toolkit).
+2. Empty-half pre-flight.
+3. Kohya composed sidecars, per-subset `caption_extension`, and cleanup — only
+   when a Kohya run actually needs it.
 
 ## Still open
 

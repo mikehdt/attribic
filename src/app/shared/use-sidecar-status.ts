@@ -17,6 +17,27 @@ const errMessage = (err: unknown) =>
   err instanceof Error ? err.message : 'unknown error';
 
 /**
+ * Ask the server to bring the sidecar up, spawning it if it isn't already
+ * running. Standalone (rather than only living inside {@link useSidecarStatus})
+ * so callers that have no status readout to drive — the app-launch warm-up in
+ * `AppProvider` — can start one without mounting the hook. Never throws; a
+ * failure comes back as `error` with the reason.
+ */
+export const requestSidecarStart = async (): Promise<{
+  status: SidecarStatus;
+  error?: string;
+}> => {
+  try {
+    const res = await fetch('/api/training/sidecar', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'ready') return { status: 'ready' };
+    return { status: 'error', error: data.error ?? 'unknown error' };
+  } catch (err) {
+    return { status: 'error', error: errMessage(err) };
+  }
+};
+
+/**
  * Drives the sidecar section of the global menu: a live status readout plus
  * start / restart / shut-down actions. Sidecar status is server-side module
  * state (no Redux slice), so we poll the status route — but only while the menu
@@ -53,24 +74,14 @@ export const useSidecarStatus = (enabled: boolean) => {
     if (action) return;
     setAction('starting');
     setStatus('starting');
-    try {
-      const res = await fetch('/api/training/sidecar', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.status === 'ready') {
-        setStatus('ready');
-        showToast('Sidecar started.');
-      } else {
-        setStatus('error');
-        showErrorToast(
-          `Sidecar failed to start: ${data.error ?? 'unknown error'}`,
-        );
-      }
-    } catch (err) {
-      setStatus('error');
-      showErrorToast(`Sidecar failed to start: ${errMessage(err)}`);
-    } finally {
-      setAction(null);
+    const result = await requestSidecarStart();
+    setStatus(result.status);
+    if (result.status === 'ready') {
+      showToast('Sidecar started.');
+    } else {
+      showErrorToast(`Sidecar failed to start: ${result.error}`);
     }
+    setAction(null);
   }, [action, showToast, showErrorToast]);
 
   const restart = useCallback(async () => {

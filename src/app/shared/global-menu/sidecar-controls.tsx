@@ -2,8 +2,10 @@ import { PlayIcon, PowerIcon, RefreshCwIcon } from 'lucide-react';
 
 import { MenuItem } from '@/app/shared/menu-item';
 import { Stats } from '@/app/shared/stats/stats';
-
-import { type SidecarStatus, useSidecarStatus } from './use-sidecar-status';
+import {
+  type SidecarStatus,
+  useSidecarStatus,
+} from '@/app/shared/use-sidecar-status';
 
 const STATUS_META: Record<SidecarStatus, { label: string; dot: string }> = {
   ready: { label: 'Running', dot: 'bg-emerald-500' },

@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { requestSidecarStart } from '../shared/use-sidecar-status';
 import {
   completeAfterDelay,
   IoState,
@@ -20,7 +21,10 @@ import {
   setProjectInfo,
   setTriggerPhrases,
 } from '../store/project';
-import { hydrateActiveTraining } from '../store/training/training-runtime';
+import {
+  hydrateActiveTraining,
+  hydrateTrainingHistory,
+} from '../store/training/training-runtime';
 import { ErrorView } from '../tagging/views/error';
 import { InitialLoad } from '../tagging/views/initial-load';
 import { NoContent } from '../tagging/views/no-content';
@@ -50,6 +54,31 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   // panel until the user navigates back to /training.
   useEffect(() => {
     dispatch(hydrateActiveTraining());
+  }, [dispatch]);
+
+  // Bring the sidecar up as the app loads. Everything that reads from it —
+  // run history, the recent-runs list, system stats — used to come up empty on
+  // a cold start, because the sidecar only ever spawned when a run was started
+  // or the menu's Start was pressed, and it idle-exits between sessions. This is
+  // a no-op when one is already running (the route health-checks and reconnects
+  // before spawning), and failure is deliberately quiet: a user who never trains
+  // shouldn't be shown an error about a process they don't use. The run-history
+  // modal reports the status where it actually matters.
+  const sidecarLaunched = useRef(false);
+  useEffect(() => {
+    if (sidecarLaunched.current) return;
+    sidecarLaunched.current = true;
+    void requestSidecarStart().then((result) => {
+      if (result.status === 'ready') {
+        // Mount-time history hydration has almost certainly already run against
+        // a sidecar that wasn't there yet — re-read now that one is.
+        void dispatch(hydrateTrainingHistory());
+      } else {
+        console.warn(
+          `[training] Sidecar did not start on app launch: ${result.error}`,
+        );
+      }
+    });
   }, [dispatch]);
   const ioState = useAppSelector(selectIoState);
   const imageCount = useAppSelector(selectImageCount);

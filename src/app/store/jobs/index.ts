@@ -179,6 +179,16 @@ const jobsSlice = createSlice({
 
       job.status = 'completed';
       job.completedAt = Date.now();
+
+      // Snap the byte count to the total. Progress ticks are sampled, so the
+      // last one to land is normally short of the end (a 340 MB file finished
+      // reading "339.7 MB / 340.2 MB"), and the engine's final event — which
+      // does carry bytesDownloaded === totalBytes — is consumed as a status
+      // change, not as progress. Without this, a finished download reads as
+      // permanently incomplete.
+      if (job.progress) {
+        job.progress.bytesDownloaded = job.progress.totalBytes;
+      }
     },
 
     failDownload: (

@@ -598,14 +598,30 @@ class AiToolkitUiProvider(TrainingProvider):
         manifests: list[Optional[str]] = []
         if config_path:
             results = build_manifests(
-                [ds.path for ds in request.datasets], Path(config_path)
+                [ds.path for ds in request.datasets],
+                Path(config_path),
+                [ds.caption_emission for ds in request.datasets],
             )
             manifests = [r.path for r in results]
             for ds, result in zip(request.datasets, results):
                 if result.path is None:
                     yield _emit(f"No images directly in {ds.path}")
-                else:
-                    yield _emit(f"Dataset {ds.path}: {result.count} images")
+                    continue
+                yield _emit(f"Dataset {ds.path}: {result.count} images")
+                if result.composed:
+                    yield _emit(
+                        f"  Composed {result.composed} caption(s) as "
+                        f"{ds.caption_emission}"
+                    )
+                # Not a failure — style training on bare captions is a real
+                # workflow — but an empty caption trains as an empty caption,
+                # and that is worth seeing before a run rather than after.
+                if result.emptied:
+                    yield _emit(
+                        f"  Warning: {result.emptied} image(s) have no "
+                        f"{ds.caption_emission} half and will train on an "
+                        "empty caption"
+                    )
         else:
             yield _emit(
                 "Warning: no run directory, so ai-toolkit will scan dataset "
@@ -1233,6 +1249,16 @@ def _build_config_dict(
                         "optimizer": hp.get(
                             "optimizer", defaults.get("optimizer", "adamw8bit")
                         ),
+                        # Emitted even at 0: with no optimizer_params,
+                        # bitsandbytes AdamW8bit applies its own
+                        # weight_decay default (0.01), silently overriding
+                        # the form. Every optimizer the UI offers accepts
+                        # weight_decay via **optimizer_params.
+                        "optimizer_params": {
+                            "weight_decay": float(
+                                hp.get("weight_decay", 0) or 0
+                            ),
+                        },
                         "lr": hp.get("lr", defaults.get("lr", 1e-4)),
                         **(
                             {"lr_unet": hp["backbone_lr"]}

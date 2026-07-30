@@ -9,6 +9,10 @@ import path from 'path';
 import { getProjectsFolder } from '@/app/services/config/server-config';
 
 import {
+  type CaptionEmission,
+  captionPreferenceForModel,
+} from './caption-emission';
+import {
   DEFAULT_SAMPLE_ASPECT,
   getSampleBase,
   resolveSampleSize,
@@ -36,6 +40,8 @@ type ClientDatasetFolder = {
 
 type ClientDatasetSource = {
   folderName: string;
+  /** The user's pin, or null/absent to follow the model's preference. */
+  captionEmission?: CaptionEmission | null;
   folders: ClientDatasetFolder[];
 };
 
@@ -56,16 +62,30 @@ type SidecarDatasetEntry = {
   caption_dropout_rate: number;
   flip_augment: boolean;
   flip_v_augment: boolean;
+  caption_emission: CaptionEmission;
 };
 
+/**
+ * Resolve each dataset's caption emission and fan it across its folders.
+ *
+ * Deliberately unconditional — no check of the project's caption mode. The
+ * sidecar decides per file, by whether the `.txt` carries a hybrid delimiter,
+ * so an emission on a tags-only or caption-only project is a no-op by
+ * construction. Reading the caption mode here would only let a stale reading
+ * disagree with the file that is about to be read anyway.
+ */
 function buildDatasets(
   datasets: ClientDatasetSource[],
   extraFolders: ClientExtraFolder[],
   projectsFolder: string,
+  modelId: string,
 ) {
   const entries: SidecarDatasetEntry[] = [];
+  // Extra folders have no project and so no pin; they follow the model.
+  const modelPreference = captionPreferenceForModel(modelId);
 
   for (const ds of datasets) {
+    const captionEmission = ds.captionEmission ?? modelPreference;
     for (const folder of ds.folders) {
       const repeats = folder.overrideRepeats ?? folder.detectedRepeats;
       if (repeats <= 0) continue;
@@ -87,6 +107,7 @@ function buildDatasets(
         caption_dropout_rate: folder.captionDropoutRate,
         flip_augment: folder.flipAugment,
         flip_v_augment: folder.flipVAugment,
+        caption_emission: captionEmission,
       });
     }
   }
@@ -104,6 +125,7 @@ function buildDatasets(
       caption_dropout_rate: extra.captionDropoutRate,
       flip_augment: extra.flipAugment,
       flip_v_augment: extra.flipVAugment,
+      caption_emission: modelPreference,
     });
   }
 
@@ -135,6 +157,7 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     (config.datasets as ClientDatasetSource[]) ?? [],
     (config.extraFolders as ClientExtraFolder[]) ?? [],
     projectsFolder,
+    (config.modelId as string) ?? '',
   );
 
   const outputName = (config.outputName as string) || 'unnamed-lora';
@@ -294,8 +317,7 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     // drops it — and with a config rebuilt lossily from the fields above.
     // None is consumed by any provider; the sidecar stores them verbatim.
     project: config.project as
-      | { id?: string; name: string; version: number }
-      | undefined,
+      { id?: string; name: string; version: number } | undefined,
     form_snapshot: config.formSnapshot as Record<string, unknown> | undefined,
     client_config: config.clientConfig as Record<string, unknown> | undefined,
   };

@@ -94,6 +94,13 @@ class DatasetEntry(BaseModel):
     # Vertical flip — only ai-toolkit supports this (flip_y); sd-scripts/Kohya
     # has no vertical-flip augmentation and ignores this field.
     flip_v_augment: bool = False
+    # Which half of a hybrid caption to train on: "tags" | "both" | "natural".
+    # Resolved on the Node side from the dataset's pin and the model's
+    # preference. None leaves every caption exactly as it is on disk; any value
+    # is still a no-op for files with no hybrid delimiter, so this is safe to
+    # set regardless of how the project captions its images. Kohya ignores it
+    # for now — see docs/caption-composition-design.md.
+    caption_emission: Optional[str] = None
 
 
 class ProjectRef(BaseModel):
