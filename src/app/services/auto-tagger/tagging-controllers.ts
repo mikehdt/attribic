@@ -25,6 +25,15 @@ export function hasBatchBeenAdopted(batchId: string): boolean {
   return adoptedBatchIds.has(batchId);
 }
 
+/**
+ * Give up ownership of a batch. Used when the action that claimed it didn't
+ * actually take effect — a batch that's still running sidecar-side must stay
+ * visible to the reattach sweep, however inconvenient.
+ */
+function releaseBatchAdoption(batchId: string): void {
+  adoptedBatchIds.delete(batchId);
+}
+
 /** Register a controller for a tagging job. */
 export function registerTaggingController(jobId: string): AbortController {
   controllers.get(jobId)?.abort();
@@ -43,27 +52,55 @@ export function abortTagging(jobId: string): void {
   }
 }
 
+/** Backoff between cancel attempts; the sidecar may be mid-restart. */
+const CANCEL_RETRY_DELAYS_MS = [500, 1500, 3000];
+
 /**
- * Cancel a tagging job end-to-end: abort the local SSE stream AND tell the
- * sidecar to stop the batch. Aborting alone no longer stops anything —
- * batches deliberately survive client disconnects so they can be reattached.
- * The job ID doubles as the sidecar batch ID. Harmless for ONNX jobs
- * (no sidecar batch exists; the cancel endpoint is best-effort).
+ * POST the cancel until the route confirms it reached the runner. Resolves
+ * false once the retries are exhausted — the batch is then presumed still
+ * running.
  */
-export function cancelTaggingJob(jobId: string): void {
-  abortTagging(jobId);
-  // Cancelling is ownership too — don't let the reattach sweep pick this
-  // batch back up in the window before the sidecar has cleared it.
-  markBatchAdopted(jobId);
-  void (async () => {
+async function deliverCancel(jobId: string): Promise<boolean> {
+  for (let attempt = 0; ; attempt++) {
     try {
-      await fetch('/api/auto-tagger/batch/cancel', {
+      const response = await fetch('/api/auto-tagger/batch/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batchId: jobId }),
       });
+      if (response.ok) return true;
     } catch {
-      // best-effort — the sidecar may not be running
+      // Dev-server recompile or a dead sidecar — retried below.
+    }
+    if (attempt >= CANCEL_RETRY_DELAYS_MS.length) return false;
+    await new Promise((resolve) =>
+      setTimeout(resolve, CANCEL_RETRY_DELAYS_MS[attempt]),
+    );
+  }
+}
+
+/**
+ * Cancel a tagging job end-to-end: abort the local SSE stream AND tell the
+ * sidecar to stop the batch. Aborting alone no longer stops anything —
+ * batches deliberately survive client disconnects so they can be reattached.
+ * The job ID doubles as the batch ID. ONNX jobs go through the same route —
+ * the in-process store answers for them, so the delivery check holds there too.
+ */
+export function cancelTaggingJob(jobId: string): void {
+  abortTagging(jobId);
+  // Cancelling is ownership too — don't let the reattach sweep pick this
+  // batch back up in the window before the sidecar has cleared it. Released
+  // again below if the cancel turns out never to have landed.
+  markBatchAdopted(jobId);
+  void (async () => {
+    if (!(await deliverCancel(jobId))) {
+      // The batch is very likely still running, and this session has no way to
+      // stop it. Staying adopted would hide it from the reattach sweep and
+      // silently apply the full run after the next refresh instead.
+      releaseBatchAdoption(jobId);
+      console.warn(
+        `[tagging] Cancel for batch ${jobId} never reached the runner; it may still be running`,
+      );
       return;
     }
     // Clear the stored batch once the cancel has landed, so /batch/active

@@ -135,7 +135,13 @@ SUPPORTED_MODELS = [
             "dtype": "bf16",
             "resolution": [512, 768, 1024],
             "steps": 2000,
-            "guidance_scale": 4,
+            # Turbo is guidance-distilled — the reference recipe is 8 steps at
+            # CFG off. ai-toolkit's zimage sampler passes
+            # `max(0, guidance_scale - 1)` to a pipeline whose CFG is
+            # 0-normalised (`pred = pos + scale * (pos - neg)`), so 1 here is
+            # what disables it. Anything higher runs real CFG: two transformer
+            # passes per sample step, off-recipe output.
+            "guidance_scale": 1,
             "sample_steps": 8,
         },
     },

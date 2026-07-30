@@ -1,3 +1,11 @@
+allowBuilds:
+  onnxruntime-node: true
+  sharp: true
+  unrs-resolver: true
+
+minimumReleaseAgeExclude:
+  - postcss@8.5.25
+
 onlyBuiltDependencies:
   - '@tailwindcss/oxide'
   - onnxruntime-node

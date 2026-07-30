@@ -22,9 +22,13 @@ a silent 15-30s spinner.
 Known behaviour:
 - First call blocks ~10-30s for model load. Subsequent calls reuse the cached
   instance as long as the same model_path keeps coming in.
-- `cancel_check` is polled per streamed token. Windows Python can't reliably
-  interrupt a single forward pass, so cancel takes effect on the next token
-  after the flag flips — usually <100ms on GPU.
+- `cancel_check` is polled per streamed token and, via a StoppingCriteria,
+  once per decoding step inside `generate` itself — so cancel aborts the
+  generation rather than waiting out the remaining token budget. Windows
+  Python can't interrupt a single forward pass, so cancel takes effect after
+  the current step — usually <100ms on GPU.
+- `cancel_check` is also polled between load stages, but a single
+  `from_pretrained` call can't be interrupted.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ import contextlib
 import json
 import math
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -64,6 +69,12 @@ _FRAME_FACTOR = 2
 # Hard minimum frames: we must at least ceil to FRAME_FACTOR so a very
 # short clip doesn't under-sample past what the model can process.
 _MIN_FRAMES = 2
+
+# How long the streamer consumer waits for the next token before looping to
+# re-check cancellation and generation-thread liveness. This is a poll interval,
+# not a deadline — a slow prefill just loops — so it exists purely to stop a
+# silent `generate` from blocking the consumer (and the whole GPU queue) forever.
+_STREAM_POLL_SECONDS = 0.5
 
 
 def _ffprobe_duration(video_path: str) -> Optional[float]:
@@ -321,6 +332,33 @@ def _broadcast_tqdm(
         sys.stderr = original_stderr
 
 
+def _cancel_stopping_criteria(cancel_check: Optional[CancelCheck]) -> Any:
+    """
+    Build a StoppingCriteriaList that ends generation when cancel_check flips.
+
+    Without this, a cancel only stops the *consumer* — `generate` keeps
+    decoding to the full token budget and the streamer drain blocks until it
+    finishes, which on a sysmem-fallback run is minutes.
+    """
+    if cancel_check is None:
+        return None
+
+    import torch
+    from transformers import StoppingCriteria, StoppingCriteriaList
+
+    class _CancelCriteria(StoppingCriteria):
+        def __call__(self, input_ids: Any, scores: Any, **kwargs: Any) -> Any:
+            del scores, kwargs
+            return torch.full(
+                (input_ids.shape[0],),
+                bool(cancel_check()),
+                device=input_ids.device,
+                dtype=torch.bool,
+            )
+
+    return StoppingCriteriaList([_CancelCriteria()])
+
+
 class TransformersCaptioningProvider(CaptioningProvider):
     """Real VLM captioning via HuggingFace transformers + PyTorch CUDA."""
 
@@ -328,15 +366,139 @@ class TransformersCaptioningProvider(CaptioningProvider):
         self._model: Optional[Any] = None
         self._processor: Optional[Any] = None
         self._loaded_model_path: Optional[str] = None
+        # A generation thread that outlived its join timeout. It still holds a
+        # reference to self._model, so loading or unloading while it runs would
+        # free the model out from under an in-flight forward pass.
+        self._orphaned_thread: Optional[threading.Thread] = None
         # Serialise all torch operations behind an async lock — the model is
         # not safe for concurrent forward passes, and cheaply queueing requests
         # is fine given batches are sequential anyway.
         self._lock = asyncio.Lock()
 
+    def _assert_no_orphaned_generation(self) -> None:
+        """Guard model lifecycle changes against a stuck generation thread."""
+        thread = self._orphaned_thread
+        if thread is None:
+            return
+        if not thread.is_alive():
+            self._orphaned_thread = None
+            return
+        raise RuntimeError(
+            "A previous generation is still running after its join timeout and "
+            "still holds the loaded model; refusing to load or unload it. "
+            "Restart the sidecar to recover."
+        )
+
+    def _make_streamer(self) -> Any:
+        """Token streamer for both the image and video generation paths."""
+        from transformers import TextIteratorStreamer
+
+        assert self._processor is not None
+        return TextIteratorStreamer(
+            self._processor.tokenizer,
+            skip_prompt=True,
+            skip_special_tokens=True,
+            timeout=_STREAM_POLL_SECONDS,
+        )
+
+    def _stream_generation(
+        self,
+        streamer: Any,
+        generation_kwargs: dict[str, Any],
+        cancel_check: Optional[CancelCheck],
+        join_timeout: float,
+    ) -> str:
+        """
+        Run `generate` on a worker thread and consume its streamed output.
+
+        Shared by the image and video paths. Raises CaptionCancelled when
+        cancel_check flips, and re-raises whatever `generate` raised otherwise
+        (the batch manager records it as a per-image error).
+        """
+        import torch
+
+        model = self._model
+        assert model is not None
+        generation_error: list[BaseException] = []
+
+        def run_generation() -> None:
+            try:
+                model.generate(**generation_kwargs)
+            except BaseException as err:  # noqa: BLE001 — re-raised in the consumer
+                generation_error.append(err)
+            finally:
+                # Without this, a `generate` that dies before emitting its end
+                # sentinel (CUDA OOM being the realistic case) leaves the
+                # consumer blocked on the streamer queue forever, which wedges
+                # the batch and the whole GPU queue behind it.
+                try:
+                    streamer.end()
+                except Exception:
+                    pass
+
+        gen_thread = threading.Thread(target=run_generation, daemon=True)
+        gen_thread.start()
+
+        pieces: list[str] = []
+        cancelled = False
+        iterator = iter(streamer)
+        try:
+            while True:
+                if cancel_check is not None and cancel_check():
+                    cancelled = True
+                    break
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    break
+                except queue.Empty:
+                    # No token this interval. Loop to re-poll cancellation, and
+                    # bail if the generation thread died without ending the
+                    # stream — otherwise we'd wait on a queue nobody will fill.
+                    if not gen_thread.is_alive():
+                        break
+                    continue
+                if chunk:
+                    pieces.append(chunk)
+        finally:
+            # No draining on cancel: TextIteratorStreamer's queue is unbounded,
+            # so the generation thread never blocks pushing into it — and a
+            # drain loop here would block on the same queue instead of letting
+            # the join timeout below bound our wait. The stopping criterion is
+            # what actually ends generate promptly.
+            gen_thread.join(timeout=join_timeout)
+            if gen_thread.is_alive():
+                self._orphaned_thread = gen_thread
+                print(
+                    "[transformers_provider] generation thread still alive after "
+                    f"{join_timeout}s join; leaving it orphaned. The model stays "
+                    "pinned until it exits — captioning will refuse to load or "
+                    "unload until then.",
+                    file=sys.stderr,
+                )
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+
+        if cancelled:
+            raise CaptionCancelled("cancelled mid-inference")
+        if generation_error:
+            failure = generation_error[0]
+            if isinstance(failure, Exception):
+                raise failure
+            # A BaseException that isn't an Exception (SystemExit, CancelledError)
+            # would sail past the batch manager's per-image handler and take the
+            # queue worker down with it.
+            raise RuntimeError(f"generation thread died: {failure!r}")
+
+        return "".join(pieces).strip()
+
     def _load_model(
         self,
         model_path: str,
         on_load_progress: Optional[LoadProgressCallback] = None,
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
         """Load the model and processor. Blocking; runs in an executor."""
         # Imports inside the function so the sidecar boots cleanly even when
@@ -346,6 +508,11 @@ class TransformersCaptioningProvider(CaptioningProvider):
 
         if self._model is not None and self._loaded_model_path == model_path:
             return
+
+        self._assert_no_orphaned_generation()
+
+        if cancel_check is not None and cancel_check():
+            raise CaptionCancelled("cancelled before model load")
 
         # Release any previous instance before loading the next.
         if self._model is not None:
@@ -385,6 +552,9 @@ class TransformersCaptioningProvider(CaptioningProvider):
             trust_remote_code=False,
         )
 
+        if cancel_check is not None and cancel_check():
+            raise CaptionCancelled("cancelled after processor load")
+
         if on_load_progress is not None:
             on_load_progress("Loading checkpoint shards", 0, 0)
 
@@ -405,6 +575,10 @@ class TransformersCaptioningProvider(CaptioningProvider):
         self._processor = processor
         self._loaded_model_path = model_path
 
+        # Cache the load even when cancelled — the next batch reuses it.
+        if cancel_check is not None and cancel_check():
+            raise CaptionCancelled("cancelled during model load")
+
     def _generate_caption_blocking(
         self,
         image_path: str,
@@ -414,9 +588,7 @@ class TransformersCaptioningProvider(CaptioningProvider):
         cancel_check: Optional[CancelCheck],
     ) -> str:
         """Run streamed inference synchronously inside the lock."""
-        import torch
         from PIL import Image
-        from transformers import TextIteratorStreamer
 
         assert self._model is not None and self._processor is not None
 
@@ -442,11 +614,7 @@ class TransformersCaptioningProvider(CaptioningProvider):
             return_tensors="pt",
         ).to(self._model.device)
 
-        streamer = TextIteratorStreamer(
-            self._processor.tokenizer,
-            skip_prompt=True,
-            skip_special_tokens=True,
-        )
+        streamer = self._make_streamer()
 
         generation_kwargs: dict[str, Any] = {
             **inputs,
@@ -456,44 +624,15 @@ class TransformersCaptioningProvider(CaptioningProvider):
             "temperature": max(temperature, 1e-5),
             "pad_token_id": self._processor.tokenizer.eos_token_id,
         }
+        stopping_criteria = _cancel_stopping_criteria(cancel_check)
+        if stopping_criteria is not None:
+            generation_kwargs["stopping_criteria"] = stopping_criteria
 
-        # Kick off generation in a background thread so we can iterate the
-        # streamer and poll for cancellation in the calling thread.
-        gen_thread = threading.Thread(
-            target=self._model.generate,
-            kwargs=generation_kwargs,
-            daemon=True,
+        # Generation runs on a background thread so we can iterate the streamer
+        # and poll for cancellation in the calling thread.
+        return self._stream_generation(
+            streamer, generation_kwargs, cancel_check, join_timeout=60
         )
-        gen_thread.start()
-
-        pieces: list[str] = []
-        cancelled = False
-        try:
-            for chunk in streamer:
-                if cancel_check is not None and cancel_check():
-                    cancelled = True
-                    break
-                if chunk:
-                    pieces.append(chunk)
-        finally:
-            # If we bailed early, drain the streamer so the generation thread
-            # doesn't block forever pushing into a full queue. Transformers'
-            # streamer doesn't expose a cancel hook, so the generate() call
-            # itself runs to completion — but on GPU that's usually fast, and
-            # the consumer thread returns control to the caller immediately.
-            if cancelled:
-                for _ in streamer:
-                    pass
-            gen_thread.join(timeout=60)
-            try:
-                torch.cuda.empty_cache()
-            except Exception:
-                pass
-
-        if cancelled:
-            raise CaptionCancelled("cancelled mid-inference")
-
-        return "".join(pieces).strip()
 
     def _generate_video_caption_blocking(
         self,
@@ -529,9 +668,7 @@ class TransformersCaptioningProvider(CaptioningProvider):
         the message. That path skips all video IO and goes straight to
         per-frame preprocessing.
         """
-        import torch
         from qwen_vl_utils import process_vision_info
-        from transformers import TextIteratorStreamer
 
         assert self._model is not None and self._processor is not None
 
@@ -664,11 +801,7 @@ class TransformersCaptioningProvider(CaptioningProvider):
                 file=sys.stderr,
             )
 
-        streamer = TextIteratorStreamer(
-            self._processor.tokenizer,
-            skip_prompt=True,
-            skip_special_tokens=True,
-        )
+        streamer = self._make_streamer()
 
         generation_kwargs: dict[str, Any] = {
             **inputs,
@@ -678,48 +811,29 @@ class TransformersCaptioningProvider(CaptioningProvider):
             "temperature": max(temperature, 1e-5),
             "pad_token_id": self._processor.tokenizer.eos_token_id,
         }
+        stopping_criteria = _cancel_stopping_criteria(cancel_check)
+        if stopping_criteria is not None:
+            generation_kwargs["stopping_criteria"] = stopping_criteria
 
-        gen_thread = threading.Thread(
-            target=self._model.generate,
-            kwargs=generation_kwargs,
-            daemon=True,
+        return self._stream_generation(
+            streamer, generation_kwargs, cancel_check, join_timeout=120
         )
-        gen_thread.start()
-
-        pieces: list[str] = []
-        cancelled = False
-        try:
-            for chunk in streamer:
-                if cancel_check is not None and cancel_check():
-                    cancelled = True
-                    break
-                if chunk:
-                    pieces.append(chunk)
-        finally:
-            if cancelled:
-                for _ in streamer:
-                    pass
-            gen_thread.join(timeout=120)
-            try:
-                torch.cuda.empty_cache()
-            except Exception:
-                pass
-
-        if cancelled:
-            raise CaptionCancelled("cancelled mid-inference")
-
-        return "".join(pieces).strip()
 
     async def prepare(
         self,
         model_path: str,
         on_load_progress: Optional[LoadProgressCallback] = None,
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
         """Pre-load the model so the first caption isn't gated on a cold load."""
         async with self._lock:
             if self._model is None or self._loaded_model_path != model_path:
                 await asyncio.get_event_loop().run_in_executor(
-                    None, self._load_model, model_path, on_load_progress
+                    None,
+                    self._load_model,
+                    model_path,
+                    on_load_progress,
+                    cancel_check,
                 )
 
     async def caption_image(
@@ -738,7 +852,11 @@ class TransformersCaptioningProvider(CaptioningProvider):
             # keep a lazy-load path so single-image callers still work.
             if self._model is None or self._loaded_model_path != model_path:
                 await asyncio.get_event_loop().run_in_executor(
-                    None, self._load_model, model_path, on_load_progress
+                    None,
+                    self._load_model,
+                    model_path,
+                    on_load_progress,
+                    cancel_check,
                 )
 
             ext = os.path.splitext(image_path)[1].lower()
@@ -769,6 +887,7 @@ class TransformersCaptioningProvider(CaptioningProvider):
 
     async def unload(self) -> None:
         async with self._lock:
+            self._assert_no_orphaned_generation()
             if self._model is not None:
                 try:
                     del self._model

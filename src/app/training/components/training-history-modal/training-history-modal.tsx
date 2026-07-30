@@ -6,7 +6,7 @@ import {
   SlidersHorizontalIcon,
   Trash2Icon,
 } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 import { formatDuration } from '@/app/shared/activity-panel/helpers';
 import { showsSamplesView } from '@/app/shared/activity-panel/training-detail-modal/training-detail-tabs/samples-model';
@@ -15,7 +15,9 @@ import { Button } from '@/app/shared/button';
 import { Modal } from '@/app/shared/modal';
 import { useConfirmAction } from '@/app/shared/use-confirm-action';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { removeJob } from '@/app/store/jobs';
 import { addToast } from '@/app/store/toasts/reducers';
+import { hydrateTrainingHistory } from '@/app/store/training/training-runtime';
 import { hydrateFromRun } from '@/app/store/training-config';
 import {
   clearHistory,
@@ -172,12 +174,29 @@ export function TrainingHistoryModal() {
     : null;
   const selectedWide = selected != null && showsSamplesView(selected);
 
+  // Re-read the sidecar's records each time the view opens. Mount-time
+  // hydration runs against a sidecar that may not have been up yet (it spawns
+  // on demand), and this is the moment the user is asking to see the list — one
+  // cheap, idempotent read that fills in a history the app opened without.
+  useEffect(() => {
+    if (!isOpen) return;
+    void dispatch(hydrateTrainingHistory());
+  }, [isOpen, dispatch]);
+
   const handleClose = useCallback(() => {
     closeModal();
   }, [closeModal]);
 
+  // Deleting a run has to take its activity-panel card with it, and in this
+  // order. The history middleware re-archives any terminal job in the jobs slice
+  // that history doesn't know about, on every `jobs/` action — so removing the
+  // history entry first would leave the card behind, and the very next `jobs/`
+  // action would record it straight back (with sample paths the delete has
+  // already swept). `removeJob` is itself a `jobs/` action, but it runs while
+  // history still holds the entry, so that sweep is a no-op.
   const handleDelete = useCallback(
     (id: string) => {
+      dispatch(removeJob(id));
       dispatch(deleteHistoryEntry(id));
       if (entryId === id) selectEntry(null);
     },
@@ -185,9 +204,11 @@ export function TrainingHistoryModal() {
   );
 
   const handleClearAll = useCallback(() => {
+    // Same ordering constraint as handleDelete, for every run being wiped.
+    for (const entry of history) dispatch(removeJob(entry.id));
     dispatch(clearHistory());
     selectEntry(null);
-  }, [dispatch, selectEntry]);
+  }, [dispatch, history, selectEntry]);
 
   // Load a past run's settings into the form and get out of the way — the form
   // is directly behind this modal, so there's nowhere to navigate to.

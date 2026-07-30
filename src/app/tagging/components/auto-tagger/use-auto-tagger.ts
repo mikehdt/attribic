@@ -67,6 +67,24 @@ type UseAutoTaggerParams = {
   selectedAssets: { fileId: string; fileExtension: string }[];
 };
 
+/**
+ * How a batch ended, as far as this client is concerned. `failed` still flushes
+ * whatever landed — the staged results are the only surviving copy once the
+ * sidecar's copy dies with the error.
+ */
+type FinaliseOutcome =
+  | { status: 'completed'; completionDelayMs?: number }
+  | { status: 'cancelled' }
+  | { status: 'failed'; error: string };
+
+/**
+ * How many times the reattach sweep will try a single batch before giving up on
+ * it for the session. More than one so a dev-server recompile or transient 500
+ * during the attach fetch doesn't orphan a batch that's still running; bounded
+ * so a batch that can never be attached doesn't re-fail on every sweep.
+ */
+const MAX_ATTACH_ATTEMPTS = 3;
+
 const INSERT_MODE_OPTIONS: { value: TagInsertMode; label: string }[] = [
   { value: 'prepend', label: 'Prepend to start' },
   { value: 'append', label: 'Append to end' },
@@ -170,13 +188,28 @@ export function useAutoTagger({
   // Start-up failures (bad model, sidecar down) shown against the settings
   // form. Once a batch is under way its errors belong to the job.
   const [error, setError] = useState<string | null>(null);
-  // Per-image errors collected during the batch run, handed to the job's
-  // summary on completion. A ref so the SSE loop can accumulate them without
-  // re-rendering.
-  const imageErrorsRef = useRef<{ fileId: string; error: string }[]>([]);
+  // Per-image errors collected during a batch run, handed to that job's
+  // summary when it finalises. Refs so the SSE loop can accumulate without
+  // re-rendering, and keyed by job id because two batches can be streaming at
+  // once: this hook survives navigation and the sidecar queues batches, so a
+  // single slot would build one job's summary out of the other's errors.
+  const imageErrorsRef = useRef<
+    Map<string, { fileId: string; error: string }[]>
+  >(new Map());
 
-  // Track the current job ID so we can cancel it
-  const currentJobIdRef = useRef<string | null>(null);
+  // Each live job's abort signal. `abortTagging` drops the controller from the
+  // controllers module as it aborts, so the signal is held here to stay
+  // queryable — it's the only truthful per-job "was this cancelled locally?".
+  const jobAbortSignalsRef = useRef<Map<string, AbortSignal>>(new Map());
+
+  // Consecutive failures to attach to a batch, per batch id. Bounds the
+  // sweep's retries so a batch that can never be attached stops re-failing.
+  const attachFailuresRef = useRef<Map<string, number>>(new Map());
+
+  const isJobAborted = useCallback(
+    (jobId: string) => jobAbortSignalsRef.current.get(jobId)?.aborted === true,
+    [],
+  );
 
   // Fetch models callback
   const fetchModels = useCallback(async () => {
@@ -400,30 +433,30 @@ export function useAutoTagger({
   }, [isOpen, activeTaggingJob, dispatch, onClose]);
 
   /**
-   * Flush pending results from localStorage → Redux, then deselect tagged assets.
-   * This is the single mechanism for applying tags, whether tagging just
-   * completed or the user returned to a project with pending results.
+   * Flush pending results from localStorage → Redux, deselect tagged assets,
+   * drop the batch's stored copy, and record the job's terminal state. This is
+   * the single mechanism for applying tags, whether tagging just completed or
+   * the user returned to a project with pending results — and it runs for a
+   * *failed* batch too, since whatever it managed to produce is worth keeping
+   * and is the only copy left.
    */
   const flushAndFinalise = useCallback(
     async (
       projectFolderName: string,
       jobId: string,
-      cancelled: boolean,
-      // Optional pause between dispatching flush + summary state and the
-      // final `completeTagging`. Lets the progress bar render at 100% for
-      // a beat before the modal flips to the summary view; otherwise the
-      // last image's "done" frame is invisible. Skipped on cancel.
-      completionDelayMs = 0,
+      outcome: FinaliseOutcome,
     ) => {
       // Compute summary from localStorage before flushing clears it.
       // Enrich with errorCount + providerType so the activity-panel card can
       // distinguish "partial success" from "fully successful" and choose
-      // captioning vs tagging wording.
+      // captioning vs tagging wording. Errors are read (synchronously, before
+      // any await) from this job's own bucket — a concurrent batch has its own.
+      const imageErrors = imageErrorsRef.current.get(jobId) ?? [];
       const baseSummary = summarisePendingResults(projectFolderName);
       const summaryData = {
         ...baseSummary,
-        errorCount: imageErrorsRef.current.length,
-        errors: [...imageErrorsRef.current],
+        errorCount: imageErrors.length,
+        errors: [...imageErrors],
         providerType: selectedProviderType,
       };
 
@@ -440,6 +473,8 @@ export function useAutoTagger({
       // it for reattach (that would apply everything a second time). No-op
       // for ONNX jobs and when the sidecar is gone. On local cancels the
       // batch may still be mid-cancel (409); cancelTaggingJob retries later.
+      // Failed batches are cleared here too, otherwise every refresh re-adopts
+      // them, replays them, and fails them again.
       fetch('/api/auto-tagger/batch/clear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -448,11 +483,15 @@ export function useAutoTagger({
         /* best-effort */
       });
 
-      // Flush: read from localStorage → dispatch addMultipleTags → clear
-      dispatch(flushPendingTagResults(projectFolderName));
+      // Flush: read from localStorage → dispatch addMultipleTags → clear.
+      // Refuses (leaving everything staged) when the loaded project isn't this
+      // batch's — this loop outlives navigation, so that's a live possibility.
+      const flushed = dispatch(flushPendingTagResults(projectFolderName));
 
-      // Deselect assets that received tags
-      if (unselectOnComplete && taggedFileIds.length > 0) {
+      // Deselect assets that received tags. Only meaningful when the flush
+      // actually applied to this project's assets; the ids would otherwise
+      // address whatever project is loaded now.
+      if (flushed && unselectOnComplete && taggedFileIds.length > 0) {
         dispatch(
           setAssetsSelectionState({
             assetIds: taggedFileIds,
@@ -461,23 +500,34 @@ export function useAutoTagger({
         );
       }
 
-      // Update the job in the queue. The delay (if any) lets the progress
-      // bar settle on 100% before the modal flips to the summary view.
-      if (cancelled) {
+      if (outcome.status === 'cancelled') {
         // cancelTagging already dispatched by the abort handler
         return;
       }
+
+      if (outcome.status === 'failed') {
+        dispatch(
+          failTagging({ id: jobId, error: outcome.error, summary: summaryData }),
+        );
+        return;
+      }
+
+      // Optional pause between dispatching flush + summary state and the final
+      // `completeTagging`. Lets the progress bar render at 100% for a beat
+      // before the modal flips to the summary view; otherwise the last image's
+      // "done" frame is invisible.
+      const completionDelayMs = outcome.completionDelayMs ?? 0;
       if (completionDelayMs > 0) {
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => setTimeout(resolve, completionDelayMs));
         });
         // If the user cancelled during the settle window, don't overwrite
         // their cancellation with a completed state.
-        if (currentJobIdRef.current !== jobId) return;
+        if (isJobAborted(jobId)) return;
       }
       dispatch(completeTagging({ id: jobId, summary: summaryData }));
     },
-    [dispatch, unselectOnComplete, selectedProviderType],
+    [dispatch, unselectOnComplete, selectedProviderType, isJobAborted],
   );
 
   /**
@@ -521,15 +571,16 @@ export function useAutoTagger({
           lastResult: null,
         }),
       );
-      currentJobIdRef.current = jobId;
       const abortController = registerTaggingController(jobId);
-      imageErrorsRef.current = [];
+      jobAbortSignalsRef.current.set(jobId, abortController.signal);
+      imageErrorsRef.current.set(jobId, []);
       setError(null);
 
-      // The batch's stored results are authoritative and replayed in full —
-      // anything still in localStorage from the interrupted session would be
-      // applied twice.
-      clearPendingTagResults(projectFolderName);
+      // Deliberately no pre-emptive clear of the staged results: the replay
+      // below re-stages every result the batch holds, and the staging store is
+      // keyed by fileId, so a replayed result overwrites its own earlier copy.
+      // Clearing up front would destroy the only surviving copy whenever the
+      // attach itself never lands.
 
       // Position comes from the project's saved settings; the value chosen
       // at start time wasn't persisted anywhere else.
@@ -547,6 +598,12 @@ export function useAutoTagger({
         if (!response.ok || !response.body) {
           throw new Error('Failed to reattach to the running batch');
         }
+
+        // Ownership is only claimed once the attach is known good. Marking
+        // before the fetch orphaned a still-running batch for the whole session
+        // on any transient failure — the sweep skips adopted ids forever.
+        markBatchAdopted(jobId);
+        attachFailuresRef.current.delete(jobId);
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -624,7 +681,7 @@ export function useAutoTagger({
               );
             } else if (event.type === 'error' && event.fileId) {
               console.warn(`Error captioning ${event.fileId}:`, event.error);
-              imageErrorsRef.current.push({
+              imageErrorsRef.current.get(jobId)?.push({
                 fileId: event.fileId,
                 error: event.error,
               });
@@ -632,11 +689,15 @@ export function useAutoTagger({
               throw new Error(event.error);
             } else if (event.type === 'complete') {
               finished = true;
-              await flushAndFinalise(projectFolderName, jobId, false);
+              await flushAndFinalise(projectFolderName, jobId, {
+                status: 'completed',
+              });
             } else if (event.type === 'cancelled') {
               finished = true;
               dispatch(cancelTagging(jobId));
-              await flushAndFinalise(projectFolderName, jobId, true);
+              await flushAndFinalise(projectFolderName, jobId, {
+                status: 'cancelled',
+              });
             }
           }
         }
@@ -644,26 +705,41 @@ export function useAutoTagger({
         if (!finished) {
           // Stream ended without a terminal event — keep whatever landed.
           if (summarisePendingResults(projectFolderName).imagesProcessed > 0) {
-            await flushAndFinalise(projectFolderName, jobId, false);
+            await flushAndFinalise(projectFolderName, jobId, {
+              status: 'completed',
+            });
           } else {
             throw new Error('Lost connection to the batch.');
           }
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') {
-          flushAndFinalise(projectFolderName, jobId, true);
+          flushAndFinalise(projectFolderName, jobId, { status: 'cancelled' });
         } else {
           const message =
             err instanceof Error ? err.message : 'Reattach failed';
           setError(message);
-          dispatch(failTagging({ id: jobId, error: message }));
-          clearPendingTagResults(projectFolderName);
+          // Flush, don't clear: attaching to an already-failed batch replays
+          // every good result it holds before throwing, and those staged
+          // results are the only copy left once the batch is cleared (which
+          // finalising does, so it stops resurfacing on every refresh).
+          await flushAndFinalise(projectFolderName, jobId, {
+            status: 'failed',
+            error: message,
+          });
+          if (!hasBatchBeenAdopted(jobId)) {
+            // The attach never landed, so the batch stays unadopted and a later
+            // sweep can retry it — counted so it can't retry forever.
+            attachFailuresRef.current.set(
+              jobId,
+              (attachFailuresRef.current.get(jobId) ?? 0) + 1,
+            );
+          }
         }
       } finally {
         removeTaggingController(jobId);
-        if (currentJobIdRef.current === jobId) {
-          currentJobIdRef.current = null;
-        }
+        jobAbortSignalsRef.current.delete(jobId);
+        imageErrorsRef.current.delete(jobId);
       }
     },
     [
@@ -675,16 +751,32 @@ export function useAutoTagger({
   );
 
   // Discover batches the sidecar is still tracking for this project and
-  // reattach to the first one. Runs when the project mounts with no active
-  // local job; the module-level set stops a second hook instance or a
-  // re-run from double-attaching the same batch.
+  // reattach to the first eligible one. Runs when the project mounts with no
+  // active local job. Nothing here can double-attach: `reattachToBatch`
+  // registers its job synchronously (so `activeTaggingJobId` blocks further
+  // passes), and the module-level adopted set covers the rest of the session.
+  // One batch per pass is enough — the next pass, once this one ends, picks up
+  // the next eligible batch.
   const activeTaggingJobId = activeTaggingJob?.id ?? null;
+  const sweepInFlightRef = useRef(false);
   useEffect(() => {
     const projectFolderName = projectInfo.projectFolderName;
     if (!projectFolderName || activeTaggingJobId) return;
+    // One discovery pass at a time.
+    if (sweepInFlightRef.current) return;
 
     let disposed = false;
+    sweepInFlightRef.current = true;
     (async () => {
+      let eligible:
+        | {
+            batchId: string;
+            current: number;
+            total: number;
+            modelName?: string;
+            providerType?: 'vlm' | 'onnx';
+          }
+        | undefined;
       try {
         const res = await fetch(
           `/api/auto-tagger/batch/active?project=${encodeURIComponent(projectFolderName)}`,
@@ -699,17 +791,27 @@ export function useAutoTagger({
             providerType?: 'vlm' | 'onnx';
           }[];
         };
-        const batch = body.batches?.[0];
-        if (!batch || disposed) return;
-        if (hasBatchBeenAdopted(batch.batchId)) return;
-        markBatchAdopted(batch.batchId);
-        await reattachToBatch(batch);
+        eligible = (body.batches ?? []).find(
+          (candidate) =>
+            !hasBatchBeenAdopted(candidate.batchId) &&
+            (attachFailuresRef.current.get(candidate.batchId) ?? 0) <
+              MAX_ATTACH_ATTEMPTS,
+        );
       } catch {
         // Sidecar unreachable — nothing to reattach to.
+      } finally {
+        // Released before the attach, not after: `reattachToBatch` runs for the
+        // whole life of the stream, and it registers its job synchronously, so
+        // `activeTaggingJobId` is what keeps concurrent sweeps out from here on.
+        // A disposed pass doesn't release — the cleanup already did, and the
+        // flag now belongs to whichever pass replaced it.
+        if (!disposed) sweepInFlightRef.current = false;
       }
+      if (eligible && !disposed) await reattachToBatch(eligible);
     })();
     return () => {
       disposed = true;
+      sweepInFlightRef.current = false;
     };
   }, [projectInfo.projectFolderName, activeTaggingJobId, reattachToBatch]);
 
@@ -765,11 +867,11 @@ export function useAutoTagger({
     dispatch(openJobDetail({ id: jobId, type: 'tagging' }));
     onClose();
 
-    currentJobIdRef.current = jobId;
     const abortController = registerTaggingController(jobId);
+    jobAbortSignalsRef.current.set(jobId, abortController.signal);
 
     setError(null);
-    imageErrorsRef.current = [];
+    imageErrorsRef.current.set(jobId, []);
 
     // Whether the batch reached a terminal state on the sidecar (finished,
     // was cancelled, or genuinely errored) — as opposed to this client merely
@@ -930,7 +1032,7 @@ export function useAutoTagger({
             // The user may have hit Cancel during the pause; bail out
             // of the transition rather than blowing away cancelled
             // state with a fresh progress dispatch.
-            if (currentJobIdRef.current !== jobId) continue;
+            if (abortController.signal.aborted) continue;
             dispatch(
               updateTaggingProgress({
                 id: jobId,
@@ -978,9 +1080,9 @@ export function useAutoTagger({
               }),
             );
           } else if (event.type === 'error' && event.fileId) {
-            // Per-image error — collect for the summary
+            // Per-image error — collect for this job's summary
             console.warn(`Error tagging ${event.fileId}:`, event.error);
-            imageErrorsRef.current.push({
+            imageErrorsRef.current.get(jobId)?.push({
               fileId: event.fileId,
               error: event.error,
             });
@@ -992,12 +1094,14 @@ export function useAutoTagger({
             // 350ms pause between the final progress event and the
             // summary view so the progress bar visibly hits 100%.
             // Awaited (not fire-and-forget) so the outer try/finally
-            // doesn't clear `currentJobIdRef` before the delayed
-            // `completeTagging` dispatch lands — that would trip the
-            // cancel-check inside flushAndFinalise and silently swallow
-            // the completion, leaving the modal stuck on the progress
-            // view forever.
-            await flushAndFinalise(projectFolderName, jobId, false, 350);
+            // doesn't drop this job's abort signal before the delayed
+            // `completeTagging` lands — flushAndFinalise's cancel check
+            // needs it, and the model unload in the finally must not run
+            // ahead of the completion.
+            await flushAndFinalise(projectFolderName, jobId, {
+              status: 'completed',
+              completionDelayMs: 350,
+            });
 
             // Save settings as defaults for this project
             const settingsToSave: AutoTaggerSettings = {
@@ -1029,7 +1133,9 @@ export function useAutoTagger({
             receivedComplete = true;
             batchTerminatedServerSide = true;
             dispatch(cancelTagging(jobId));
-            await flushAndFinalise(projectFolderName, jobId, true);
+            await flushAndFinalise(projectFolderName, jobId, {
+              status: 'cancelled',
+            });
           }
         }
       }
@@ -1056,7 +1162,7 @@ export function useAutoTagger({
       if (!receivedComplete) {
         // Stream ended without a complete event — flush whatever we have
         if (summarisePendingResults(projectFolderName).imagesProcessed > 0) {
-          flushAndFinalise(projectFolderName, jobId, false);
+          flushAndFinalise(projectFolderName, jobId, { status: 'completed' });
         } else {
           throw new Error(
             'No results received from tagger. Check server logs for errors.',
@@ -1068,19 +1174,25 @@ export function useAutoTagger({
         // The client detached (cancel, tab close, refresh, navigation). The
         // sidecar batch keeps running and is reattached to later, so this is
         // NOT a terminal state — leave the model loaded.
-        flushAndFinalise(projectFolderName, jobId, true);
+        flushAndFinalise(projectFolderName, jobId, { status: 'cancelled' });
       } else {
         // A genuine batch-level error from the sidecar — the run is over, so
         // the model can be released.
         batchTerminatedServerSide = true;
         const message = err instanceof Error ? err.message : 'Tagging failed';
         setError(message);
-        dispatch(failTagging({ id: jobId, error: message }));
-        clearPendingTagResults(projectFolderName);
+        // Flush, don't clear: every result staged before the error is the only
+        // surviving copy (the sidecar's died with it), and finalising also
+        // clears the failed batch so it can't resurface on the next refresh.
+        await flushAndFinalise(projectFolderName, jobId, {
+          status: 'failed',
+          error: message,
+        });
       }
     } finally {
       removeTaggingController(jobId);
-      currentJobIdRef.current = null;
+      jobAbortSignalsRef.current.delete(jobId);
+      imageErrorsRef.current.delete(jobId);
 
       // Auto-release the model from GPU/CPU memory if the preference says to,
       // but ONLY once the batch has genuinely finished server-side. Detaching

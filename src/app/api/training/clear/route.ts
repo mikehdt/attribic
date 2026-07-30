@@ -12,13 +12,21 @@ import { connectSidecar } from '@/app/services/training/sidecar-manager';
  *
  * `job_id` is forwarded so only the dismissed run is affected — omitting it
  * dismisses every terminal job the sidecar is holding.
+ *
+ * Answers `{status:'unreachable'}` when there's no sidecar to tell, rather than
+ * a success-shaped no-op: the dismissed flag is the only thing keeping a cleared
+ * card out of the panel after a reload, so the caller has to be able to see that
+ * nothing was recorded and retry.
  */
 export async function POST(request: Request) {
-  // If the sidecar isn't running there's nothing to clear — treat as a
-  // no-op rather than booting it just to clear nothing.
+  // Never boot the sidecar just to dismiss — but say so plainly, because
+  // "nothing to clear" and "couldn't clear" are not the same outcome.
   const sidecar = await connectSidecar();
   if (sidecar.status !== 'ready') {
-    return NextResponse.json({ status: 'noop' });
+    return NextResponse.json({
+      status: 'unreachable',
+      sidecar_status: sidecar.status,
+    });
   }
 
   const jobId = new URL(request.url).searchParams.get('job_id');

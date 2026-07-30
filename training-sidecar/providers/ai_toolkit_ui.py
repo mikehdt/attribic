@@ -37,6 +37,7 @@ from typing import Optional
 import httpx
 
 from ai_toolkit_server import AiToolkitServer
+from dataset_manifest import build_manifests
 from models import JobProgress, JobStatus, SampleImage, StartJobRequest
 from providers.ai_toolkit_common import (
     SUPPORTED_MODELS,
@@ -95,6 +96,12 @@ PID_EXIT_POLL_INTERVAL = 0.5
 # we don't want to hang the worker indefinitely on a weird DB state).
 PID_UNKNOWN_SETTLE_SECONDS = 5.0
 
+# Where a previous run's weights get moved when a fresh run reuses its output
+# name. Deliberately does not start with the output name: the glob in
+# `get_latest_save_path` matches directories too, so a `<name>-superseded` would
+# itself look like a diffusers-format checkpoint to resume from.
+SUPERSEDED_DIRNAME = "_superseded"
+
 
 def _scan_checkpoints(output_path: str, output_name: str) -> set[str]:
     """Return the set of checkpoint safetensors written for this job so far.
@@ -126,6 +133,75 @@ def _scan_checkpoints(output_path: str, output_name: str) -> set[str]:
         }
     except OSError:
         return set()
+
+
+def _supersede_previous_checkpoints(output_path: str, output_name: str) -> int:
+    """Move a previous run's weights aside so a fresh run starts clean.
+
+    ai-toolkit resumes silently. `BaseSDTrainProcess.get_latest_save_path`
+    globs `<name>*` in `save_root`, takes the newest by ctime and loads it as
+    the starting weights; separately, an `optimizer.pt` in `save_root` is loaded
+    whenever it exists, with no resume flag consulted. We already force
+    `start_step: 0` for a non-resume run so the step counter doesn't carry over
+    (ai-toolkit only reads it back when `start_step is None`) — but the weights
+    still do, and a changed network rank doesn't even error, because
+    `network_mixins.load_weights` zero-pads a smaller checkpoint up to the new
+    shape. The result is a "fresh" run that silently continues a previous LoRA,
+    with alpha scaled for the old rank.
+
+    Moved rather than deleted: these are the user's trained weights, and a run
+    that reuses an output name isn't necessarily a mistake. Returns the number
+    of files moved.
+
+    Only files are moved. ai-toolkit can also save diffusers-format checkpoints
+    as directories, which `get_latest_save_path` would find — but every run we
+    launch is a LoRA/LoKr network, which saves safetensors.
+    """
+    root = Path(output_path) / output_name
+    if not root.exists():
+        return 0
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return 0
+
+    # Matched with plain string ops rather than a glob, as elsewhere in this
+    # module: `output_name` is user-controlled free text and may contain glob
+    # metacharacters like `[v2]`.
+    stale = [
+        p
+        for p in entries
+        if p.is_file()
+        and (
+            (p.name.startswith(output_name) and p.suffix == ".safetensors")
+            # Optimizer state is named for the file, not the run, and is picked
+            # up on any run that finds it — so it has to move too.
+            or p.name == "optimizer.pt"
+        )
+    ]
+    if not stale:
+        return 0
+
+    dest = root / SUPERSEDED_DIRNAME
+    attempt = 1
+    while dest.exists():
+        attempt += 1
+        dest = root / f"{SUPERSEDED_DIRNAME}-{attempt}"
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return 0
+
+    moved = 0
+    for p in stale:
+        try:
+            p.rename(dest / p.name)
+            moved += 1
+        except OSError:
+            # Leave what we can't move; the run still starts, it just may
+            # inherit weights. Better than failing the launch outright.
+            continue
+    return moved
 
 
 def _step_from_checkpoint_name(
@@ -479,10 +555,14 @@ class AiToolkitUiProvider(TrainingProvider):
     async def generate_config(
         self, request: StartJobRequest, config_dir: str
     ) -> str:
-        """Return a stub path. The real config is sent to the API in
-        start_training as JSON; ai-toolkit's worker writes it to disk
-        itself. We don't need to materialise a YAML file."""
-        return ""
+        """Return the run's working directory.
+
+        The real config is sent to the API in start_training as JSON, and
+        ai-toolkit's worker writes it to disk itself, so there's no YAML to
+        materialise here. We hand back `config_dir` rather than a stub so
+        start_training has a run-scoped place to write the dataset file lists
+        (see `dataset_manifest`)."""
+        return config_dir
 
     async def start_training(
         self,
@@ -511,11 +591,45 @@ class AiToolkitUiProvider(TrainingProvider):
                 log_lines=log_tail[-50:],
             )
 
+        # Hand ai-toolkit an explicit file list per dataset rather than a folder
+        # it would walk recursively — see `dataset_manifest` for what that
+        # otherwise drags in. Done before the server spin-up so a dataset
+        # problem surfaces in the first second rather than a minute later.
+        manifests: list[Optional[str]] = []
+        if config_path:
+            results = build_manifests(
+                [ds.path for ds in request.datasets], Path(config_path)
+            )
+            manifests = [r.path for r in results]
+            for ds, result in zip(request.datasets, results):
+                if result.path is None:
+                    yield _emit(f"No images directly in {ds.path}")
+                else:
+                    yield _emit(f"Dataset {ds.path}: {result.count} images")
+        else:
+            yield _emit(
+                "Warning: no run directory, so ai-toolkit will scan dataset "
+                "folders recursively — any subfolders will be trained on too"
+            )
+
+        # A re-run under the same output name must not silently inherit the
+        # previous run's LoRA weights or optimizer state.
+        if not request.hyperparameters.get("resume_state"):
+            superseded = _supersede_previous_checkpoints(
+                request.output_path, request.output_name
+            )
+            if superseded:
+                yield _emit(
+                    f"Moved {superseded} file(s) from an earlier run of "
+                    f"'{request.output_name}' into {SUPERSEDED_DIRNAME}/ "
+                    "so this run starts from scratch"
+                )
+
         yield _emit("Starting ai-toolkit server...")
         await self._server.ensure_running()
         yield _emit("ai-toolkit server ready")
 
-        config_dict = _build_config_dict(request, gpu_id)
+        config_dict = _build_config_dict(request, gpu_id, manifests)
         # Unique name — ai-toolkit's `name` column is a unique key, so a
         # second run with the same output_name would 409. Append a short
         # suffix; the user-facing label still comes from request.output_name.
@@ -946,13 +1060,21 @@ def _sample_prompt_lines(request: StartJobRequest, default_res: int) -> list[str
     return lines
 
 
-def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
+def _build_config_dict(
+    request: StartJobRequest,
+    gpu_id: int = 0,
+    dataset_manifests: Optional[list[Optional[str]]] = None,
+) -> dict:
     """Build the ai-toolkit job_config dict — same shape as the YAML the
     CLI provider emits, but with `process[0].type = ui_trainer` so
     UITrainer is selected and writes step/info to the DB.
 
     ai-toolkit's worker injects `sqlite_db_path` itself before spawning,
     so we don't need to set that here.
+
+    `dataset_manifests` is index-aligned with `request.datasets`; a non-None
+    entry replaces that dataset's recursive folder scan with an explicit file
+    list. A short or absent list degrades to plain folder paths.
     """
     model_def = find_model(request.base_model)
     if model_def is None:
@@ -960,6 +1082,8 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
 
     hp = request.hyperparameters
     defaults = model_def["train_defaults"]
+    manifests = list(dataset_manifests or [])
+    manifests += [None] * (len(request.datasets) - len(manifests))
 
     return {
         "job": "extension",
@@ -1022,10 +1146,10 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                             hp.get("epochs", 10),
                             hp.get("steps", defaults.get("steps", 2000)),
                         ),
+                        # 0 means "keep everything" client-side; ai-toolkit has
+                        # no such sentinel, so send a number it won't reach.
                         "max_step_saves_to_keep": (
-                            hp["max_saves_to_keep"]
-                            if hp.get("max_saves_to_keep", 4) > 0
-                            else 10_000
+                            hp.get("max_saves_to_keep", 4) or 10_000
                         ),
                         "save_state": hp.get("save_state", False),
                     },
@@ -1042,6 +1166,18 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                     "datasets": [
                         {
                             "folder_path": ds.path,
+                            # An explicit file list when we have one.
+                            # ai-toolkit prefers `dataset_path` over
+                            # `folder_path` and treats a non-directory as JSON
+                            # keyed by image path, which is what stops it
+                            # walking subfolders it should never have seen.
+                            # `folder_path` stays set: it's what ai-toolkit
+                            # names in bucket errors.
+                            **(
+                                {"dataset_path": manifests[i]}
+                                if manifests[i]
+                                else {}
+                            ),
                             "caption_ext": "txt",
                             # Per-folder augmentation, sourced from the UI's
                             # folder-level settings (toolkit/config_modules.py
@@ -1061,7 +1197,7 @@ def _build_config_dict(request: StartJobRequest, gpu_id: int = 0) -> dict:
                             "flip_x": ds.flip_augment,
                             "flip_y": ds.flip_v_augment,
                         }
-                        for ds in request.datasets
+                        for i, ds in enumerate(request.datasets)
                     ],
                     "train": {
                         "batch_size": hp.get("batch_size", 1),

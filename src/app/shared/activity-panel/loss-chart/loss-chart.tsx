@@ -28,6 +28,8 @@ type LossChartProps = {
   sampleSteps?: number[];
   /** Steps that have actually produced sample images on disk. */
   generatedSampleSteps?: number[];
+  /** True while the trainer is paused generating sample images right now. */
+  generatingSample?: boolean;
   /**
    * Rolling checkpoint window from the run's config. When > 0 the trainer
    * keeps only the last N saves, so earlier ones are drawn as pruned.
@@ -95,6 +97,7 @@ const LossChartComponent = ({
   savedCheckpoints = [],
   sampleSteps = [],
   generatedSampleSteps = [],
+  generatingSample = false,
   maxSavesToKeep = 0,
   provider,
   lrCurve = null,
@@ -110,7 +113,9 @@ const LossChartComponent = ({
   // runs that sample — everything below is measured from `plotTop`, not the
   // raw padding, so a non-sampling run keeps the full height for the curve.
   const hasSampleLane =
-    sampleSteps.length > 0 || generatedSampleSteps.length > 0;
+    sampleSteps.length > 0 ||
+    generatedSampleSteps.length > 0 ||
+    generatingSample;
   const laneHeight = hasSampleLane
     ? isDetail
       ? SAMPLE_LANE.detail
@@ -250,6 +255,19 @@ const LossChartComponent = ({
     xScale,
     markerGap,
   );
+
+  // The generation happening right now. Its position has been passed but no
+  // image exists yet, so the rules above drop it — draw it pulsing instead,
+  // the same "working" cue the running-job status dot uses. Falls back to the
+  // current step when the backend reports no predicted positions at all.
+  const generatingStep = generatingSample
+    ? ([...sampleSteps]
+        .sort((a, b) => a - b)
+        .filter(
+          (step) => step <= currentStep && !generatedSampleSteps.includes(step),
+        )
+        .pop() ?? currentStep)
+    : null;
 
   const lastPoint = visibleHistory[visibleHistory.length - 1];
 
@@ -483,6 +501,14 @@ const LossChartComponent = ({
           className="fill-pink-500 dark:fill-pink-400"
         />
       ))}
+      {generatingStep !== null && (
+        <circle
+          cx={xScale(generatingStep)}
+          cy={sampleDotY}
+          r={sampleDotRadius}
+          className="animate-pulse fill-pink-500 dark:fill-pink-400"
+        />
+      )}
     </svg>
   );
 };

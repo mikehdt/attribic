@@ -226,6 +226,10 @@ function openCaptionSocket(port: number, batchId: string): CaptionSocket {
   let resolveNext: ((value: BatchProgressEvent | null) => void) | null = null;
   let wsOpen = false;
   let wsError: Error | null = null;
+  // Sticky: close/error can fire while the consumer is busy with a buffered
+  // event, in which case there is no pending resolver to settle. Without this
+  // the consumer's next `next()` would wait forever.
+  let wsClosed = false;
 
   ws.addEventListener('open', () => {
     wsOpen = true;
@@ -255,6 +259,7 @@ function openCaptionSocket(port: number, batchId: string): CaptionSocket {
 
   ws.addEventListener('error', () => {
     wsError = new Error('WebSocket error');
+    wsClosed = true;
     if (resolveNext) {
       resolveNext(null);
       resolveNext = null;
@@ -262,6 +267,7 @@ function openCaptionSocket(port: number, batchId: string): CaptionSocket {
   });
 
   ws.addEventListener('close', () => {
+    wsClosed = true;
     if (resolveNext) {
       resolveNext(null);
       resolveNext = null;
@@ -294,8 +300,12 @@ function openCaptionSocket(port: number, batchId: string): CaptionSocket {
         );
       }),
     next: () => {
+      // Buffered events are delivered before the null: a terminal status that
+      // arrived just before the close must still reach the consumer, which
+      // otherwise reads the null as "died mid-batch".
       const buffered = queue.shift();
       if (buffered) return Promise.resolve(buffered);
+      if (wsClosed) return Promise.resolve(null);
       return new Promise<BatchProgressEvent | null>((resolve) => {
         resolveNext = resolve;
       });
@@ -583,31 +593,59 @@ export async function listCaptionBatches(
 /**
  * Cancel an in-progress caption batch on the sidecar.
  * Never spawns the sidecar — if it isn't running, the batch is already gone.
+ *
+ * Returns whether the cancel was *delivered*. A cancel that never landed
+ * leaves the batch running to completion, so the caller must not treat the
+ * job as cancelled on the strength of the call having been attempted.
  */
-export async function cancelCaptionBatch(batchId: string): Promise<void> {
+export async function cancelCaptionBatch(batchId: string): Promise<boolean> {
   const sidecar = await connectSidecar();
-  if (sidecar.status !== 'ready') return;
+  if (sidecar.status !== 'ready') return false;
 
-  await fetch(
-    `http://127.0.0.1:${sidecar.port}/caption/batch/${encodeURIComponent(batchId)}/cancel`,
-    { method: 'POST' },
-  ).catch(() => {
-    // best-effort
-  });
+  try {
+    const res = await fetch(
+      `http://127.0.0.1:${sidecar.port}/caption/batch/${encodeURIComponent(batchId)}/cancel`,
+      { method: 'POST' },
+    );
+    // 404 = the sidecar has no such running batch, so there is nothing left to
+    // cancel — the desired end state, reached without us.
+    return res.ok || res.status === 404;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Drop a terminal batch (and its stored results) from the sidecar after the
- * client has flushed the results. Best-effort.
+ * Outcome of a clear attempt. `still-running` is the one the caller must retry:
+ * the batch hasn't gone terminal yet, so the sidecar still holds it (and, for a
+ * cancel in flight, still needs the record to finish cancelling).
  */
-export async function clearCaptionBatch(batchId: string): Promise<void> {
-  const sidecar = await connectSidecar();
-  if (sidecar.status !== 'ready') return;
+export type ClearCaptionBatchResult =
+  'cleared' | 'still-running' | 'not-found' | 'unreachable';
 
-  await fetch(
-    `http://127.0.0.1:${sidecar.port}/caption/batch/${encodeURIComponent(batchId)}/clear`,
-    { method: 'POST' },
-  ).catch(() => {
-    // best-effort
-  });
+/**
+ * Drop a terminal batch (and its stored results) from the sidecar after the
+ * client has flushed the results.
+ */
+export async function clearCaptionBatch(
+  batchId: string,
+): Promise<ClearCaptionBatchResult> {
+  const sidecar = await connectSidecar();
+  if (sidecar.status !== 'ready') return 'unreachable';
+
+  try {
+    const res = await fetch(
+      `http://127.0.0.1:${sidecar.port}/caption/batch/${encodeURIComponent(batchId)}/clear`,
+      { method: 'POST' },
+    );
+    if (res.ok) return 'cleared';
+    // The sidecar answers 409 for "not found OR still active" without
+    // distinguishing them; still-running is the safe reading, since the cost
+    // of it being wrong is a caller retrying a batch that's already gone.
+    if (res.status === 409) return 'still-running';
+    if (res.status === 404) return 'not-found';
+    return 'unreachable';
+  } catch {
+    return 'unreachable';
+  }
 }

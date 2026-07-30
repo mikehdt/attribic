@@ -275,6 +275,37 @@ type SidecarJobEntry = {
 };
 
 /**
+ * `/api/training/jobs` answer. Note the route reports "couldn't reach the
+ * sidecar" as a 200 with an empty list plus `sidecar_status`/`error`, so an
+ * empty `jobs` alone does NOT mean there are no runs.
+ */
+type SidecarJobsResponse = {
+  jobs?: SidecarJobEntry[];
+  sidecar_status?: string;
+  error?: string;
+};
+
+/**
+ * The sidecar's own record of every training job, or `null` when it couldn't be
+ * asked.
+ *
+ * Callers have to tell those apart: "no runs" and "runs we failed to read" want
+ * opposite handling — one is an answer, the other is a retry.
+ */
+async function fetchSidecarJobs(): Promise<SidecarJobEntry[] | null> {
+  try {
+    const data = await fetchJson<SidecarJobsResponse>('/api/training/jobs');
+    if (data.sidecar_status || data.error) return null;
+    return data.jobs ?? [];
+  } catch (err) {
+    // Logged here because this is the only place the underlying error exists;
+    // callers add what the failure costs them.
+    console.warn('[training] Could not read the sidecar job list', err);
+    return null;
+  }
+}
+
+/**
  * Rebuild a training job the client has no record of from the sidecar's own
  * view of it, and add it to the store.
  *
@@ -413,16 +444,10 @@ function trainingJobFromSidecar(entry: SidecarJobEntry): TrainingJob {
  * tick corrects whatever is still running.
  */
 async function resyncJobs(dispatch: ThunkDispatch, getState: ThunkGetState) {
-  let entries: SidecarJobEntry[];
-  try {
-    const data = await fetchJson<{ jobs?: SidecarJobEntry[] }>(
-      '/api/training/jobs',
-    );
-    entries = data.jobs ?? [];
-  } catch (err) {
+  const entries = await fetchSidecarJobs();
+  if (!entries) {
     console.warn(
       '[training-ws] Resync failed — job state may be stale until the next tick',
-      err,
     );
     return;
   }
@@ -449,12 +474,20 @@ async function resyncJobs(dispatch: ThunkDispatch, getState: ThunkGetState) {
       continue;
     }
     if (entry.progress) {
-      dispatch(
-        updateTrainingProgress({
-          id: entry.job_id,
-          progress: buildProgress(entry.job_id, entry.progress),
-        }),
-      );
+      // `buildProgress` dates a run from what this page happens to remember —
+      // the local start stamp, and "now" for a terminal tick. Both are wrong for
+      // a record read back off the queue: a run that finished during an
+      // overnight disconnect would report as having just ended, inflating its
+      // duration (and the history snapshot's) by the length of the gap. The
+      // entry carries the real timings, so prefer them.
+      if (entry.started_at && !ws.startedAtByJob.has(entry.job_id)) {
+        ws.startedAtByJob.set(entry.job_id, Date.parse(entry.started_at));
+      }
+      const progress = buildProgress(entry.job_id, entry.progress);
+      if (entry.completed_at) {
+        progress.completedAt = Date.parse(entry.completed_at);
+      }
+      dispatch(updateTrainingProgress({ id: entry.job_id, progress }));
     }
   }
 }
@@ -665,6 +698,14 @@ function snapshotClientConfig(
   };
 }
 
+/**
+ * Has run history been read from a sidecar that actually answered? Mount-time
+ * hydration commonly runs against a sidecar that isn't up (it only spawns on
+ * demand), so this is what lets a later "the sidecar is up now" moment know the
+ * archive is still unread. Session-scoped — a reload starts over.
+ */
+let historyHydrated = false;
+
 // ---------------------------------------------------------------------------
 // startTraining — replaces the old mock thunk.
 // ---------------------------------------------------------------------------
@@ -704,6 +745,12 @@ export function startTraining(
       );
       return;
     }
+
+    // The handshake above is the app's one dependable "the sidecar is up now"
+    // signal, and starting a run is what spawns it. If the page loaded with the
+    // sidecar down, run history is still empty and unread — read it now rather
+    // than leaving the panel and Run History blank until the next reload.
+    if (!historyHydrated) void dispatch(hydrateTrainingHistory());
 
     // POST /api/training/start — server translates to sidecar shape.
     let jobId: string;
@@ -784,6 +831,51 @@ export function startTraining(
 }
 
 // ---------------------------------------------------------------------------
+// Dismissal delivery
+// ---------------------------------------------------------------------------
+
+/** Gap before the single dismiss retry — long enough for a sidecar handshake. */
+const DISMISS_RETRY_DELAY_MS = 1500;
+
+/** One attempt at the dismiss call. `false` means it did not land. */
+async function postDismiss(jobId?: string): Promise<boolean> {
+  const query = jobId ? `?job_id=${encodeURIComponent(jobId)}` : '';
+  try {
+    const res = await fetch(`/api/training/clear${query}`, { method: 'POST' });
+    if (!res.ok) return false;
+    const data = (await res.json().catch(() => null)) as {
+      status?: string;
+    } | null;
+    // The route answers 200 `unreachable` when there's no sidecar to tell —
+    // shaped like a success, but nothing was recorded.
+    return data?.status !== 'unreachable';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tell the sidecar a terminal run (every one of them, with no id) has been
+ * cleared from the activity panel.
+ *
+ * The dismissed flag on the durable record is the only thing keeping a cleared
+ * card out of the panel after a reload, so a call that quietly fails is a card
+ * that comes back from the dead. Retried once — the realistic failure is a
+ * sidecar mid-restart — and then warned about rather than queued: this is a
+ * single-user local app, and the honest outcome of a lost dismiss is the card
+ * reappearing on the next reload.
+ */
+export async function dismissTrainingJobs(jobId?: string): Promise<void> {
+  if (await postDismiss(jobId)) return;
+  await new Promise((resolve) => setTimeout(resolve, DISMISS_RETRY_DELAY_MS));
+  if (await postDismiss(jobId)) return;
+  console.warn(
+    '[training] Could not tell the sidecar the run was cleared — ' +
+      `the card may reappear after a reload (${jobId ?? 'all terminal runs'}).`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // cancelTraining
 // ---------------------------------------------------------------------------
 
@@ -800,9 +892,14 @@ export function cancelTraining(jobId: string): AppThunk {
       console.warn('[training] cancel failed:', err);
     }
     // The sidecar will broadcast a final 'cancelled' progress event, which
-    // updates job state. If the WS is dead, remove the job optimistically.
+    // updates job state. If the WS is dead, remove the job optimistically —
+    // and dismiss it sidecar-side too, exactly as clearing a card does: the
+    // cancel leaves a terminal record with `dismissed: false`, which the next
+    // hydrate would otherwise seed straight back into the panel.
     if (!ws.socket) {
       dispatch(removeJob(jobId));
+      forgetJob(jobId);
+      void dismissTrainingJobs(jobId);
     }
   };
 }
@@ -820,15 +917,9 @@ export function clearTrainingJob(jobId: string): AppThunk {
     // panel re-seeds from on refresh. Mark this one dismissed so it stays out
     // of the panel (it remains in the Run History view).
     dispatch(dismissFromPanel(jobId));
-    try {
-      // Scoped to this job — omitting the id clears every terminal job the
-      // sidecar is holding, taking unrelated finished runs with it.
-      await fetch(`/api/training/clear?job_id=${encodeURIComponent(jobId)}`, {
-        method: 'POST',
-      });
-    } catch (err) {
-      console.warn('[training] clear failed:', err);
-    }
+    // Scoped to this job — omitting the id clears every terminal job the
+    // sidecar is holding, taking unrelated finished runs with it.
+    await dismissTrainingJobs(jobId);
   };
 }
 
@@ -846,6 +937,11 @@ export function clearTrainingJob(jobId: string): AppThunk {
  */
 const HYDRATE_RETRY_DELAYS_MS = [500, 2000, 5000];
 
+/**
+ * `/api/training/status` answer: the sidecar's whole record for its focus job
+ * — the same `JobState` dump `/jobs` lists each entry as — with an `active`
+ * flag in front of it.
+ */
 type ActiveJobResponse = Partial<SidecarJobEntry> & { active: boolean };
 
 export function hydrateActiveTraining(): AppThunk {
@@ -865,13 +961,14 @@ export function hydrateActiveTraining(): AppThunk {
         if (sidecarData.port) sidecarPort = sidecarData.port;
 
         if (statusData.active && statusData.job_id && statusData.status) {
-          active = {
-            job_id: statusData.job_id,
-            status: statusData.status,
-            config: statusData.config,
-            progress: statusData.progress,
-            started_at: statusData.started_at,
-          };
+          // Keep the record whole rather than copying a handful of fields out
+          // of it: `project`, `form_snapshot`, `client_config` and
+          // `completed_at` are all on this payload, and a run rebuilt without
+          // them is a skeleton that history hydration then refuses to overwrite
+          // (`restoreHistory` only fills gaps) — so the degraded copy would
+          // stick for the session, missing from the project menu's run list and
+          // unable to reload its form.
+          active = statusData as SidecarJobEntry;
         }
         break;
       } catch (err) {
@@ -952,44 +1049,55 @@ function isTerminalEntry(entry: SidecarJobEntry): boolean {
  * leaving it in run history, so a card the user cleared stays cleared across
  * reloads without the run being lost.
  *
- * Best-effort: if the sidecar can't be reached (not running yet — this fires on
- * mount) the archive stays empty rather than showing a partial history, and the
- * next mount picks it up. Nothing is written back, so a failed read can't
- * destroy anything.
+ * Resolves to whether the sidecar actually answered, which is the whole
+ * difference between "there is no history" and "we couldn't read the history":
+ * the sidecar only spawns on demand and idle-exits, so a cold start reads an
+ * empty list from a sidecar that isn't there, and a caller that latched on that
+ * would show an empty Run History for the life of the page. Callers retry on
+ * `false` — the panel unlatches its once-per-mount guard, `startTraining`
+ * re-fires once the sidecar is up, and opening Run History re-reads.
+ *
+ * Idempotent, so all of those are free to overlap: nothing is written back to
+ * the sidecar, and both `restoreHistory` and `restoreJobs` only fill gaps —
+ * a run already known from this session keeps its live, fuller snapshot.
  */
-export function hydrateTrainingHistory(): AppThunk {
+export function hydrateTrainingHistory(): AppThunk<Promise<boolean>> {
   return async (dispatch) => {
-    let entries: SidecarJobEntry[];
-    try {
-      const data = await fetchJson<{ jobs?: SidecarJobEntry[] }>(
-        '/api/training/jobs',
-      );
-      entries = data.jobs ?? [];
-    } catch (err) {
-      console.warn(
-        '[training] Could not load run history from the sidecar — ' +
-          'past runs will appear once it is reachable.',
-        err,
-      );
-      return;
+    for (let attempt = 0; ; attempt++) {
+      const entries = await fetchSidecarJobs();
+
+      if (entries) {
+        const archived: TrainingHistoryEntry[] = entries
+          .filter(isTerminalEntry)
+          .map((entry) => ({
+            ...trainingJobFromSidecar(entry),
+            dismissedFromPanel: entry.dismissed ?? false,
+          }));
+        if (archived.length > 0) {
+          // History first: recording a run that finishes this session reads the
+          // archive to decide whether it's already known, so it must be
+          // populated before any terminal transition can fire.
+          dispatch(restoreHistory(archived));
+          // The panel shows the ones the user hasn't cleared. `restoreJobs`
+          // merges without overwriting, so a live job already in the store is
+          // left alone.
+          dispatch(
+            restoreJobs(archived.filter((entry) => !entry.dismissedFromPanel)),
+          );
+        }
+        historyHydrated = true;
+        return true;
+      }
+
+      const delay = HYDRATE_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        console.warn(
+          '[training] Could not load run history from the sidecar — ' +
+            'past runs will appear once it is reachable.',
+        );
+        return false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-
-    const archived: TrainingHistoryEntry[] = entries
-      .filter(isTerminalEntry)
-      .map((entry) => ({
-        ...trainingJobFromSidecar(entry),
-        dismissedFromPanel: entry.dismissed ?? false,
-      }));
-    if (archived.length === 0) return;
-
-    // History first: recording a run that finishes this session reads the
-    // archive to decide whether it's already known, so it must be populated
-    // before any terminal transition can fire.
-    dispatch(restoreHistory(archived));
-    // The panel shows the ones the user hasn't cleared. `restoreJobs` merges
-    // without overwriting, so a live job already in the store is left alone.
-    dispatch(
-      restoreJobs(archived.filter((entry) => !entry.dismissedFromPanel)),
-    );
   };
 }

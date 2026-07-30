@@ -70,8 +70,17 @@ class LlamaCppCaptioningProvider(CaptioningProvider):
             return str(q8[0])
         return str(candidates[0])
 
-    def _load_model(self, model_path: str) -> None:
-        """Load the Llama instance and its chat handler. Blocking."""
+    def _load_model(
+        self,
+        model_path: str,
+        cancel_check: Optional[CancelCheck] = None,
+    ) -> None:
+        """Load the Llama instance and its chat handler. Blocking.
+
+        `cancel_check` is polled between the two loads (vision projector, then
+        the GGUF itself); neither call is interruptible on its own, so a cancel
+        lands at the next boundary rather than immediately.
+        """
         # Import here to avoid startup cost if captioning is never used
         from llama_cpp import Llama
         from llama_cpp.llama_chat_format import Qwen25VLChatHandler
@@ -81,6 +90,9 @@ class LlamaCppCaptioningProvider(CaptioningProvider):
             and self._loaded_model_path == model_path
         ):
             return
+
+        if cancel_check is not None and cancel_check():
+            raise CaptionCancelled("cancelled before model load")
 
         # Release any previous instance
         if self._llm is not None:
@@ -94,6 +106,9 @@ class LlamaCppCaptioningProvider(CaptioningProvider):
 
         chat_handler = Qwen25VLChatHandler(clip_model_path=mmproj_path)
 
+        if cancel_check is not None and cancel_check():
+            raise CaptionCancelled("cancelled after chat-handler load")
+
         self._llm = Llama(
             model_path=model_path,
             chat_handler=chat_handler,
@@ -104,6 +119,11 @@ class LlamaCppCaptioningProvider(CaptioningProvider):
         )
         self._loaded_model_path = model_path
         self._loaded_mmproj_path = mmproj_path
+
+        # Keep the loaded model cached even when cancelled — the next batch
+        # reuses it rather than paying the load again.
+        if cancel_check is not None and cancel_check():
+            raise CaptionCancelled("cancelled during model load")
 
     def _downscaled_jpeg_bytes(self, image_path: str) -> Optional[bytes]:
         """
@@ -227,14 +247,17 @@ class LlamaCppCaptioningProvider(CaptioningProvider):
         self,
         model_path: str,
         on_load_progress: Optional[LoadProgressCallback],
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
         """Blocking load, idempotent. Emits a single status message around it."""
         if self._llm is not None and self._loaded_model_path == model_path:
             return
+        if cancel_check is not None and cancel_check():
+            raise CaptionCancelled("cancelled before model load")
         if on_load_progress is not None:
             on_load_progress("Loading GGUF into RAM", 0, 0)
         await asyncio.get_event_loop().run_in_executor(
-            None, self._load_model, model_path
+            None, self._load_model, model_path, cancel_check
         )
         if on_load_progress is not None:
             on_load_progress("Model loaded", 1, 1)
@@ -243,10 +266,11 @@ class LlamaCppCaptioningProvider(CaptioningProvider):
         self,
         model_path: str,
         on_load_progress: Optional[LoadProgressCallback] = None,
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
         """Pre-load the GGUF so the first caption isn't gated on a cold load."""
         async with self._lock:
-            await self._ensure_loaded(model_path, on_load_progress)
+            await self._ensure_loaded(model_path, on_load_progress, cancel_check)
 
     async def caption_image(
         self,
@@ -274,7 +298,7 @@ class LlamaCppCaptioningProvider(CaptioningProvider):
         async with self._lock:
             # Normally the batch manager calls `prepare` first, but we also
             # keep a lazy-load path so single-image callers still work.
-            await self._ensure_loaded(model_path, on_load_progress)
+            await self._ensure_loaded(model_path, on_load_progress, cancel_check)
 
             # Run inference in a thread so we don't block the event loop.
             # This lets WebSocket progress broadcasts flow during generation.

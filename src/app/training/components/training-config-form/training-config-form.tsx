@@ -215,6 +215,7 @@ const TrainingConfigFormComponent = ({
             datasetIssues={datasetIssues}
             extraFolders={state.extraFolders}
             selectedProvider={state.selectedProvider}
+            viewMode={viewMode}
             hasChanges={sectionHasChanges.dataset}
             visibleFields={visibleFields}
             hiddenChangesCount={hiddenChanges.dataset}

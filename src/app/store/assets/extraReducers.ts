@@ -27,6 +27,11 @@ export const setupExtraReducers = (
       state.ioMessage = 'Loading assets...';
     }
 
+    // The images in the store still belong to the previously-loaded project
+    // until this settles, so nothing may be applied against them by fileId
+    // while the load is in flight.
+    state.loadedProject = null;
+
     // Initialize the load progress
     // (actual progress will be updated by the client-side code)
     state.loadProgress = {
@@ -40,6 +45,8 @@ export const setupExtraReducers = (
     state.ioMessage = undefined;
     state.images = action.payload;
     state.imageIndexById = buildImageIndexMap(action.payload);
+    // Callers pass the project folder name as `projectPath`.
+    state.loadedProject = action.meta.arg?.projectPath ?? null;
     state.tagCountsCache = buildTagCountsCache(action.payload);
 
     // If progress data shows completion, briefly show 100% before transitioning
@@ -61,6 +68,7 @@ export const setupExtraReducers = (
     state.ioMessage = action.error.message || 'Error loading assets';
     state.images = [];
     state.imageIndexById = {};
+    state.loadedProject = null;
     // Keep the progress information for error reporting
     // so users can see how far it got before failing
   });

@@ -18,7 +18,14 @@ export type PendingTagResult = {
   caption?: string;
 };
 
-/** Append a single result for a project. Called per-image during the SSE stream. */
+/**
+ * Append a single result for a project. Called per-image during the SSE stream.
+ *
+ * Keyed by `fileId`: a second result for the same image replaces the first
+ * rather than stacking. That makes a reattach's full replay idempotent, so the
+ * staged copy never has to be wiped before an attach that might not land — and
+ * summaries can't double-count the overlap.
+ */
 export function appendPendingTagResult(
   projectFolderName: string,
   result: PendingTagResult,
@@ -28,7 +35,12 @@ export function appendPendingTagResult(
     const existing: PendingTagResult[] = JSON.parse(
       localStorage.getItem(key) || '[]',
     );
-    existing.push(result);
+    const index = existing.findIndex((r) => r.fileId === result.fileId);
+    if (index === -1) {
+      existing.push(result);
+    } else {
+      existing[index] = result;
+    }
     localStorage.setItem(key, JSON.stringify(existing));
   } catch {
     // localStorage unavailable (SSR, private browsing quota)

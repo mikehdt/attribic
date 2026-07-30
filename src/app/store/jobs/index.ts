@@ -134,10 +134,10 @@ const jobsSlice = createSlice({
       } else if (progressStatus === 'failed') {
         job.status = 'failed';
         job.error = action.payload.progress.error;
-        job.completedAt = Date.now();
+        job.completedAt = action.payload.progress.completedAt ?? Date.now();
       } else if (progressStatus === 'cancelled') {
         job.status = 'cancelled';
-        job.completedAt = Date.now();
+        job.completedAt = action.payload.progress.completedAt ?? Date.now();
       }
     },
 
@@ -241,13 +241,21 @@ const jobsSlice = createSlice({
 
     failTagging: (
       state,
-      action: PayloadAction<{ id: string; error: string }>,
+      action: PayloadAction<{
+        id: string;
+        error: string;
+        // A failed batch can still have produced results worth summarising —
+        // the detail view renders the stat row and per-image errors for a
+        // failed job just as it does for a completed one.
+        summary?: TaggingSummary;
+      }>,
     ) => {
       const job = state.jobs[action.payload.id];
       if (!job || job.type !== 'tagging') return;
 
       job.status = 'failed';
       job.error = action.payload.error;
+      if (action.payload.summary) job.summary = action.payload.summary;
       job.completedAt = Date.now();
     },
 

@@ -96,6 +96,25 @@ class JobRegistry:
         status: LifecycleStatus = LifecycleStatus.QUEUED,
         metadata: Optional[dict] = None,
     ) -> JobRecord:
+        """Register a new job record.
+
+        Raises ValueError when `job_id` already names a live (non-terminal)
+        job: overwriting it would reset a running job's record to QUEUED, so
+        `has_running()` would go false and the idle watchdog could shut the
+        sidecar down mid-run. Terminal records may be replaced — reusing an id
+        after a run has been cleared is legitimate.
+        """
+        existing = self._records.get(job_id)
+        if existing is not None and existing.status not in TERMINAL_STATUSES:
+            raise ValueError(
+                f"Job {job_id} already exists with status {existing.status.value}"
+            )
+        if existing is not None:
+            # Drop any queue leftovers from the previous life of this id
+            # (cancel_queued leaves the id in _pending_ids for the worker to skip).
+            self._pending_ids = [pid for pid in self._pending_ids if pid != job_id]
+            self._runners.pop(job_id, None)
+
         now = _now()
         record = JobRecord(
             id=job_id,

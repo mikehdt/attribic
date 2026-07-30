@@ -30,8 +30,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'cancelling' });
     }
 
-    // Best-effort: a 404 on the sidecar just means the batch already ended.
-    await cancelCaptionBatch(batchId);
+    // Delivery is reported, not assumed: a cancel that never reached the
+    // sidecar (mid-restart, gone) leaves the batch running to completion, and
+    // a client that believed it landed re-applies the whole run on reattach.
+    const delivered = await cancelCaptionBatch(batchId);
+    if (!delivered) {
+      return NextResponse.json({ status: 'unreachable' }, { status: 502 });
+    }
     return NextResponse.json({ status: 'cancelling' });
   } catch {
     return NextResponse.json(

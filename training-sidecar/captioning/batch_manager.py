@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 from captioning.provider import CaptionCancelled, get_provider
 from job_registry import JobKind, JobRegistry, LifecycleStatus
 from models import CaptionBatchProgress, CaptionBatchRequest
 from ws_manager import WebSocketManager
+
+# Outcome of a clear request: removed, never existed, or still live.
+ClearBatchResult = Literal["cleared", "not-found", "active"]
 
 
 @dataclass
@@ -155,17 +158,22 @@ class CaptionBatchManager:
             project=request.project,
             model_path=request.model_path,
         )
+        try:
+            self.registry.create(
+                request.batch_id,
+                JobKind.CAPTION_BATCH,
+                status=LifecycleStatus.QUEUED,
+                metadata={
+                    "total": state.total,
+                    "runtime": request.runtime,
+                    "project": request.project,
+                },
+            )
+        except ValueError as err:
+            # The id is live in the registry even though we had no BatchState
+            # for it — surface it through the duplicate-batch 409 path.
+            raise RuntimeError(str(err)) from err
         self.batches[request.batch_id] = state
-        self.registry.create(
-            request.batch_id,
-            JobKind.CAPTION_BATCH,
-            status=LifecycleStatus.QUEUED,
-            metadata={
-                "total": state.total,
-                "runtime": request.runtime,
-                "project": request.project,
-            },
-        )
 
         async def runner() -> None:
             await self._run_batch(request, state)
@@ -236,6 +244,7 @@ class CaptionBatchManager:
                 await provider.prepare(
                     model_path=request.model_path,
                     on_load_progress=on_load_progress,
+                    cancel_check=cancel_check,
                 )
             except CaptionCancelled:
                 await broadcast_cancelled()
@@ -374,16 +383,23 @@ class CaptionBatchManager:
         state.cancel_requested = True
         return True
 
-    def clear_batch(self, batch_id: str) -> bool:
-        """Remove a completed batch from the manager."""
+    def clear_batch(self, batch_id: str) -> ClearBatchResult:
+        """Remove a completed batch from the manager.
+
+        The three outcomes are distinct to the caller: an unknown id means
+        there is nothing left to clear (the client can stop asking), whereas a
+        live batch means "not yet — try again". Folding them together made a
+        client polling for its clear to land wait out its whole deadline
+        against a batch that had already gone.
+        """
         state = self.batches.get(batch_id)
         if state is None:
-            return False
+            return "not-found"
         if state.status in ("queued", "running"):
-            return False
+            return "active"
         del self.batches[batch_id]
         self.registry.remove(batch_id)
-        return True
+        return "cleared"
 
     async def _broadcast(self, progress: CaptionBatchProgress) -> None:
         """Send a progress update over the caption WebSocket channel."""

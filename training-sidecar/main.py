@@ -431,11 +431,14 @@ async def caption_single(request: CaptionRequest):
         if not result.done():
             result.set_result(caption)
 
-    job_registry.create(
-        job_id,
-        JobKind.CAPTION_SINGLE,
-        metadata={"image_path": request.image_path},
-    )
+    try:
+        job_registry.create(
+            job_id,
+            JobKind.CAPTION_SINGLE,
+            metadata={"image_path": request.image_path},
+        )
+    except ValueError as err:
+        return JSONResponse({"error": str(err)}, status_code=409)
     job_registry.enqueue(job_id, runner)
 
     try:
@@ -503,11 +506,19 @@ async def get_caption_batch(batch_id: str):
 @app.post("/caption/batch/{batch_id}/clear")
 async def clear_caption_batch(batch_id: str):
     """Drop a terminal batch (and its stored results) from the manager.
-    Called by the client after it has flushed the results."""
-    success = caption_manager.clear_batch(batch_id)
-    if not success:
+    Called by the client after it has flushed the results.
+
+    404 and 409 mean different things to the caller: 404 is "nothing left to
+    clear, stop polling", 409 is "still active, ask again".
+    """
+    result = caption_manager.clear_batch(batch_id)
+    if result == "not-found":
         return JSONResponse(
-            {"error": f"Batch {batch_id} not found or still active"},
+            {"error": f"Batch {batch_id} not found"}, status_code=404
+        )
+    if result == "active":
+        return JSONResponse(
+            {"error": f"Batch {batch_id} is still active"},
             status_code=409,
         )
     return {"status": "cleared"}

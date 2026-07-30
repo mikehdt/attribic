@@ -140,6 +140,33 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const isRunning = job.status === 'running' || job.status === 'preparing';
   const isCompleted = job.status === 'completed';
 
+  // How a run ended, for the Phase box. A finished job keeps whatever phase it
+  // was last in (usually "Training"), so the outcome has to win over
+  // `progress.phase` — otherwise a failed run reads as still training.
+  const outcome = !isRunning
+    ? ((
+        {
+          completed: {
+            label: 'Completed',
+            tone: 'text-green-600 dark:text-green-400',
+          },
+          failed: { label: 'Failed', tone: 'text-rose-600 dark:text-rose-400' },
+          cancelled: {
+            label: 'Cancelled',
+            tone: 'text-slate-500 dark:text-slate-400',
+          },
+          interrupted: {
+            label: 'Interrupted',
+            tone: 'text-amber-600 dark:text-amber-400',
+          },
+          pending: {
+            label: 'Queued',
+            tone: 'text-slate-500 dark:text-slate-400',
+          },
+        } as Record<string, { label: string; tone: string }>
+      )[job.status] ?? null)
+    : null;
+
   // During preparing, currentStep/totalSteps carry the setup phase's own item
   // count (e.g. latents cached), not training steps — keep the two apart so
   // caching doesn't render as "Step 12 / 40" or skew the loss chart's x-axis.
@@ -246,6 +273,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             savedCheckpoints={savedCheckpoints}
             sampleSteps={sampleSteps}
             generatedSampleSteps={generatedSampleSteps}
+            generatingSample={isSamplingPhase(progress.phase)}
             maxSavesToKeep={maxSavesToKeep}
             provider={config?.provider}
             lrCurve={lrCurve}
@@ -433,20 +461,15 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         <Stat
           label="Phase"
           value={
-            isSamplingPhase(progress.phase) ? (
+            outcome ? (
+              <span className={outcome.tone}>{outcome.label}</span>
+            ) : isSamplingPhase(progress.phase) ? (
               <span className="flex items-center gap-1 text-violet-600 dark:text-violet-400">
                 <ImagesIcon className="h-3.5 w-3.5 shrink-0" />
                 {formatSamplingLabel(progress.phase!)}
               </span>
             ) : (
-              (progress.phase ??
-              (isPreparing
-                ? 'Preparing'
-                : isRunning
-                  ? 'Training'
-                  : isCompleted
-                    ? 'Completed'
-                    : '—'))
+              (progress.phase ?? (isPreparing ? 'Preparing' : 'Training'))
             )
           }
         />

@@ -10,7 +10,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { clearCaptionBatch } from '@/app/services/auto-tagger/providers/vlm/client';
-import { clearOnnxBatch } from '@/app/services/auto-tagger/providers/wd14/batch-store';
+import {
+  clearOnnxBatch,
+  hasOnnxBatch,
+} from '@/app/services/auto-tagger/providers/wd14/batch-store';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,13 +25,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // The id only ever exists in one store, and clearing an unknown id is a
-    // no-op. A still-running ONNX batch refuses to clear — the caller cancels
-    // first and retries once it goes terminal.
-    if (!clearOnnxBatch(batchId)) {
+    // The id only ever exists in one store. Checked before clearing so an ONNX
+    // id never falls through to the sidecar, which would answer 409 for an id
+    // it has never heard of and strand the caller's clear poll.
+    if (hasOnnxBatch(batchId)) {
+      // A still-running ONNX batch refuses to clear — the caller cancels first
+      // and retries once it goes terminal.
+      if (!clearOnnxBatch(batchId)) {
+        return NextResponse.json({ status: 'still-running' }, { status: 409 });
+      }
+      return NextResponse.json({ status: 'cleared' });
+    }
+
+    const result = await clearCaptionBatch(batchId);
+    if (result === 'still-running') {
       return NextResponse.json({ status: 'still-running' }, { status: 409 });
     }
-    await clearCaptionBatch(batchId);
+    // 'not-found'/'unreachable' both mean nothing is left to resurface: the
+    // sidecar's batches die with it, so a gone sidecar is as good as cleared.
     return NextResponse.json({ status: 'cleared' });
   } catch {
     return NextResponse.json(

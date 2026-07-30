@@ -3,6 +3,7 @@
 import asyncio
 import json
 import math
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -414,15 +415,22 @@ class JobManager:
             started_at=now,
             progress=progress,
         )
-        self._registry.create(
-            job_id,
-            JobKind.TRAINING,
-            status=LifecycleStatus.QUEUED,
-            metadata={
-                "provider": request.provider.value,
-                "project_path": request.project_path,
-            },
-        )
+        try:
+            self._registry.create(
+                job_id,
+                JobKind.TRAINING,
+                status=LifecycleStatus.QUEUED,
+                metadata={
+                    "provider": request.provider.value,
+                    "project_path": request.project_path,
+                },
+            )
+        except ValueError as err:
+            # Id collision with a live job — undo the half-created job and let
+            # the route answer 409 rather than leaving an orphan behind.
+            self._jobs.pop(job_id, None)
+            self._accumulators.pop(job_id, None)
+            raise RuntimeError(str(err)) from err
         self._persist_state(job_id)
 
         # Runner invoked by the worker when it's this job's turn. The worker
@@ -831,13 +839,23 @@ class JobManager:
             return
 
         path = self._jobs_dir / f"{job_id}.json"
+        tmp_path = self._jobs_dir / f"{job_id}.json.tmp"
         try:
-            path.write_text(
+            tmp_path.write_text(
                 json.dumps(job.model_dump(), indent=2),
                 encoding="utf-8",
             )
+            # Write-then-rename: this file is rewritten every few seconds for
+            # the life of a multi-hour run, so a truncating crash mid-write
+            # would destroy the run's only durable record. os.replace is atomic
+            # on both Windows and POSIX.
+            os.replace(tmp_path, path)
         except OSError as e:
             print(f"Warning: Failed to persist job state: {e}")
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _recover_state(self):
         """Reload every job written to disk after a restart.
@@ -860,19 +878,24 @@ class JobManager:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 job = JobState(**data)
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                print(f"Warning: Failed to recover job state from {path.name}: {e}")
+                self._quarantine_job_file(path)
+                continue
 
-                interrupted = job.status in (
-                    JobStatus.PENDING,
-                    JobStatus.PREPARING,
-                    JobStatus.TRAINING,
-                )
-                if interrupted:
-                    job.status = JobStatus.FAILED
-                    job.progress.status = JobStatus.FAILED
-                    job.progress.error = "Training interrupted — sidecar restarted"
-                    job.completed_at = datetime.now(timezone.utc).isoformat()
+            interrupted = job.status in (
+                JobStatus.PENDING,
+                JobStatus.PREPARING,
+                JobStatus.TRAINING,
+            )
+            if interrupted:
+                job.status = JobStatus.FAILED
+                job.progress.status = JobStatus.FAILED
+                job.progress.error = "Training interrupted — sidecar restarted"
+                job.completed_at = datetime.now(timezone.utc).isoformat()
 
-                self._jobs[job.job_id] = job
+            self._jobs[job.job_id] = job
+            try:
                 self._registry.create(
                     job.job_id,
                     JobKind.TRAINING,
@@ -884,8 +907,23 @@ class JobManager:
                         "project_path": job.project_path,
                     },
                 )
-                # Only the ones we changed need writing back.
-                if interrupted:
-                    self._persist_state(job.job_id)
-            except (json.JSONDecodeError, OSError, ValueError) as e:
-                print(f"Warning: Failed to recover job state from {path.name}: {e}")
+            except ValueError as e:
+                print(f"Warning: Skipped registry record for {job.job_id}: {e}")
+            # Only the ones we changed need writing back.
+            if interrupted:
+                self._persist_state(job.job_id)
+
+    def _quarantine_job_file(self, path: Path) -> None:
+        """Rename an unparseable job file aside instead of leaving it in place.
+
+        `delete_job` can only reach ids that made it into `self._jobs`, so a
+        file that never parses is otherwise orphaned forever — and retried on
+        every restart. The `.corrupt` name is outside the `*.json` recovery
+        glob, so it stays visible for inspection but stops being reloaded.
+        """
+        quarantined = path.with_name(f"{path.name}.corrupt")
+        try:
+            os.replace(path, quarantined)
+            print(f"Warning: Quarantined unreadable job file as {quarantined.name}")
+        except OSError as e:
+            print(f"Warning: Failed to quarantine {path.name}: {e}")

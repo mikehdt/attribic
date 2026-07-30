@@ -13,6 +13,7 @@ import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
+import type { TrainingViewMode } from '@/app/store/preferences';
 import type { DatasetIssue } from '@/app/store/training-config';
 import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
@@ -34,6 +35,7 @@ type DatasetSectionProps = {
   datasetIssues: DatasetIssue[];
   extraFolders: ExtraFolder[];
   selectedProvider: TrainingProvider;
+  viewMode: TrainingViewMode;
   hasChanges: boolean;
   visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
@@ -68,6 +70,7 @@ const DatasetSectionComponent = ({
   datasetIssues,
   extraFolders,
   selectedProvider,
+  viewMode,
   hasChanges,
   visibleFields,
   hiddenChangesCount,
@@ -204,7 +207,7 @@ const DatasetSectionComponent = ({
               return (
                 <div
                   key={ds.folderName}
-                  className={`rounded-md border bg-white p-3 dark:bg-slate-800 ${
+                  className={`rounded-md border bg-white p-3 dark:bg-slate-800/50 ${
                     issue ? 'border-amber-500/50' : 'border-(--surface-hover)'
                   }`}
                 >
@@ -263,6 +266,7 @@ const DatasetSectionComponent = ({
                         key={folder.name}
                         datasetIndex={dsIndex}
                         selectedProvider={selectedProvider}
+                        viewMode={viewMode}
                         folderName={folder.name}
                         detectedRepeats={folder.detectedRepeats}
                         effectiveRepeats={
@@ -329,6 +333,7 @@ const DatasetSectionComponent = ({
                   key={ef.path}
                   datasetIndex={null}
                   selectedProvider={selectedProvider}
+                  viewMode={viewMode}
                   folderName={ef.path}
                   detectedRepeats={1}
                   effectiveRepeats={ef.overrideRepeats ?? 1}

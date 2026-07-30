@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 
 type ProgressBarSize = 'xs' | 'sm' | 'md' | 'lg';
-type ProgressBarColor = 'sky' | 'indigo' | 'teal' | 'green' | 'red' | 'amber';
+type ProgressBarColor =
+  'sky' | 'indigo' | 'teal' | 'green' | 'red' | 'amber' | 'slate';
 
 type ProgressBarBase = {
   size?: ProgressBarSize;
@@ -48,6 +49,8 @@ const fillColorClasses: Record<ProgressBarColor, string> = {
   red: 'bg-linear-to-t from-red-600 to-red-500 inset-shadow-xs inset-shadow-red-300',
   amber:
     'bg-linear-to-t from-amber-600 to-amber-500 inset-shadow-xs inset-shadow-amber-300',
+  slate:
+    'bg-linear-to-t from-slate-500 to-slate-400 inset-shadow-xs inset-shadow-slate-300',
 };
 
 export function ProgressBar({

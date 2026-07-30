@@ -49,6 +49,7 @@ class CaptioningProvider(ABC):
         self,
         model_path: str,
         on_load_progress: Optional[LoadProgressCallback] = None,
+        cancel_check: Optional[CancelCheck] = None,
     ) -> None:
         """
         Optionally pre-load the model so subsequent `caption_image` calls run
@@ -60,8 +61,14 @@ class CaptioningProvider(ABC):
         Default is a no-op; providers that cache a loaded model should
         override to do the actual load. The load must be idempotent so that
         the provider's own lazy-load path in `caption_image` is still safe.
+
+        `cancel_check` should be polled at load-stage boundaries (raising
+        CaptionCancelled) so a cancel issued during a multi-GB load is
+        honoured at the next boundary instead of after inference has begun.
+        The individual `from_pretrained`/`Llama()` calls can't be interrupted,
+        so this granularity is necessarily coarse.
         """
-        del model_path, on_load_progress
+        del model_path, on_load_progress, cancel_check
 
     @abstractmethod
     async def caption_image(

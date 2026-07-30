@@ -132,7 +132,7 @@ export function TrainingJobCard({
   );
 
   return (
-    <div className="border-b border-(--border-subtle) inset-shadow-sm inset-shadow-slate-100 last:border-b-0 dark:inset-shadow-slate-900">
+    <div className="border-t border-b border-t-slate-300 border-b-white inset-shadow-sm inset-shadow-slate-200 dark:border-t-slate-900 dark:border-b-slate-600 dark:inset-shadow-slate-900/50">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <span
@@ -210,6 +210,7 @@ export function TrainingJobCard({
               savedCheckpoints={progress?.savedCheckpoints ?? []}
               sampleSteps={progress?.sampleSteps ?? []}
               generatedSampleSteps={generatedSampleSteps}
+              generatingSample={isSamplingPhase(progress?.phase)}
               maxSavesToKeep={maxSavesToKeep}
               provider={config?.provider}
               lrCurve={lrCurve}
@@ -229,7 +230,15 @@ export function TrainingJobCard({
             <ProgressBar
               value={progress!.currentStep}
               max={progress!.totalSteps}
-              color={isCompleted ? 'green' : isFailed ? 'red' : 'sky'}
+              color={
+                isCompleted
+                  ? 'green'
+                  : isFailed
+                    ? 'red'
+                    : isRunning
+                      ? 'sky'
+                      : 'slate'
+              }
               size={isCompleted ? 'xs' : 'sm'}
             />
 

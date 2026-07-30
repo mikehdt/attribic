@@ -528,12 +528,14 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     ],
     tips: [
       'Fewer sample steps needed (8) due to turbo architecture',
+      'Uses unconditioned generation (guidance scale 1.0)',
       'Uses Qwen3-4B as the text encoder — no separate T5/CLIP needed',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
     defaults: {
       ...BASE_DEFAULTS,
       sampleEvery: 250,
+      guidanceScale: 1,
       sampleSteps: 8,
     },
   },

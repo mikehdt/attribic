@@ -426,7 +426,7 @@ is a JSON file: `training-projects/[slug].json`.
   "hyperparameters": { "lr": 1e-4, "epochs": 20, "networkDim": 16, "..." : "..." },
   "samplePrompts": ["a woman with red hair, ..."],
   "outputName": "flux-character",
-  "outputPath": "F:\\Training\\outputs",
+  "outputPath": "C:\\training-folder\\outputs",
   "versions": [
     {
       "id": "v1",

@@ -77,6 +77,14 @@ export type ImageAssets = {
   ioMessage: undefined | string;
   images: ImageAsset[];
   imageIndexById: { [fileId: string]: number }; // Lookup map for O(1) asset access
+  /**
+   * Project folder the loaded `images` belong to; null while a load is in
+   * flight or after a reset. `fileId` is only project-relative, so anything
+   * applying results produced elsewhere (the auto-tagger's pending store) has
+   * to check this before trusting `imageIndexById` — colliding ids across
+   * projects are routine.
+   */
+  loadedProject: string | null;
   // Cached tag counts - null means cache is invalidated and needs rebuild
   // This is rebuilt lazily by selectors when accessed after invalidation
   tagCountsCache: KeyedCountList | null;

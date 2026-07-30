@@ -28,7 +28,10 @@ import {
   loadPersistedDownloads,
   reconcileDownloadsWithServer,
 } from '@/app/store/jobs/persistence';
-import { hydrateTrainingHistory } from '@/app/store/training/training-runtime';
+import {
+  dismissTrainingJobs,
+  hydrateTrainingHistory,
+} from '@/app/store/training/training-runtime';
 import { dismissAllFromPanel } from '@/app/store/training-history';
 
 import { Button } from '../button';
@@ -63,15 +66,26 @@ const ActivityPanelComponent = () => {
   // may still own the stream, in which case we leave the job alone. Only
   // jobs the server no longer tracks get flipped to `interrupted`.
   const restoredRef = useRef(false);
+  const historyRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current) return;
-    restoredRef.current = true;
-
     // Past training runs come from the sidecar, which holds each one's durable
     // record on disk — it seeds both the run-history archive and the panel's
     // terminal-training rows (skipping runs the user has cleared). Async and
     // self-contained, so it doesn't gate the download restore below.
-    dispatch(hydrateTrainingHistory());
+    //
+    // Latched only on a read the sidecar answered: it spawns on demand and
+    // idle-exits, so a cold start reads "no runs" from a sidecar that isn't
+    // there. Unlatching on failure lets a later mount try again; launching a run
+    // re-fires it directly, and opening Run History re-reads.
+    if (!historyRef.current) {
+      historyRef.current = true;
+      void dispatch(hydrateTrainingHistory()).then((hydrated) => {
+        if (!hydrated) historyRef.current = false;
+      });
+    }
+
+    if (restoredRef.current) return;
+    restoredRef.current = true;
 
     const downloads = loadPersistedDownloads();
     if (downloads.length === 0) return;
@@ -125,9 +139,9 @@ const ActivityPanelComponent = () => {
     dispatch(dismissAllFromPanel());
     // …and on their durable records, which is what makes it stick across a
     // refresh. Dismissing is not deleting: the runs stay in the Run History
-    // view, and only an explicit delete there removes them. The endpoint is a
-    // no-op when the sidecar isn't running or has nothing to dismiss.
-    fetch('/api/training/clear', { method: 'POST' }).catch(() => {});
+    // view, and only an explicit delete there removes them. Delivery-checked —
+    // a dismiss that doesn't land is a card that comes back on reload.
+    void dismissTrainingJobs();
   }, [dispatch]);
 
   // Which job's enlarge modal is open, if any. Rendered here — above the
@@ -279,7 +293,7 @@ const ActivityPanelComponent = () => {
 
       {/* Footer with Clear All */}
       {hasClearable && (
-        <div className="flex justify-end border-t border-(--border-subtle) px-3 py-1.5">
+        <div className="flex justify-end border-t border-t-slate-300 px-3 py-1.5 dark:border-t-slate-700">
           <Button onClick={handleClearAll} size="xs" width="md" variant="ghost">
             Clear all
           </Button>
