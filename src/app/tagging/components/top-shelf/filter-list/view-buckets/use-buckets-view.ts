@@ -1,15 +1,17 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
-import { selectAllImages } from '@/app/store/assets';
+import { selectBucketCounts } from '@/app/store/assets';
 import { selectFilterBuckets } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
 import { decomposeDimensions } from '@/app/utils/helpers';
 
+import { compareByActive } from '../comparators';
 import { useFilterContext } from '../filter-context';
+import { useFilterListEffects } from '../hooks/use-filter-list-effects';
 import { useRangeToggle } from '../use-range-toggle';
 
 export const useBucketsView = () => {
-  const images = useAppSelector(selectAllImages);
+  const bucketCounts = useAppSelector(selectBucketCounts);
   const activeBuckets = useAppSelector(selectFilterBuckets);
 
   const {
@@ -17,25 +19,12 @@ export const useBucketsView = () => {
     setSearchTerm,
     sortType,
     sortDirection,
-    updateListLength,
     selectedIndex,
     inputRef,
     handleKeyDown,
     handleItemMouseMove,
     handleListMouseLeave,
   } = useFilterContext();
-
-  // Calculate bucket counts from images
-  const bucketCounts = useMemo(() => {
-    const counts: { [key: string]: number } = {};
-
-    images.forEach((image) => {
-      const bucketKey = `${image.bucket.width}×${image.bucket.height}`;
-      counts[bucketKey] = (counts[bucketKey] || 0) + 1;
-    });
-
-    return counts;
-  }, [images]);
 
   // Convert to array and apply filtering/sorting
   const bucketList = useMemo(() => {
@@ -57,18 +46,7 @@ export const useBucketsView = () => {
 
     // Apply sorting
     buckets.sort((a, b) => {
-      if (sortType === 'active') {
-        if (a.isActive !== b.isActive) {
-          return sortDirection === 'desc'
-            ? a.isActive
-              ? -1
-              : 1
-            : a.isActive
-              ? 1
-              : -1;
-        }
-        return b.count - a.count;
-      }
+      if (sortType === 'active') return compareByActive(a, b, sortDirection);
 
       let result = 0;
 
@@ -93,10 +71,13 @@ export const useBucketsView = () => {
     return buckets;
   }, [bucketCounts, activeBuckets, searchTerm, sortType, sortDirection]);
 
-  // Update list length for keyboard navigation
-  useEffect(() => {
-    updateListLength(bucketList.length);
-  }, [bucketList.length, updateListLength]);
+  useFilterListEffects(
+    bucketList.length,
+    useCallback(
+      (index: number) => `bucket-${bucketList[index].name}`,
+      [bucketList],
+    ),
+  );
 
   // Shift-click / Shift+Return range selection (and plain toggle)
   const { handleItemAction, previewState } = useRangeToggle({
@@ -105,17 +86,6 @@ export const useBucketsView = () => {
     getIsActive: (item) => item.isActive,
     classKey: 'filterBuckets',
   });
-
-  // Keep the keyboard-highlighted bucket scrolled into view
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedIndex < bucketList.length) {
-      const selectedBucket = bucketList[selectedIndex].name;
-      const bucketEl = document.getElementById(`bucket-${selectedBucket}`);
-      if (bucketEl) {
-        bucketEl.scrollIntoView({ block: 'nearest' });
-      }
-    }
-  }, [selectedIndex, bucketList]);
 
   return {
     searchTerm,

@@ -216,8 +216,11 @@ export const coreReducers = {
 
     const asset = state.images[assetIndex];
 
-    // Update the name in the tagList
+    // Update the name in the tagList. A missing old tag means the edit raced
+    // something that already removed it — writing at index -1 would add a "-1"
+    // property to the array and silently corrupt the asset's tags.
     const tagListIndex = asset.tagList.findIndex((item) => item === oldTagName);
+    if (tagListIndex === -1) return;
     asset.tagList[tagListIndex] = newTagName;
 
     const savedIndex = asset.savedTagList?.indexOf(newTagName);

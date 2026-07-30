@@ -32,12 +32,8 @@ import {
   isOnnxCancelRequested,
 } from '@/app/services/auto-tagger/providers/wd14/batch-store';
 import { tagImageInWorker } from '@/app/services/auto-tagger/providers/wd14/worker-manager';
-import { getProjectsFolder } from '@/app/services/config/server-config';
+import { getProjectsFolderOrDefault } from '@/app/services/config/server-config';
 import { ensureVideoPoster } from '@/app/utils/asset-actions';
-
-const getServerConfig = () => ({
-  projectsFolder: getProjectsFolder() || 'public/assets',
-});
 
 type BatchTagRequest = {
   modelId: string;
@@ -144,9 +140,8 @@ export async function POST(request: NextRequest) {
         projectPath = resolvedPath;
       } else {
         // Try with the configured projects folder
-        const config = getServerConfig();
         projectPath = path.resolve(
-          path.join(config.projectsFolder, rawProjectPath),
+          path.join(getProjectsFolderOrDefault(), rawProjectPath),
         );
       }
     }

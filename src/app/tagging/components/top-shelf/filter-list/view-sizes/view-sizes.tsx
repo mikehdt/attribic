@@ -1,59 +1,16 @@
-import { XIcon } from 'lucide-react';
-import { ReactNode } from 'react';
-
 import { highlightText } from '@/app/tagging/utils/text-highlight';
-import { decomposeDimensions } from '@/app/utils/helpers';
 
+import {
+  DimensionVisualizer,
+  normalizeDimensionText,
+} from '../dimension-visualizer';
+import { FilterSearchInput } from '../filter-search-input';
 import { SortType } from '../types';
 import {
   RANGE_PREVIEW_DESELECT_CLASS,
   RANGE_PREVIEW_SELECT_SIZE,
 } from '../use-range-toggle';
 import { useSizesView } from './use-sizes-view';
-
-/**
- * Normalization function for dimensions - replaces × with x for matching
- * @param text The text to normalize
- * @returns Normalized text
- */
-export const normalizeDimensionText = (text: string): string =>
-  text.replace('×', 'x');
-
-// Get a visual representation of dimensions (used by both sizes and buckets views)
-export const DimensionVisualizer = ({
-  dimensions,
-  isActive,
-}: {
-  dimensions: string;
-  isActive: boolean;
-}): ReactNode => {
-  const { width, height } = decomposeDimensions(dimensions);
-  const maxSize = 36; // Maximum box size for visualization
-  let boxWidth, boxHeight;
-
-  if (width >= height) {
-    boxWidth = maxSize;
-    boxHeight = Math.round((height / width) * maxSize);
-  } else {
-    boxHeight = maxSize;
-    boxWidth = Math.round((width / height) * maxSize);
-  }
-
-  // Minimum size to keep box visible
-  boxWidth = Math.max(boxWidth, 8);
-  boxHeight = Math.max(boxHeight, 8);
-
-  return (
-    <div
-      className={`border transition-colors ${
-        isActive
-          ? 'border-sky-500 bg-sky-200 dark:border-sky-400 dark:bg-sky-800'
-          : 'border-slate-300 bg-slate-50 dark:border-slate-500 dark:bg-slate-700'
-      }`}
-      style={{ width: boxWidth, height: boxHeight }}
-    />
-  );
-};
 
 // Format the dimensions for display with proper × symbol
 const formatDimensions = (dimensions: string): string => {
@@ -198,33 +155,13 @@ export const SizesView = () => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Search input section */}
-      <div className="relative shrink-0 border-b border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-700 dark:bg-slate-800">
-        <input
-          ref={inputRef}
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoFocus
-          placeholder="Search sizes..."
-          aria-label="Search sizes"
-          className="w-full rounded-full border border-slate-300 bg-white py-1 ps-4 pe-8 inset-shadow-sm inset-shadow-slate-200 transition-all dark:border-slate-600 dark:bg-slate-700 dark:inset-shadow-slate-800"
-        />
-        <button
-          className={`absolute top-3 right-4 h-5 w-5 rounded-full p-0.5 transition-colors ${
-            searchTerm.trim() !== ''
-              ? 'cursor-pointer text-slate-600 hover:bg-slate-500 hover:text-white dark:text-slate-400 dark:hover:bg-slate-600'
-              : 'pointer-events-none text-white dark:text-slate-700'
-          }`}
-          onClick={
-            searchTerm.trim() !== '' ? () => setSearchTerm('') : undefined
-          }
-          aria-label="Clear search"
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
-      </div>
+      <FilterSearchInput
+        value={searchTerm}
+        onChange={setSearchTerm}
+        onKeyDown={handleKeyDown}
+        inputRef={inputRef}
+        subject="sizes"
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Sizes list */}

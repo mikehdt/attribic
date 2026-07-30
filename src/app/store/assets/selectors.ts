@@ -190,6 +190,26 @@ export const selectHasSubfolderAssets = createSelector(
 
 // Using selectSaveProgress and selectLoadProgress from the slice
 
+/**
+ * Images per training bucket, keyed `"width×height"`. Memoised here (rather
+ * than counted in the Buckets view's hook) so it recomputes when the asset list
+ * changes instead of on every render of the panel — the same treatment sizes
+ * get from `selectImageSizes`.
+ */
+export const selectBucketCounts = createSelector(
+  [selectAllImages],
+  (images) => {
+    if (!images.length) return {};
+
+    const counts: KeyedCountList = {};
+    for (const item of images) {
+      const bucket = `${item.bucket.width}×${item.bucket.height}`;
+      counts[bucket] = (counts[bucket] || 0) + 1;
+    }
+    return counts;
+  },
+);
+
 export const selectAllExtensions = createSelector(
   [selectAllImages],
   (images) => {

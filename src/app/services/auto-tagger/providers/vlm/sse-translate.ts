@@ -33,7 +33,10 @@ type TranslateContext = {
    * The file a result should render its thumbnail from — a poster frame for
    * video, the image itself otherwise. See `displayName`.
    */
-  fileNameFor: (event: { itemId: string; imagePath?: string }) => string | undefined;
+  fileNameFor: (event: {
+    itemId: string;
+    imagePath?: string;
+  }) => string | undefined;
   /**
    * The batch's nth item id in processing order, for the "currently
    * processing" label. Undefined past the end of the batch.

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { AutoTaggerSettings } from '@/app/services/auto-tagger';
-import { getProjectsFolder } from '@/app/services/config/server-config';
+import { getProjectsFolderOrDefault } from '@/app/services/config/server-config';
 import type { CaptionMode } from '@/app/store/project/types';
 
 /**
@@ -44,7 +44,7 @@ export type ProjectConfig = {
 };
 
 const getProjectsRoot = (): string =>
-  path.resolve(getProjectsFolder() || 'public/assets');
+  path.resolve(getProjectsFolderOrDefault());
 
 /**
  * Project names arrive from URL slugs and client calls, so a bare folder name

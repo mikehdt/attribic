@@ -29,12 +29,25 @@ export function getHfToken(): string | null {
 }
 
 /**
- * Read the configured projects folder, or '' when unset. Callers that need a
- * concrete fallback (e.g. the image server's `public/assets`) apply their own.
+ * The bundled projects folder, used when config.json names none. Kept here so
+ * every server-side reader agrees on it — the literal was repeated at six call
+ * sites, each free to drift.
+ */
+export const DEFAULT_PROJECTS_FOLDER = 'public/assets';
+
+/**
+ * Read the configured projects folder, or '' when unset. Prefer
+ * {@link getProjectsFolderOrDefault} unless you specifically need to know
+ * whether the user has configured one.
  */
 export function getProjectsFolder(): string {
   const pf = readConfig().projectsFolder;
   return typeof pf === 'string' ? pf : '';
+}
+
+/** The configured projects folder, falling back to the bundled one. */
+export function getProjectsFolderOrDefault(): string {
+  return getProjectsFolder() || DEFAULT_PROJECTS_FOLDER;
 }
 
 /** Read the configured models folder, defaulting to `<cwd>/public/models`. */

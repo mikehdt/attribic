@@ -1,10 +1,12 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { selectTagCounts } from '@/app/store/assets';
 import { selectFilterTags } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
 
+import { compareByActive, compareByCount, compareByName } from '../comparators';
 import { useFilterContext } from '../filter-context';
+import { useFilterListEffects } from '../hooks/use-filter-list-effects';
 import { useRangeToggle } from '../use-range-toggle';
 
 export const useTagsView = () => {
@@ -16,7 +18,6 @@ export const useTagsView = () => {
     sortDirection,
     searchTerm,
     setSearchTerm,
-    updateListLength,
     selectedIndex,
     inputRef,
     handleKeyDown,
@@ -41,42 +42,25 @@ export const useTagsView = () => {
 
     // Sort the tags
     return list.sort((a, b) => {
-      // If sort type is active, compare by active state first
-      if (sortType === 'active') {
-        // First compare by active state
-        if (a.isActive !== b.isActive) {
-          // Default (desc) puts active items first, asc puts them last
-          return sortDirection === 'desc'
-            ? a.isActive
-              ? -1
-              : 1 // active items first when descending (default)
-            : a.isActive
-              ? 1
-              : -1; // active items last when ascending
-        }
-        // If both have same active state, sort by count descending (9-0) as secondary criteria
-        return b.count - a.count; // always descending count (9-0) as tie-breaker
+      if (sortType === 'active') return compareByActive(a, b, sortDirection);
+      if (sortType === 'count') {
+        // Alphabetical tie-break: equal-count tags are common, and an
+        // arbitrary order there makes the list look unsorted.
+        const byCount = compareByCount(a, b, sortDirection);
+        return byCount !== 0 ? byCount : a.tag.localeCompare(b.tag);
       }
-      // If sort type is count, compare by count then alphabetical (A-Z) as tie-breaker
-      else if (sortType === 'count') {
-        const countDiff =
-          sortDirection === 'asc' ? a.count - b.count : b.count - a.count;
-        if (countDiff !== 0) return countDiff;
-        return a.tag.localeCompare(b.tag);
-      }
-      // Otherwise sort by tag name (alphabetical)
-      else {
-        return sortDirection === 'asc'
-          ? a.tag.localeCompare(b.tag) // A-Z
-          : b.tag.localeCompare(a.tag); // Z-A
-      }
+      return compareByName(a.tag, b.tag, sortDirection);
     });
   }, [allTags, activeTags, searchTerm, sortType, sortDirection]);
 
-  // Update list length for keyboard navigation
-  useEffect(() => {
-    updateListLength(filteredTags.length);
-  }, [filteredTags.length, updateListLength]);
+  useFilterListEffects(
+    filteredTags.length,
+    // Must match the encoded id scheme in view-tags.tsx
+    useCallback(
+      (index: number) => `tag-${encodeURIComponent(filteredTags[index].tag)}`,
+      [filteredTags],
+    ),
+  );
 
   // Shift-click / Shift+Return range selection (and plain toggle)
   const { handleItemAction, previewState } = useRangeToggle({
@@ -85,20 +69,6 @@ export const useTagsView = () => {
     getIsActive: (item) => item.isActive,
     classKey: 'filterTags',
   });
-
-  // Keep the keyboard-highlighted tag scrolled into view
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedIndex < filteredTags.length) {
-      const selectedTag = filteredTags[selectedIndex].tag;
-      // Must match the encoded id scheme in view-tags.tsx
-      const tagEl = document.getElementById(
-        `tag-${encodeURIComponent(selectedTag)}`,
-      );
-      if (tagEl) {
-        tagEl.scrollIntoView({ block: 'nearest' });
-      }
-    }
-  }, [selectedIndex, filteredTags]);
 
   return {
     searchTerm,

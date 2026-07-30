@@ -15,13 +15,7 @@ const allViewOptions: { value: FilterView; label: string }[] = [
 ];
 
 export const ViewSelector = () => {
-  const {
-    activeView,
-    setActiveView,
-    setSearchTerm,
-    setSelectedIndex,
-    onClose,
-  } = useFilterContext();
+  const { activeView, setActiveView, onClose } = useFilterContext();
 
   const captionMode = useAppSelector(selectCaptionMode);
 
@@ -34,18 +28,15 @@ export const ViewSelector = () => {
     [captionMode],
   );
 
-  const handleViewChange = (view: FilterView) => {
-    setActiveView(view);
-    setSearchTerm('');
-    setSelectedIndex(-1);
-  };
-
   return (
     <>
       <SegmentedControl
         options={viewOptions}
         value={activeView}
-        onChange={handleViewChange}
+        // The context's setter is `handleViewChange` — it already clears the
+        // search term, keyboard index and range anchor. Clearing them again
+        // here just meant two places to keep in step.
+        onChange={setActiveView}
         tone="surface"
         width="full"
       />

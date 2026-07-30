@@ -13,6 +13,10 @@ filter-panel.tsx             # Panel layout: view selector, controls, active vie
 list-view-selector.tsx       # Segmented control: Tags / Sizes / File
 select-sizes-sub-view.tsx    # Size sub-view switcher: Images / Buckets
 filter-controls.tsx          # Sort type/direction buttons + Clear button
+filter-search-input.tsx      # Search row (input + clear) for tags/sizes/buckets
+dimension-visualizer.tsx     # Shape box + × normalisation, shared sizes/buckets
+comparators.ts               # Active / count / name orderings used by every view
+hooks/                       # Shared across views: list length + scroll effects
 use-keyboard-navigation.ts   # Arrow/Enter/Escape handling for the lists
 use-range-toggle.ts          # Shift-click range selection shared by all views
 view-tags/                   # Tag view (list + hook)

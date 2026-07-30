@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import {
   selectAllExtensions,
@@ -14,7 +14,9 @@ import {
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 
+import { compareByActive, compareByCount, compareByName } from '../comparators';
 import { useFilterContext } from '../filter-context';
+import { useFilterListEffects } from '../hooks/use-filter-list-effects';
 import { useRangeToggle } from '../use-range-toggle';
 
 export const useFileView = () => {
@@ -31,7 +33,6 @@ export const useFileView = () => {
   const {
     sortType,
     sortDirection,
-    updateListLength,
     selectedIndex,
     setSelectedIndex,
     inputRef,
@@ -79,34 +80,9 @@ export const useFileView = () => {
 
     // Sort the extensions
     return list.sort((a, b) => {
-      // If sort type is active, compare by active state first
-      if (sortType === 'active') {
-        // First compare by active state
-        if (a.isActive !== b.isActive) {
-          // Default (desc) puts active items first, asc puts them last
-          return sortDirection === 'desc'
-            ? a.isActive
-              ? -1
-              : 1 // active items first when descending (default)
-            : a.isActive
-              ? 1
-              : -1; // active items last when ascending
-        }
-        // If both have same active state, sort by count descending (9-0) as secondary criteria
-        return b.count - a.count; // always descending count (9-0) as tie-breaker
-      }
-      // If sort type is count, compare by count
-      else if (sortType === 'count') {
-        return sortDirection === 'asc'
-          ? a.count - b.count // ascending
-          : b.count - a.count; // descending
-      }
-      // Otherwise sort by extension name (alphabetical)
-      else {
-        return sortDirection === 'asc'
-          ? a.ext.localeCompare(b.ext) // A-Z
-          : b.ext.localeCompare(a.ext); // Z-A
-      }
+      if (sortType === 'active') return compareByActive(a, b, sortDirection);
+      if (sortType === 'count') return compareByCount(a, b, sortDirection);
+      return compareByName(a.ext, b.ext, sortDirection);
     });
   }, [allExtensions, activeExtensions, sortType, sortDirection]);
 
@@ -121,32 +97,14 @@ export const useFileView = () => {
 
     // Sort the subfolders (same logic as extensions)
     return list.sort((a, b) => {
-      if (sortType === 'active') {
-        if (a.isActive !== b.isActive) {
-          return sortDirection === 'desc'
-            ? a.isActive
-              ? -1
-              : 1
-            : a.isActive
-              ? 1
-              : -1;
-        }
-        return b.count - a.count;
-      } else if (sortType === 'count') {
-        return sortDirection === 'asc' ? a.count - b.count : b.count - a.count;
-      } else {
-        return sortDirection === 'asc'
-          ? a.subfolder.localeCompare(b.subfolder)
-          : b.subfolder.localeCompare(a.subfolder);
-      }
+      if (sortType === 'active') return compareByActive(a, b, sortDirection);
+      if (sortType === 'count') return compareByCount(a, b, sortDirection);
+      return compareByName(a.subfolder, b.subfolder, sortDirection);
     });
   }, [allSubfolders, activeSubfolders, sortType, sortDirection]);
 
-  // Update list length for keyboard navigation (subfolders + extensions as one continuous list)
+  // Subfolders + extensions are one continuous keyboard list.
   const combinedListLength = subfolderList.length + extensionList.length;
-  useEffect(() => {
-    updateListLength(combinedListLength);
-  }, [combinedListLength, updateListLength]);
 
   // Shift-click / Shift+Return range selection. Subfolders and extensions are
   // one keyboard list but two filter classes, so each gets its own range group;
@@ -226,21 +184,21 @@ export const useFileView = () => {
     [subfolderList, extensionList],
   );
 
-  // Scroll selected item into view
-  useEffect(() => {
-    const selected = getSelectedItem(selectedIndex);
-    if (!selected) return;
-
-    // Subfolder ids are encoded to match view-file.tsx (names may have spaces)
-    const elId =
-      selected.type === 'subfolder'
-        ? `subfolder-${encodeURIComponent(selected.item.subfolder)}`
-        : `ext-${selected.item.ext}`;
-    const el = document.getElementById(elId);
-    if (el) {
-      el.scrollIntoView({ block: 'nearest' });
-    }
-  }, [selectedIndex, getSelectedItem]);
+  useFilterListEffects(
+    combinedListLength,
+    useCallback(
+      (index: number) => {
+        const selected = getSelectedItem(index);
+        if (!selected) return null;
+        // Subfolder ids are encoded to match view-file.tsx (names may have
+        // spaces); extensions are always id-safe.
+        return selected.type === 'subfolder'
+          ? `subfolder-${encodeURIComponent(selected.item.subfolder)}`
+          : `ext-${selected.item.ext}`;
+      },
+      [getSelectedItem],
+    ),
+  );
 
   // Mouse move for extensions needs to offset by subfolder count so the shared
   // (global) highlight index lands on the right row.

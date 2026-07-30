@@ -1,11 +1,13 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { selectImageSizes } from '@/app/store/assets';
 import { selectFilterSizes } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
 import { decomposeDimensions, getAspectRatio } from '@/app/utils/helpers';
 
+import { compareByActive, compareByCount } from '../comparators';
 import { useFilterContext } from '../filter-context';
+import { useFilterListEffects } from '../hooks/use-filter-list-effects';
 import { useRangeToggle } from '../use-range-toggle';
 
 // Format aspect ratio as a simplified string
@@ -65,7 +67,6 @@ export const useSizesView = () => {
     sortDirection,
     searchTerm,
     setSearchTerm,
-    updateListLength,
     selectedIndex,
     inputRef,
     handleKeyDown,
@@ -119,23 +120,9 @@ export const useSizesView = () => {
     // Sort the sizes
     return list.sort((a, b) => {
       if (sortType === 'active') {
-        // First compare by active state
-        if (a.isActive !== b.isActive) {
-          // Default (desc) puts active items first, asc puts them last
-          return sortDirection === 'desc'
-            ? a.isActive
-              ? -1
-              : 1 // active items first when descending (default)
-            : a.isActive
-              ? 1
-              : -1; // active items last when ascending
-        }
-        // If both have same active state, sort by count descending (9-0) as secondary criteria
-        return b.count - a.count; // always descending count (9-0) as tie-breaker
+        return compareByActive(a, b, sortDirection);
       } else if (sortType === 'count') {
-        return sortDirection === 'asc'
-          ? a.count - b.count // ascending
-          : b.count - a.count; // descending
+        return compareByCount(a, b, sortDirection);
       } else if (sortType === 'dimensions') {
         // Sort by width first, then by height
         if (a.width !== b.width) {
@@ -168,10 +155,13 @@ export const useSizesView = () => {
     });
   }, [allSizes, activeSizes, searchTerm, sortType, sortDirection]);
 
-  // Update list length for keyboard navigation
-  useEffect(() => {
-    updateListLength(filteredSizes.length);
-  }, [filteredSizes.length, updateListLength]);
+  useFilterListEffects(
+    filteredSizes.length,
+    useCallback(
+      (index: number) => `size-${filteredSizes[index].dimensions}`,
+      [filteredSizes],
+    ),
+  );
 
   // Shift-click / Shift+Return range selection (and plain toggle)
   const { handleItemAction, previewState } = useRangeToggle({
@@ -180,17 +170,6 @@ export const useSizesView = () => {
     getIsActive: (item) => item.isActive,
     classKey: 'filterSizes',
   });
-
-  // Keep the keyboard-highlighted size scrolled into view
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedIndex < filteredSizes.length) {
-      const selectedSize = filteredSizes[selectedIndex].dimensions;
-      const sizeEl = document.getElementById(`size-${selectedSize}`);
-      if (sizeEl) {
-        sizeEl.scrollIntoView({ block: 'nearest' });
-      }
-    }
-  }, [selectedIndex, filteredSizes]);
 
   return {
     sortType,

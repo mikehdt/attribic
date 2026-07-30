@@ -1,7 +1,6 @@
-import { XIcon } from 'lucide-react';
-
 import { highlightText } from '@/app/tagging/utils/text-highlight';
 
+import { FilterSearchInput } from '../filter-search-input';
 import {
   RANGE_PREVIEW_DESELECT_CLASS,
   RANGE_PREVIEW_SELECT_TAGS,
@@ -24,33 +23,13 @@ export const TagsView = () => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Search input section */}
-      <div className="relative shrink-0 border-b border-slate-200 bg-slate-50 px-2 py-2 dark:border-slate-700 dark:bg-slate-800">
-        <input
-          ref={inputRef}
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoFocus
-          placeholder="Search tags..."
-          aria-label="Search tags"
-          className="w-full rounded-full border border-slate-300 bg-white py-1 ps-4 pe-8 inset-shadow-sm inset-shadow-slate-200 transition-all dark:border-slate-600 dark:bg-slate-700 dark:inset-shadow-slate-800"
-        />
-        <button
-          className={`absolute top-3 right-4 h-5 w-5 rounded-full p-0.5 transition-colors ${
-            searchTerm.trim() !== ''
-              ? 'cursor-pointer text-slate-600 hover:bg-slate-500 hover:text-white dark:text-slate-400 dark:hover:bg-slate-600'
-              : 'pointer-events-none text-white dark:text-slate-700'
-          }`}
-          onClick={
-            searchTerm.trim() !== '' ? () => setSearchTerm('') : undefined
-          }
-          aria-label="Clear search"
-        >
-          <XIcon className="h-4 w-4" />
-        </button>
-      </div>
+      <FilterSearchInput
+        value={searchTerm}
+        onChange={setSearchTerm}
+        onKeyDown={handleKeyDown}
+        inputRef={inputRef}
+        subject="tags"
+      />
 
       {/* Tags list */}
       {filteredTags.length === 0 ? (

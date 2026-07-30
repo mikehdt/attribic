@@ -26,7 +26,7 @@ import {
   hasOnnxBatch,
 } from '@/app/services/auto-tagger/providers/wd14/batch-store';
 import type { TaggingSseEvent } from '@/app/services/auto-tagger/types';
-import { getProjectsFolder } from '@/app/services/config/server-config';
+import { getProjectsFolderOrDefault } from '@/app/services/config/server-config';
 
 export async function GET(request: NextRequest) {
   const batchId = request.nextUrl.searchParams.get('batchId');
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
             onSnapshot: (snapshot) => {
               if (snapshot.project) {
                 projectPath = path.resolve(
-                  getProjectsFolder() || 'public/assets',
+                  getProjectsFolderOrDefault(),
                   snapshot.project,
                 );
               }

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 
 import { isSupportedAssetExtension } from '@/app/constants';
+import { getProjectsFolderOrDefault } from '@/app/services/config/server-config';
 import {
   fileIdForTargetPath,
   type ImportSkipReason,
@@ -12,22 +13,6 @@ import {
   splitSidecarName,
 } from '@/app/utils/asset-import';
 import { isValidRepeatFolder } from '@/app/utils/subfolder-utils';
-
-/** Reads `projectsFolder` from config.json — the same source as the rest of the app. */
-const getProjectsFolder = (): string => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (typeof config.projectsFolder === 'string' && config.projectsFolder) {
-        return config.projectsFolder;
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to read config.json for asset import:', error);
-  }
-  return 'public/assets';
-};
 
 /** A project slug is one folder name directly inside the projects folder. */
 const isSafeProjectSlug = (slug: string): boolean =>
@@ -107,7 +92,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid project' }, { status: 400 });
   }
 
-  const projectDir = path.resolve(getProjectsFolder(), project);
+  const projectDir = path.resolve(getProjectsFolderOrDefault(), project);
   if (!fs.existsSync(projectDir)) {
     return NextResponse.json(
       { error: 'Project folder not found' },

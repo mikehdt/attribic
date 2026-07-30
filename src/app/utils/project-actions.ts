@@ -8,7 +8,7 @@ import {
   isSupportedImageExtension,
 } from '@/app/constants';
 import type { AutoTaggerSettings } from '@/app/services/auto-tagger';
-import { getProjectsFolder } from '@/app/services/config/server-config';
+import { getProjectsFolderOrDefault } from '@/app/services/config/server-config';
 import type { ProjectConfig } from '@/app/services/tagging-projects/fs';
 import {
   deleteThumbnail,
@@ -24,7 +24,7 @@ import { sharp } from './sharp';
 import { isValidRepeatFolder, parseSubfolder } from './subfolder-utils';
 
 const getServerConfig = () => ({
-  projectsFolder: getProjectsFolder() || 'public/assets',
+  projectsFolder: getProjectsFolderOrDefault(),
 });
 
 // `ProjectConfig` is deliberately not re-exported here: the 'use server'

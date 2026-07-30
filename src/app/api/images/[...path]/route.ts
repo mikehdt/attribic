@@ -4,7 +4,7 @@ import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getImageMimeType } from '@/app/constants';
-import { getProjectsFolder } from '@/app/services/config/server-config';
+import { getProjectsFolderOrDefault } from '@/app/services/config/server-config';
 
 /** True if `target` resolves to a path at or below `root`. */
 const isWithin = (root: string, target: string): boolean => {
@@ -30,7 +30,7 @@ export async function GET(
     // final path and verify it stays within the projects root *before* touching
     // disk. Without this, a `..`-laden segment or an absolute `projectName`
     // would let any file on the machine be read.
-    const projectsRoot = path.resolve(getProjectsFolder() || 'public/assets');
+    const projectsRoot = path.resolve(getProjectsFolderOrDefault());
     const resolvedPath = path.resolve(
       projectsRoot,
       projectName,
