@@ -1,13 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import type { AppDispatch } from '@/app/store';
 import {
+  fetchAutoTaggerModels,
   selectModels,
+  selectModelsError,
   selectProviders,
-  setModelsAndProviders,
 } from '@/app/store/auto-tagger';
 import type { ModelInfo } from '@/app/store/auto-tagger/types';
 import { useAppSelector } from '@/app/store/hooks';
@@ -26,26 +27,11 @@ export function AutoTaggerTab() {
   const dispatch = useDispatch<AppDispatch>();
   const providers = useSelector(selectProviders);
   const models = useSelector(selectModels);
-
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchModels = useCallback(async () => {
-    try {
-      const response = await fetch('/api/auto-tagger/models');
-      if (!response.ok) throw new Error('Failed to fetch models');
-      const data = await response.json();
-      dispatch(setModelsAndProviders(data));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load models');
-    }
-  }, [dispatch]);
+  const error = useSelector(selectModelsError);
 
   useEffect(() => {
-    if (models.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional data fetch on mount; setState runs after the fetch resolves
-      fetchModels();
-    }
-  }, [models.length, fetchModels]);
+    dispatch(fetchAutoTaggerModels());
+  }, [dispatch]);
 
   return (
     <div className="flex flex-col gap-4 px-1">
@@ -88,7 +74,9 @@ export function AutoTaggerTab() {
 // ---------------------------------------------------------------------------
 
 function AutoTaggerModelRow({ model }: { model: ModelInfo }) {
-  const job = useAppSelector(selectDownloadJobByModelId(model.id));
+  const job = useAppSelector((state) =>
+    selectDownloadJobByModelId(state, model.id),
+  );
   const { start, retry, cancel, remove, uninstall } = useDownloadActions();
 
   const isReady = model.status === 'ready';

@@ -190,8 +190,8 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   // Flush any pending auto-tagger results that accumulated while the user was away.
   // Runs once when assets finish loading — but only if tagging isn't still in progress,
   // since the completion handler will flush when the job finishes.
-  const activeTaggingJob = useAppSelector(
-    selectActiveTaggingJob(projectFolderName ?? ''),
+  const activeTaggingJob = useAppSelector((state) =>
+    selectActiveTaggingJob(state, projectFolderName ?? ''),
   );
   useEffect(() => {
     if (

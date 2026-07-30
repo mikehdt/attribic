@@ -200,7 +200,9 @@ function DownloadableModelRow({
     [model.variants],
   );
 
-  const job = useAppSelector(selectDownloadJobByModelId(model.id));
+  const job = useAppSelector((state) =>
+    selectDownloadJobByModelId(state, model.id),
+  );
   const { start, retry, cancel, remove, uninstall } = useDownloadActions();
   const hasLiveJob = job && job.status !== 'completed';
 

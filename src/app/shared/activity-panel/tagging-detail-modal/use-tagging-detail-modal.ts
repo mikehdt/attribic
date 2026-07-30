@@ -15,7 +15,7 @@ export function useTaggingDetailModal(
 ) {
   const job = useAppSelector((state): TaggingJob | null => {
     if (!jobId) return null;
-    const found = selectJobById(jobId)(state);
+    const found = selectJobById(state, jobId);
     return found && found.type === 'tagging' ? found : null;
   });
 

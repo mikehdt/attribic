@@ -15,7 +15,7 @@ export function useTrainingDetailModal(
 ) {
   const job = useAppSelector((state): TrainingJob | null => {
     if (!jobId) return null;
-    const found = selectJobById(jobId)(state);
+    const found = selectJobById(state, jobId);
     return found && found.type === 'training' ? found : null;
   });
 

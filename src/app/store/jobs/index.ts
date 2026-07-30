@@ -395,9 +395,15 @@ const selectAllJobs = createSelector(selectJobs, (s) =>
  * Look up a single job by ID. Used by UI that must keep reading live job
  * state after its own parent panel has hidden itself (e.g. a detail modal
  * that stays open while the activity panel disappears behind it).
+ *
+ * The id is a selector *argument*, not a factory parameter: a factory called
+ * inline (`selectJobById(id)(state)`) builds a fresh selector every render and
+ * memoises nothing. `weakMapMemoize` caches per argument, so this one holds.
  */
-export const selectJobById = (id: string) =>
-  createSelector(selectJobs, (s): Job | null => s.jobs[id] ?? null);
+export const selectJobById = createSelector(
+  [selectJobs, (_state: RootState, id: string) => id],
+  (s, id): Job | null => s.jobs[id] ?? null,
+);
 
 export const selectActiveJobs = createSelector(selectAllJobs, (jobs) =>
   jobs.filter((j) => j.status === 'running' || j.status === 'preparing'),
@@ -444,8 +450,9 @@ const selectActiveTrainingJob = createSelector(
  * Find the most recent download job (active or otherwise) for a given model.
  * Used by in-modal rows to surface progress, interrupted state, and errors.
  */
-export const selectDownloadJobByModelId = (modelId: string) =>
-  createSelector(selectAllJobs, (jobs): DownloadJob | null => {
+export const selectDownloadJobByModelId = createSelector(
+  [selectAllJobs, (_state: RootState, modelId: string) => modelId],
+  (jobs, modelId): DownloadJob | null => {
     const matches = jobs.filter(
       (j): j is DownloadJob => j.type === 'download' && j.modelId === modelId,
     );
@@ -454,7 +461,8 @@ export const selectDownloadJobByModelId = (modelId: string) =>
     return matches.reduce((latest, j) =>
       j.createdAt > latest.createdAt ? j : latest,
     );
-  });
+  },
+);
 
 /**
  * Model IDs with a download in flight or queued (pending/preparing/running).
@@ -486,8 +494,12 @@ export const selectIsTraining = createSelector(
 );
 
 /** The active tagging job for a specific project (at most one per project). */
-export const selectActiveTaggingJob = (projectFolderName: string) =>
-  createSelector(selectAllJobs, (jobs): TaggingJob | null => {
+export const selectActiveTaggingJob = createSelector(
+  [
+    selectAllJobs,
+    (_state: RootState, projectFolderName: string) => projectFolderName,
+  ],
+  (jobs, projectFolderName): TaggingJob | null => {
     const found = jobs.find(
       (j): j is TaggingJob =>
         j.type === 'tagging' &&
@@ -495,7 +507,8 @@ export const selectActiveTaggingJob = (projectFolderName: string) =>
         (j.status === 'running' || j.status === 'preparing'),
     );
     return found ?? null;
-  });
+  },
+);
 
 /** Any active tagging job across all projects. */
 const selectAnyActiveTaggingJob = createSelector(

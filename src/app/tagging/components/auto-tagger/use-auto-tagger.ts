@@ -30,11 +30,12 @@ import type { DropdownGroup, DropdownItem } from '@/app/shared/dropdown';
 import type { AppDispatch, RootState } from '@/app/store';
 import { flushPendingTagResults } from '@/app/store/assets/flush-pending-tags';
 import {
+  fetchAutoTaggerModels,
   selectHasReadyModel,
   selectModels,
+  selectModelsError,
   selectReadyModels,
   selectSelectedModelId,
-  setModelsAndProviders,
   setSelectedModel,
 } from '@/app/store/auto-tagger';
 import {
@@ -111,6 +112,7 @@ export function useAutoTagger({
 
   // Redux state
   const models = useSelector(selectModels);
+  const modelsError = useSelector(selectModelsError);
   const readyModels = useSelector(selectReadyModels);
   const hasReadyModel = useSelector(selectHasReadyModel);
   const selectedModelId = useSelector(selectSelectedModelId);
@@ -143,8 +145,8 @@ export function useAutoTagger({
   }, [readyModels, captionMode]);
 
   // Active tagging job for this project (from the jobs slice)
-  const activeTaggingJob = useSelector(
-    selectActiveTaggingJob(projectInfo.projectFolderName ?? ''),
+  const activeTaggingJob = useSelector((state: RootState) =>
+    selectActiveTaggingJob(state, projectInfo.projectFolderName ?? ''),
   );
 
   // Derived state from the job. A batch's progress is the activity panel's
@@ -217,25 +219,12 @@ export function useAutoTagger({
     [],
   );
 
-  // Fetch models callback
-  const fetchModels = useCallback(async () => {
-    try {
-      const response = await fetch('/api/auto-tagger/models');
-      if (!response.ok) throw new Error('Failed to fetch models');
-      const data = await response.json();
-      dispatch(setModelsAndProviders(data));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load models');
-    }
-  }, [dispatch]);
-
-  // Fetch models if not already loaded
+  // Load the model inventory on open. The thunk's `condition` drops the
+  // dispatch when the models are already loaded or a fetch is in flight, and
+  // its failure surfaces through `modelsError` rather than local state.
   useEffect(() => {
-    if (isOpen && models.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional data fetch on modal open; setState runs after the fetch resolves
-      fetchModels();
-    }
-  }, [isOpen, models.length, fetchModels]);
+    if (isOpen) dispatch(fetchAutoTaggerModels());
+  }, [isOpen, dispatch]);
 
   // Load saved settings when modal opens (after models are available)
   useEffect(() => {
@@ -1243,7 +1232,9 @@ export function useAutoTagger({
     vlmOptions,
     unselectOnComplete,
     isTagging,
-    error,
+    // Start-up failures raised here, or the shared models fetch giving up
+    // after its retries — both belong against the settings form.
+    error: error ?? modelsError,
     // True when any model at all is installed — kept for the outer modal gate.
     hasReadyModel,
     // True when at least one *compatible* model exists for the current project
