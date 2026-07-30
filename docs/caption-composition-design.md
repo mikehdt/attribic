@@ -15,12 +15,11 @@ provider composers, cleanup, and the empty-half pre-flight — all listed under
 A project stores one caption per image, in one of four modes
 (`src/app/store/project/types.ts`):
 
-| Mode        | `.txt` contents                                                    |
-| ----------- | ------------------------------------------------------------------ |
-| `tags`      | `1girl, cyberpunk`                                                 |
-| `sentences` | tag-ish phrases, comma separated                                   |
-| `caption`   | a natural-language paragraph                                       |
-| `hybrid`    | `1girl, cyberpunk, __, A cyberpunk girl is looking at the camera.` |
+| Mode      | `.txt` contents                                                    |
+| --------- | ------------------------------------------------------------------ |
+| `tags`    | `1girl, cyberpunk`                                                 |
+| `caption` | a natural-language paragraph                                       |
+| `hybrid`  | `1girl, cyberpunk, __, A cyberpunk girl is looking at the camera.` |
 
 Hybrid exists because a dataset is worth captioning once and training many
 times. But different architectures want different things out of it — Z-Image
@@ -78,9 +77,9 @@ parse, and returns the two halves already trimmed, so joining them with `', '`
 gives exactly this. Empty halves collapse cleanly too: a hybrid asset with no
 caption yet emits the tag block with no trailing separator.
 
-**Composition only ever runs for `hybrid` projects.** For `tags`, `sentences`
-and `caption` projects the file on disk already _is_ the only thing the emission
-could produce, so there is nothing to compose and nothing to deliver: no inline
+**Composition only ever runs for `hybrid` projects.** For `tags` and `caption`
+projects the file on disk already _is_ the only thing the emission could
+produce, so there is nothing to compose and nothing to deliver: no inline
 captions in the ai-toolkit manifest, no Kohya sidecar files, no cleanup. That
 keeps the feature's blast radius to exactly the datasets that asked for it, and
 means the old `verbatim` mode is not a mode at all — it is just what happens
@@ -229,11 +228,11 @@ actually chose.
 
 Rendered from the project's **current** caption mode:
 
-| Project mode        | Control                                            |
-| ------------------- | -------------------------------------------------- |
-| `hybrid`            | three-way segmented control: tags / both / natural |
-| `tags`, `sentences` | static `TagIcon`, muted, with tooltip              |
-| `caption`           | static `LetterTextIcon`, muted, with tooltip       |
+| Project mode | Control                                            |
+| ------------ | -------------------------------------------------- |
+| `hybrid`     | three-way segmented control: tags / both / natural |
+| `tags`       | static `TagIcon`, muted, with tooltip              |
+| `caption`    | static `LetterTextIcon`, muted, with tooltip       |
 
 Only hybrid gets a choice, because only hybrid has two halves to choose
 between. The other modes still show their icon: it costs nothing, and it makes
@@ -297,12 +296,12 @@ them to know. The blocking treatment that missing folders get
 The same resolution step knows when a dataset simply cannot give the model what
 it wants, which is worth saying out loud:
 
-| Project mode        | Model prefers | Note                                                                                          |
-| ------------------- | ------------- | --------------------------------------------------------------------------------------------- |
-| `tags`, `sentences` | `natural`     | "This dataset is tagged with keywords, but Z-Image was trained on natural-language captions." |
-| `caption`           | `tags`        | converse                                                                                      |
-| `tags` / `caption`  | `both`        | milder — half of what the model wants is present                                              |
-| `hybrid` + pin      | differs       | "You've set tags only, but Z-Image prefers natural language."                                 |
+| Project mode       | Model prefers | Note                                                                                          |
+| ------------------ | ------------- | --------------------------------------------------------------------------------------------- |
+| `tags`             | `natural`     | "This dataset is tagged with keywords, but Z-Image was trained on natural-language captions." |
+| `caption`          | `tags`        | converse                                                                                      |
+| `tags` / `caption` | `both`        | milder — half of what the model wants is present                                              |
+| `hybrid` + pin     | differs       | "You've set tags only, but Z-Image prefers natural language."                                 |
 
 Informational, in the dataset card, never blocking — training a tag-captioned
 set into Z-Image is a legitimate thing to do deliberately and a bad thing to do

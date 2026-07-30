@@ -1,4 +1,4 @@
-import { CombineIcon, LetterTextIcon, TagIcon } from 'lucide-react';
+import { LayersIcon, TagIcon, TextAlignStartIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import {
@@ -16,8 +16,8 @@ import type { CaptionMode } from '@/app/store/project/types';
 
 const EMISSION_ICONS: Record<CaptionEmission, ReactNode> = {
   tags: <TagIcon className="h-4 w-4" aria-hidden />,
-  both: <CombineIcon className="h-4 w-4" aria-hidden />,
-  natural: <LetterTextIcon className="h-4 w-4" aria-hidden />,
+  both: <LayersIcon className="h-4 w-4" aria-hidden />,
+  natural: <TextAlignStartIcon className="h-4 w-4" aria-hidden />,
 };
 
 const OPTIONS: SegmentOption<CaptionEmission>[] = (
@@ -31,9 +31,8 @@ const OPTIONS: SegmentOption<CaptionEmission>[] = (
 /** What a single-caption project feeds the trainer, said plainly. */
 const STATIC_TITLE: Record<CaptionMode, string> = {
   tags: 'Trains on this project’s tags',
-  sentences: 'Trains on this project’s phrases',
   caption: 'Trains on this project’s natural-language captions',
-  hybrid: '',
+  hybrid: 'Trains on both tags and natural-language captions',
 };
 
 type CaptionEmissionControlProps = {

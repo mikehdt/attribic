@@ -28,7 +28,6 @@ import { toggleTagFilter } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectTagEditMode } from '@/app/store/preferences';
 import {
-  selectCaptionMode,
   selectTagSortType,
   selectTriggerPhrases,
   TagSortType,
@@ -59,14 +58,13 @@ const TaggingManagerComponent = ({ assetId }: TaggingManagerProps) => {
   const isSortable = tagSortType === TagSortType.SORTABLE;
   const tagEditMode = useAppSelector(selectTagEditMode);
   const triggerPhrases = useAppSelector(selectTriggerPhrases);
-  const captionMode = useAppSelector(selectCaptionMode);
 
   // Transform to the shape TagList expects - memoized to maintain reference stability
   const tags = useMemo(() => {
-    const hasTriggers = triggerPhrases.length > 0;
-    const triggerSet = hasTriggers
-      ? new Set(triggerPhrases.map((p) => p.toLowerCase()))
-      : null;
+    const triggerSet =
+      triggerPhrases.length > 0
+        ? new Set(triggerPhrases.map((p) => p.toLowerCase()))
+        : null;
 
     return orderedTagsWithStatus.map(
       (tag: { name: string; status: number }) => ({
@@ -74,24 +72,10 @@ const TaggingManagerComponent = ({ assetId }: TaggingManagerProps) => {
         state: tag.status,
         count: tagCounts[tag.name] || 0,
         isHighlighted: highlightedTags.has(tag.name),
-        // 'sentences' is a legacy caption mode (its switcher entry is
-        // commented out) — kept so projects still set to it behave as before
-        isTriggerMatch: hasTriggers
-          ? captionMode === 'sentences'
-            ? triggerPhrases.some((p) =>
-                tag.name.toLowerCase().includes(p.toLowerCase()),
-              )
-            : triggerSet!.has(tag.name.toLowerCase())
-          : false,
+        isTriggerMatch: triggerSet?.has(tag.name.toLowerCase()) ?? false,
       }),
     );
-  }, [
-    orderedTagsWithStatus,
-    tagCounts,
-    highlightedTags,
-    triggerPhrases,
-    captionMode,
-  ]);
+  }, [orderedTagsWithStatus, tagCounts, highlightedTags, triggerPhrases]);
 
   // DnD sensors - stable across renders
   const sensors = useSensors(

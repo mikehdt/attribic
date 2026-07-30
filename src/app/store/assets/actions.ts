@@ -216,7 +216,7 @@ export const saveAsset = createAsyncThunk<
     throw new Error(`Unable to save caption for ${fileId}`);
   }
 
-  // Tag / sentences / hybrid mode: compose the on-disk string for this mode.
+  // Tag / hybrid mode: compose the on-disk string for this mode.
   const updateTags = getUpdatedTags(asset);
   const composedText = composeAssetText(asset, captionMode);
 

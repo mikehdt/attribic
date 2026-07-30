@@ -1,4 +1,4 @@
-import { HashIcon, LayersIcon, TextIcon } from 'lucide-react';
+import { LayersIcon, TagIcon, TextAlignStartIcon } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
 import {
@@ -8,11 +8,9 @@ import {
 import type { CaptionMode } from '@/app/store/project/types';
 
 const options: SegmentOption<CaptionMode>[] = [
-  { value: 'tags', icon: <HashIcon />, label: 'Tags' },
-  // Sentences mode hidden until split logic is reworked
-  // { value: 'sentences', icon: <WholeWordIcon />, label: 'Sentences' },
-  { value: 'hybrid', icon: <LayersIcon />, label: 'Hybrid' },
-  { value: 'caption', icon: <TextIcon />, label: 'Caption' },
+  { value: 'tags', icon: <TagIcon />, label: 'Tags' },
+  { value: 'hybrid', icon: <LayersIcon />, label: 'Both' },
+  { value: 'caption', icon: <TextAlignStartIcon />, label: 'Natural' },
 ];
 
 type MenuCaptionModeSwitcherProps = {

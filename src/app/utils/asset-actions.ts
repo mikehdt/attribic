@@ -595,13 +595,10 @@ const loadAssetDetails = async (
 
           tagList = Object.keys(tagStatus);
         } else {
-          // Tags / sentences: no caption section.
-          const parts =
-            captionMode === 'sentences'
-              ? // Split on sentence-ending punctuation followed by whitespace
-                tagContent.split(/(?<=[.?!])\s+/).filter((s) => s.trim() !== '')
-              : // Default: comma-separated tags
-                tagContent.split(', ').filter((tag) => tag.trim() !== '');
+          // Tags: no caption section.
+          const parts = tagContent
+            .split(', ')
+            .filter((tag) => tag.trim() !== '');
 
           tagStatus = parts.reduce(
             (acc, tag) => ({

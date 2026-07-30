@@ -35,7 +35,7 @@ export function composeAssetText(
   if (captionMode === 'hybrid') {
     return joinHybrid(tags, asset.captionText);
   }
-  return createFlattenedTags(tags, captionMode);
+  return createFlattenedTags(tags);
 }
 
 /**
@@ -54,7 +54,7 @@ export function composeSavedText(
   if (captionMode === 'hybrid') {
     return joinHybrid(tags, asset.savedCaptionText);
   }
-  return createFlattenedTags(tags, captionMode);
+  return createFlattenedTags(tags);
 }
 
 /**
@@ -94,11 +94,8 @@ export function getUpdatedTags(asset: ImageAsset): string[] {
  * @param captionMode Determines the separator: comma for tags, space for sentences
  * @returns Joined string of tags
  */
-export function createFlattenedTags(
-  tags: string[],
-  captionMode: CaptionMode = 'tags',
-): string {
-  return tags.join(captionMode === 'sentences' ? ' ' : ', ');
+export function createFlattenedTags(tags: string[]): string {
+  return tags.join(', ');
 }
 
 /**

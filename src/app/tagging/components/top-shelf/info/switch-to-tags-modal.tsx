@@ -1,6 +1,6 @@
 'use client';
 
-import { HashIcon } from 'lucide-react';
+import { TagIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/app/shared/button';
@@ -87,7 +87,7 @@ export const SwitchToTagsModal = ({
             size="md"
             width="lg"
           >
-            <HashIcon className="mr-1 h-4 w-4" />
+            <TagIcon className="mr-1 h-4 w-4" />
             {isWorking ? 'Removing…' : 'Drop captions & switch'}
           </Button>
         </div>

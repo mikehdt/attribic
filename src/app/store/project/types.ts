@@ -7,7 +7,7 @@ type ProjectInfo = {
   projectThumbnailVersion?: number;
 };
 
-export type CaptionMode = 'tags' | 'sentences' | 'caption' | 'hybrid';
+export type CaptionMode = 'tags' | 'caption' | 'hybrid';
 
 export enum TagSortType {
   SORTABLE = 'SORTABLE',

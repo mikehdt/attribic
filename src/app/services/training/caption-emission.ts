@@ -100,7 +100,6 @@ const TRAINED_ON_PHRASE: Record<CaptionEmission, string> = {
 /** How a single-mode dataset describes itself. */
 const DATASET_PHRASE: Record<CaptionMode, string> = {
   tags: 'tagged with keywords',
-  sentences: 'captioned in short phrases',
   caption: 'captioned in natural language',
   hybrid: 'both tagged and captioned',
 };

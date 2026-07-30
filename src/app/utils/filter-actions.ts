@@ -203,12 +203,6 @@ export const applyVisibilityFilters = ({
                 img.tagList.some((tag) => tag.toLowerCase() === p),
             );
           }
-          if (captionMode === 'sentences') {
-            return img.tagList.some((tag) => {
-              const lowerTag = tag.toLowerCase();
-              return triggerPhrasesLower.some((p) => lowerTag.includes(p));
-            });
-          }
           // tags mode: exact match
           return img.tagList.some((tag) => triggerSet.has(tag.toLowerCase()));
         },
@@ -223,11 +217,6 @@ export const applyVisibilityFilters = ({
               (p) =>
                 lowerCaption.includes(p) ||
                 img.tagList.some((tag) => tag.toLowerCase() === p),
-            );
-          }
-          if (captionMode === 'sentences') {
-            return triggerPhrasesLower.every((p) =>
-              img.tagList.some((tag) => tag.toLowerCase().includes(p)),
             );
           }
           // tags mode: exact match

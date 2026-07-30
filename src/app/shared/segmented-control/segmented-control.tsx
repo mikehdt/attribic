@@ -32,7 +32,7 @@ const sizeClasses: Record<
   },
   sm: {
     container: 'text-sm shadow-xs inset-shadow-xs',
-    button: 'px-2 py-1 [&_svg]:w-4',
+    button: 'px-3 py-1 [&_svg]:w-4',
   },
   md: {
     container: 'text-sm shadow-sm inset-shadow-sm',
