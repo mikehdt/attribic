@@ -1,16 +1,17 @@
-import { PlusIcon, XIcon } from 'lucide-react';
+import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { memo } from 'react';
 
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
 import {
-  DEFAULT_SAMPLE_ASPECT,
+  defaultSampleAspect,
+  getSampleAspects,
   getSampleBase,
   resolveSampleSize,
-  SAMPLE_ASPECTS,
   type SampleAspect,
   sampleAspectName,
 } from '@/app/services/training/sample-sizes';
+import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
@@ -125,17 +126,20 @@ const SamplingSectionComponent = ({
   // Aspects resolve against the run's training size, so the menu can name the
   // pixels each shape actually produces rather than a fixed 1024-family guess.
   const sampleBase = getSampleBase(resolution, nativeResolution);
-  const aspectItems: DropdownItem<SampleAspect>[] = SAMPLE_ASPECTS.map((a) => {
-    const [w, h] = resolveSampleSize(a.value, sampleBase);
+  const fallbackAspect = defaultSampleAspect(sampleBase);
+  const aspectItems: DropdownItem<SampleAspect>[] = getSampleAspects(
+    sampleBase,
+  ).map((aspect) => {
+    const [w, h] = resolveSampleSize(aspect, sampleBase);
     return {
-      value: a.value,
+      value: aspect,
       label: (
         <span className="flex items-baseline gap-2">
           <span className="tabular-nums">
             {w} × {h}
           </span>
           <span className="text-slate-400 dark:text-slate-500">
-            {sampleAspectName(a.value, sampleBase)}
+            {sampleAspectName(aspect)}
           </span>
         </span>
       ),
@@ -147,7 +151,7 @@ const SamplingSectionComponent = ({
   const prompts = samplePrompts
     .map((text, i) => ({
       text: text.trim(),
-      aspect: samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT,
+      aspect: samplePromptSizes[i] ?? fallbackAspect,
     }))
     .filter((p) => p.text !== '');
 
@@ -249,57 +253,58 @@ const SamplingSectionComponent = ({
             {visibleFields.has('samplePrompts') && (
               <div>
                 <FormTitle>Sample Prompts</FormTitle>
-                <div className="space-y-1.5">
+                <div className="mb-1.5 space-y-1.5">
                   {samplePrompts.map((prompt, i) => (
                     <div key={i} className="flex items-center gap-1.5">
-                      <Input
-                        type="text"
-                        value={prompt}
-                        onChange={(e) => onSetPrompt(i, e.target.value)}
-                        placeholder="e.g. a woman with red hair, sitting at a cafe"
-                        className="min-w-0 flex-1"
-                      />
-                      <Dropdown
-                        items={aspectItems}
-                        selectedValue={
-                          samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT
-                        }
-                        onChange={(val) => onSetPromptSize(i, val)}
-                        selectedValueRenderer={() => {
-                          const [w, h] = resolveSampleSize(
-                            samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT,
-                            sampleBase,
-                          );
-                          return (
-                            <span className="tabular-nums">
-                              {w} × {h}
-                            </span>
-                          );
-                        }}
-                        aria-label={`Sample image size for prompt ${i + 1}`}
-                        className="shrink-0"
-                      />
-                      {samplePrompts.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => onRemovePrompt(i)}
-                          className="cursor-pointer rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
-                          title="Remove prompt"
-                        >
-                          <XIcon className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <InputTray width="full" size="md">
+                        <Input
+                          type="text"
+                          value={prompt}
+                          onChange={(e) => onSetPrompt(i, e.target.value)}
+                          placeholder="e.g. a woman with red hair, sitting at a cafe"
+                          className="min-w-0 flex-1"
+                        />
+                        <Dropdown
+                          items={aspectItems}
+                          selectedValue={samplePromptSizes[i] ?? fallbackAspect}
+                          onChange={(val) => onSetPromptSize(i, val)}
+                          selectedValueRenderer={() => {
+                            const [w, h] = resolveSampleSize(
+                              samplePromptSizes[i] ?? fallbackAspect,
+                              sampleBase,
+                            );
+                            return (
+                              <span className="tabular-nums">
+                                {w} × {h}
+                              </span>
+                            );
+                          }}
+                          aria-label={`Sample image size for prompt ${i + 1}`}
+                          className="shrink-0"
+                        />
+                        {samplePrompts.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            onClick={() => onRemovePrompt(i)}
+                            title="Remove prompt"
+                          >
+                            <Trash2Icon />
+                          </Button>
+                        )}
+                      </InputTray>
                     </div>
                   ))}
                 </div>
-                <button
-                  type="button"
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  width="sm"
                   onClick={onAddPrompt}
-                  className="mt-1.5 flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
                 >
-                  <PlusIcon className="h-3 w-3" />
+                  <PlusIcon />
                   Add prompt
-                </button>
+                </Button>
               </div>
             )}
 

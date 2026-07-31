@@ -3,10 +3,12 @@ import { memo, useCallback, useMemo } from 'react';
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import {
   ADAPTIVE_OPTIMIZERS,
+  getOptimizerOptions,
   OPTIMIZER_OPTIONS,
   SCHEDULER_OPTIONS,
   type TrainingDefaults,
 } from '@/app/services/training/models';
+import type { TrainingProvider } from '@/app/services/training/types';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
@@ -36,6 +38,8 @@ type LearningSectionProps = {
   steps: number;
   learningRate: number;
   optimizer: string;
+  /** Backend in play — decides which optimisers are offered. */
+  selectedProvider: TrainingProvider;
   scheduler: string;
   warmupSteps: number;
   numRestarts: number;
@@ -112,6 +116,7 @@ const LearningSectionComponent = ({
   steps,
   learningRate,
   optimizer,
+  selectedProvider,
   scheduler,
   warmupSteps,
   numRestarts,
@@ -152,7 +157,7 @@ const LearningSectionComponent = ({
   const isSimple = viewMode === 'simple';
 
   const optimizerItems = useMemo(() => {
-    return OPTIMIZER_OPTIONS.map((group) => ({
+    return getOptimizerOptions(selectedProvider).map((group) => ({
       groupLabel: group.group,
       items: group.items.map(
         (opt) =>
@@ -167,8 +172,10 @@ const LearningSectionComponent = ({
           }) satisfies DropdownItem<string>,
       ),
     }));
-  }, []);
+  }, [selectedProvider]);
 
+  // Looked up across the unfiltered list so a config saved against another
+  // backend still renders its optimiser by name rather than as a raw value.
   const selectedOptimizer = OPTIMIZER_OPTIONS.flatMap((g) => g.items).find(
     (o) => o.value === optimizer,
   );
@@ -337,30 +344,50 @@ const LearningSectionComponent = ({
             </div>
           )}
 
-          {/* Learning Rate — slider + editable numeric box in every tier */}
+          {/* Learning Rate — slider + editable numeric box in every tier.
+              Adaptive optimisers get a plain number instead: their LR is a
+              multiplier around 1.0, not a rate, so the slider's 1e-6…1e-3
+              presets don't describe it (1.0 would peg the track and read
+              "Aggressive", when it is simply the expected value). */}
           {visibleFields.has('learningRate') && (
             <div>
               <FieldTitle
                 field="learningRate"
-                label="Learning Rate"
+                label={isAdaptiveOptimizer ? 'LR Multiplier' : 'Learning Rate'}
                 value={learningRate}
                 defaults={defaults}
                 onFieldChange={onFieldChange}
               />
-              <Slider
-                min={0}
-                max={100}
-                step={1}
-                value={Math.round(sliderPosition)}
-                onChange={handleLrSlider}
-                showTrackFill
-                startLabel="Slower"
-                midLabel={lrLabel}
-                endLabel="Faster"
-                valueInput={lrValueInput}
-                numberInputSize="md"
-                ariaLabel="Learning rate"
-              />
+              {isAdaptiveOptimizer ? (
+                <>
+                  <NumberInput
+                    min={0}
+                    value={learningRate}
+                    onChange={(v) => onFieldChange('learningRate', v)}
+                    className="w-32 tabular-nums"
+                    size="md"
+                  />
+                  <p className="mt-1 text-xs text-slate-400">
+                    {selectedOptimizer?.label ?? optimizer} finds the effective
+                    rate itself — 1.0 is the standard multiplier.
+                  </p>
+                </>
+              ) : (
+                <Slider
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={Math.round(sliderPosition)}
+                  onChange={handleLrSlider}
+                  showTrackFill
+                  startLabel="Slower"
+                  midLabel={lrLabel}
+                  endLabel="Faster"
+                  valueInput={lrValueInput}
+                  numberInputSize="md"
+                  ariaLabel="Learning rate"
+                />
+              )}
             </div>
           )}
 
@@ -401,9 +428,15 @@ const LearningSectionComponent = ({
                       {selectedOptimizer.hint}
                     </p>
                   )}
-                  {isAdaptiveOptimizer && (
+                  {/* Only a warning once the LR is actually in the wrong
+                      range — the LR field above already explains the 1.0
+                      multiplier. Below 0.1 is the threshold both backends use:
+                      ai-toolkit silently forces 1.0, kohya warns and trains
+                      anyway, so either way the form no longer says what runs. */}
+                  {isAdaptiveOptimizer && learningRate < 0.1 && (
                     <p className="mt-1 text-xs text-amber-500/70">
-                      Adaptive optimiser — learning rate should stay near 1.0.
+                      Learning rate is far below 1.0 — the backend will override
+                      it rather than train at this value.
                     </p>
                   )}
                 </>

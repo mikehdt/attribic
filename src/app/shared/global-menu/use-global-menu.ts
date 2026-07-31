@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useCallback, useId, useRef } from 'react';
 
 import { usePopup } from '@/app/shared/popup';
@@ -16,7 +16,6 @@ import { selectTheme, setTheme, type ThemeMode } from '@/app/store/preferences';
  */
 export const useGlobalMenu = () => {
   const dispatch = useAppDispatch();
-  const router = useRouter();
   const pathname = usePathname();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const { openPopup, closePopup, getPopupState } = usePopup();
@@ -50,10 +49,9 @@ export const useGlobalMenu = () => {
     dispatch(togglePanel());
   }, [closePopup, popupId, dispatch]);
 
-  const handleBackToProjects = useCallback(() => {
+  const closeMenu = useCallback(() => {
     closePopup(popupId);
-    router.push('/');
-  }, [closePopup, popupId, router]);
+  }, [closePopup, popupId]);
 
   return {
     buttonRef,
@@ -64,7 +62,7 @@ export const useGlobalMenu = () => {
     handleSetTheme,
     handleOpenModelManager,
     handleToggleActivityPanel,
-    handleBackToProjects,
+    closeMenu,
     showBackToProjects: pathname !== '/',
   };
 };

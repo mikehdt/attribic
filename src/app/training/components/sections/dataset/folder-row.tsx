@@ -185,10 +185,10 @@ export function FolderRow({
                 onClick={onRemove}
                 variant="ghost"
                 size="sm"
-                width="xs"
+                width="sm"
                 title="Remove folder"
               >
-                <XIcon className="h-3 w-3" />
+                <XIcon />
               </Button>
             )}
           </div>
@@ -196,7 +196,7 @@ export function FolderRow({
       </div>
 
       {isExpanded && (
-        <div className="mb-2 ml-8 grid grid-cols-1 gap-3 rounded border border-(--border-subtle) bg-(--surface)/30 p-3 md:grid-cols-2">
+        <div className="mb-2 ml-5 grid grid-cols-1 gap-3 rounded border border-slate-200 bg-(--surface)/30 p-3 md:grid-cols-2 dark:border-slate-700">
           <div className="flex flex-wrap content-start gap-2">
             <FormTitle>Horizontal Augmentation</FormTitle>
 

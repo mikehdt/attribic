@@ -12,16 +12,27 @@
  * a 1024 run and 416 × 608 on a 512 one, without the user re-picking it.
  */
 
-export type SampleAspect =
-  'portrait-tall' | 'portrait' | 'square' | 'landscape' | 'landscape-wide';
+import { parseNativeResolution } from './native-resolution';
 
-/** What a prompt gets when it has never been given a shape. */
+export type SampleAspect =
+  | 'native'
+  | 'portrait-tall'
+  | 'portrait'
+  | 'square'
+  | 'landscape'
+  | 'landscape-wide';
+
+/**
+ * What a prompt gets when it has never been given a shape. Runs with an exact
+ * `WxH` training size default to `native` instead — see `defaultSampleAspect`.
+ */
 export const DEFAULT_SAMPLE_ASPECT: SampleAspect = 'square';
 
 /**
- * Ordered wide → tall so the dropdown reads as a spectrum with square in the
- * middle. Multipliers are relative to the run's base resolution and chosen so
- * a 1024 base lands exactly on the standard SDXL buckets.
+ * The proportional shapes, ordered wide → tall so the dropdown reads as a
+ * spectrum with square in the middle. Multipliers are relative to the run's
+ * base resolution and chosen so a 1024 base lands exactly on the standard SDXL
+ * buckets. `native` isn't here — it's an exact size, not a ratio of the base.
  */
 export const SAMPLE_ASPECTS: {
   value: SampleAspect;
@@ -49,8 +60,9 @@ export const SAMPLE_ASPECTS: {
 /**
  * The run's sampling baseline: a scalar the aspect multipliers work off, plus
  * the exact training crop when one is set. Kohya's native-resolution runs
- * deliberately sample at the training size rather than a square crop of it, so
- * that pair has to survive as its own thing — see `basePair` below.
+ * usually want to sample at the training size rather than a square of equal
+ * area, so that pair has to survive as its own thing — it's what the `native`
+ * aspect resolves to.
  */
 export type SampleBase = {
   scalar: number;
@@ -58,19 +70,6 @@ export type SampleBase = {
 };
 
 const snap64 = (value: number) => Math.max(64, Math.round(value / 64) * 64);
-
-const NATIVE_RESOLUTION_RE = /^\s*(\d+)\s*[x×]\s*(\d+)\s*$/i;
-
-/** Parse an exact `WxH` training size. Returns null for empty/malformed input. */
-function parseNativeResolution(
-  value: string | undefined | null,
-): [number, number] | null {
-  const match = NATIVE_RESOLUTION_RE.exec(value ?? '');
-  if (!match) return null;
-  const w = Number(match[1]);
-  const h = Number(match[2]);
-  return w > 0 && h > 0 ? [w, h] : null;
-}
 
 /**
  * Work out the sampling baseline from the run's resolution settings. The
@@ -81,8 +80,11 @@ export function getSampleBase(
   resolution: number[] | number | undefined,
   nativeResolution?: string,
 ): SampleBase {
-  const native = parseNativeResolution(nativeResolution);
-  if (native) {
+  // Same parser the form validates with, so a size the form accepts always
+  // reaches the sampling maths (a private regex here once missed `1280,768`).
+  const { value } = parseNativeResolution(nativeResolution ?? '');
+  if (value) {
+    const native: [number, number] = [value.width, value.height];
     return { scalar: snap64(Math.sqrt(native[0] * native[1])), native };
   }
   const buckets = Array.isArray(resolution)
@@ -95,31 +97,48 @@ export function getSampleBase(
 }
 
 /**
- * Resolve an aspect to pixels. `square` on a native-resolution run means
- * "whatever the run trains at", preserving the existing behaviour where an
- * exact `WxH` run samples at `WxH`; every other aspect is derived from the
- * scalar and snapped to a multiple of 64.
+ * Resolve an aspect to pixels. `native` is the exact training crop of a forced
+ * `WxH` run; `square` is always genuinely square, so a forced-size run can
+ * still sample at 1024 × 1024. Every other aspect is derived from the scalar
+ * and snapped to a multiple of 64.
  */
 export function resolveSampleSize(
   aspect: SampleAspect,
   base: SampleBase,
 ): [number, number] {
-  if (aspect === 'square') {
-    return base.native ?? [base.scalar, base.scalar];
-  }
+  if (aspect === 'native') return base.native ?? [base.scalar, base.scalar];
+  if (aspect === 'square') return [base.scalar, base.scalar];
   const meta = SAMPLE_ASPECTS.find((a) => a.value === aspect);
   if (!meta) return [base.scalar, base.scalar];
   return [snap64(base.scalar * meta.wMul), snap64(base.scalar * meta.hMul)];
 }
 
-/**
- * Descriptive name for an aspect. The square entry renames itself on
- * native-resolution runs, where it isn't square at all.
- */
-export function sampleAspectName(
-  aspect: SampleAspect,
-  base: SampleBase,
-): string {
-  if (aspect === 'square' && base.native) return 'Matches training';
+/** Descriptive name for an aspect. */
+export function sampleAspectName(aspect: SampleAspect): string {
+  if (aspect === 'native') return 'Matches training';
   return SAMPLE_ASPECTS.find((a) => a.value === aspect)?.label ?? 'Square';
+}
+
+/**
+ * The aspects on offer for a run, in menu order. Forced-size runs gain a
+ * `native` entry above the proportional shapes — but only when it would show
+ * something the square entry doesn't, since a forced 1024 × 1024 *is* the
+ * square option and listing both would just repeat the same pixels.
+ */
+export function getSampleAspects(base: SampleBase): SampleAspect[] {
+  const shapes = SAMPLE_ASPECTS.map((a) => a.value);
+  if (!base.native) return shapes;
+  const [w, h] = base.native;
+  if (w === h && w === base.scalar) return shapes;
+  return ['native', ...shapes];
+}
+
+/**
+ * The shape a prompt gets when it has none of its own. Forced-size runs keep
+ * sampling at their training crop by default; everything else stays square.
+ */
+export function defaultSampleAspect(base: SampleBase): SampleAspect {
+  return getSampleAspects(base).includes('native')
+    ? 'native'
+    : DEFAULT_SAMPLE_ASPECT;
 }

@@ -204,7 +204,8 @@ const ActivityPanelComponent = () => {
     >
       {/* Panel header */}
       <div className="flex items-center justify-between border-b border-(--border-subtle) bg-slate-200 px-3 py-2 inset-shadow-sm inset-shadow-white dark:bg-slate-700 dark:inset-shadow-slate-600">
-        <span className="text-sm text-(--foreground)">
+        <span className="flex items-center text-sm text-(--foreground)">
+          <ActivityIcon className="mr-2 h-3.5 w-3.5 text-slate-500" />
           Activity
           {hasActive && (
             <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-xs font-bold text-white">

@@ -25,7 +25,7 @@ const GlobalMenuComponent = () => {
     handleSetTheme,
     handleOpenModelManager,
     handleToggleActivityPanel,
-    handleBackToProjects,
+    closeMenu,
     showBackToProjects,
   } = useGlobalMenu();
 
@@ -73,7 +73,8 @@ const GlobalMenuComponent = () => {
             <MenuItem
               icon={<ArrowLeftCircleIcon className="h-5 w-5" />}
               label="Back to Projects"
-              onClick={handleBackToProjects}
+              href="/"
+              onClick={closeMenu}
             />
           )}
         </div>

@@ -145,6 +145,7 @@ const LossChartComponent = ({
   } = useLossChartScale({
     lossHistory: visibleHistory,
     totalSteps,
+    provider,
     width,
     height,
     paddingTop: plotTop,

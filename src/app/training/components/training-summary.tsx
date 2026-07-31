@@ -6,6 +6,7 @@ import {
 import { memo, useMemo } from 'react';
 
 import {
+  getModelComponents,
   type ModelComponentType,
   type ModelDefinition,
   OPTIMIZER_OPTIONS,
@@ -147,7 +148,10 @@ const TrainingSummaryComponent = ({
   // folder has gone still reads as present here — the scan is what settles it.
   const hasDataset = totalImages > 0 && datasetIssues.length === 0;
 
-  const requiredComponents = currentModel.components.filter((c) => c.required);
+  const requiredComponents = getModelComponents(
+    currentModel,
+    selectedProvider,
+  ).filter((c) => c.required);
   const hasAllComponents = requiredComponents.every((c) =>
     modelPaths[c.type]?.trim(),
   );

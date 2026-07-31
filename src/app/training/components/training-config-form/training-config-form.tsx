@@ -6,7 +6,11 @@ import {
   getVisibleFields,
   type TrainingFieldName,
 } from '@/app/services/training/field-registry';
-import { DEFAULT_SAMPLE_ASPECT } from '@/app/services/training/sample-sizes';
+import { getModelComponents } from '@/app/services/training/models';
+import {
+  defaultSampleAspect,
+  getSampleBase,
+} from '@/app/services/training/sample-sizes';
 import type { FormState } from '@/app/store/training-config/types';
 
 import { TrainingBottomShelf } from '../bottom-shelf/training-bottom-shelf';
@@ -155,10 +159,13 @@ const TrainingConfigFormComponent = ({
     // name, so extra UI-only keys ride along harmlessly.
     // Blank prompt rows are dropped, which shifts the indices — the per-prompt
     // shapes have to be filtered alongside them, not separately.
+    const fallbackAspect = defaultSampleAspect(
+      getSampleBase(state.resolution, state.nativeResolution),
+    );
     const keptPrompts = state.samplePrompts
       .map((text, i) => ({
         text: text.trim(),
-        aspect: state.samplePromptSizes[i] ?? DEFAULT_SAMPLE_ASPECT,
+        aspect: state.samplePromptSizes[i] ?? fallbackAspect,
       }))
       .filter((p) => p.text !== '');
 
@@ -180,7 +187,10 @@ const TrainingConfigFormComponent = ({
     );
   }, [state, calculatedSteps, calculatedEpochs, onStartTraining]);
 
-  const hasAllRequiredComponents = currentModel.components
+  const hasAllRequiredComponents = getModelComponents(
+    currentModel,
+    state.selectedProvider,
+  )
     .filter((c) => c.required)
     .every((c) => state.modelPaths[c.type]?.trim());
 
@@ -238,6 +248,7 @@ const TrainingConfigFormComponent = ({
             steps={state.steps}
             learningRate={state.learningRate}
             optimizer={state.optimizer}
+            selectedProvider={state.selectedProvider}
             scheduler={state.scheduler}
             warmupSteps={state.warmupSteps}
             numRestarts={state.numRestarts}

@@ -350,15 +350,6 @@ export function TrainingJobCard({
             </div>
           )}
 
-        {isCompleted && (
-          <p className="mt-1.5 text-xs text-green-600 dark:text-green-400">
-            Complete{elapsed != null ? ` in ${formatDuration(elapsed)}` : ''}
-            {(progress?.trainingSeconds ?? 0) > 0 &&
-              ` · ${formatDuration(progress!.trainingSeconds * 1000)} training`}
-            {savedCount > 0 &&
-              ` · ${savedCount} ${savedCount !== 1 ? 'checkpoints' : 'checkpoint'}`}
-          </p>
-        )}
         {isFailed && progress?.error && (
           <pre className="mt-1.5 max-h-40 overflow-auto font-mono text-[10px] whitespace-pre-wrap text-rose-500">
             {progress.error}

@@ -24,10 +24,12 @@ import {
 import {
   ADAPTIVE_OPTIMIZERS,
   getModelById,
+  isOptimizerSupported,
   type ModelComponentType,
 } from '@/app/services/training/models';
 import {
-  DEFAULT_SAMPLE_ASPECT,
+  defaultSampleAspect,
+  getSampleBase,
   type SampleAspect,
 } from '@/app/services/training/sample-sizes';
 import type { TrainingProvider } from '@/app/services/training/types';
@@ -52,6 +54,14 @@ import type {
   SectionName,
   TrainingConfigState,
 } from './types';
+
+/**
+ * The shape a newly added sample prompt starts at. Derived from the form's own
+ * resolution settings so a forced `WxH` run keeps defaulting to its training
+ * crop, while everything else defaults to square.
+ */
+const formSampleAspect = (form: FormState): SampleAspect =>
+  defaultSampleAspect(getSampleBase(form.resolution, form.nativeResolution));
 
 /**
  * Fields a section owns in the UI but that per-section reset deliberately
@@ -228,30 +238,25 @@ const trainingConfigSlice = createSlice({
 
     /**
      * Switch the optimiser, coupled with a learning-rate safety adjustment.
-     * Prodigy/DAdaptation are self-tuning and expect an LR near 1.0 — the
-     * form otherwise seeds LR from the model defaults (~1e-4), which is a
-     * footgun for these two. We only nudge the LR when it still matches
-     * what the "other side" would have left it at, so a value the user
-     * deliberately typed is never clobbered.
+     * Prodigy/DAdaptation are self-tuning and expect an LR near 1.0, while
+     * every other optimiser wants ~1e-4 — the two scales don't overlap, so
+     * carrying a value across the boundary always misrepresents the run.
+     *
+     * The threshold (0.1) is the backends' own: ai-toolkit's `get_optimizer`
+     * forces anything below it to 1.0 for these optimisers, and kohya warns.
+     * Matching it means the form shows what will actually train, rather than
+     * only correcting the untouched-default case (which left a nudged LR of,
+     * say, 2e-4 sitting under Prodigy, silently overridden at launch).
      */
     setOptimizer: (state, action: PayloadAction<string>) => {
       const nextOptimizer = action.payload;
-      const prevOptimizer = state.form.optimizer;
-      const wasAdaptive = ADAPTIVE_OPTIMIZERS.has(prevOptimizer);
+      const wasAdaptive = ADAPTIVE_OPTIMIZERS.has(state.form.optimizer);
       const isAdaptive = ADAPTIVE_OPTIMIZERS.has(nextOptimizer);
       const modelDefaultLR = getDefaults(state.form.modelId).learningRate;
 
-      if (
-        isAdaptive &&
-        !wasAdaptive &&
-        state.form.learningRate === modelDefaultLR
-      ) {
+      if (isAdaptive && !wasAdaptive && state.form.learningRate < 0.1) {
         state.form.learningRate = 1.0;
-      } else if (
-        !isAdaptive &&
-        wasAdaptive &&
-        state.form.learningRate === 1.0
-      ) {
+      } else if (!isAdaptive && wasAdaptive && state.form.learningRate >= 0.1) {
         state.form.learningRate = modelDefaultLR;
       }
 
@@ -285,8 +290,19 @@ const trainingConfigSlice = createSlice({
       fillEmptyModelPaths(state.form, state.appModelDefaults[modelId]);
     },
 
+    /**
+     * Switch the backend, dropping an optimiser the new one can't run back to
+     * the model's default. Both trainers resolve the optimiser by name at
+     * startup and raise when its package is missing (Lion is a kohya
+     * dependency, Automagic is ai-toolkit's own), so leaving a stale value
+     * would only surface as a run that dies seconds after launch.
+     */
     setProvider: (state, action: PayloadAction<TrainingProvider>) => {
-      state.form.selectedProvider = action.payload;
+      const provider = action.payload;
+      state.form.selectedProvider = provider;
+      if (!isOptimizerSupported(state.form.optimizer, provider)) {
+        state.form.optimizer = getDefaults(state.form.modelId).optimizer;
+      }
     },
 
     setModelPath: (
@@ -378,7 +394,7 @@ const trainingConfigSlice = createSlice({
     // silently give a prompt someone else's shape.
     addSamplePrompt: (state) => {
       state.form.samplePrompts.push('');
-      state.form.samplePromptSizes.push(DEFAULT_SAMPLE_ASPECT);
+      state.form.samplePromptSizes.push(formSampleAspect(state.form));
     },
 
     removeSamplePrompt: (state, action: PayloadAction<number>) => {
@@ -390,7 +406,7 @@ const trainingConfigSlice = createSlice({
       );
       state.form.samplePrompts = next.length === 0 ? [''] : next;
       state.form.samplePromptSizes =
-        next.length === 0 ? [DEFAULT_SAMPLE_ASPECT] : nextSizes;
+        next.length === 0 ? [formSampleAspect(state.form)] : nextSizes;
     },
 
     setSamplePrompt: (
@@ -409,7 +425,7 @@ const trainingConfigSlice = createSlice({
       // pad it out so writing to a later index doesn't leave holes.
       const sizes = state.form.samplePromptSizes;
       while (sizes.length < state.form.samplePrompts.length) {
-        sizes.push(DEFAULT_SAMPLE_ASPECT);
+        sizes.push(formSampleAspect(state.form));
       }
       sizes[index] = value;
     },

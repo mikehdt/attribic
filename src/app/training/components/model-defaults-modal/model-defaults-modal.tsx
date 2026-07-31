@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import {
+  getAllModelComponents,
   getModelsByArchitecture,
   type ModelComponentType,
 } from '@/app/services/training/models';
@@ -127,7 +128,9 @@ export function ModelDefaultsModal({
                       </p>
                     )}
                     <div className="space-y-2">
-                      {model.components.map((comp) => (
+                      {/* Every backend's components, since these defaults are
+                          set before a backend is chosen. */}
+                      {getAllModelComponents(model).map((comp) => (
                         <div key={comp.type}>
                           <FormTitle className="mt-4 mb-2 ml-2 flex items-baseline gap-1.5">
                             {comp.label}

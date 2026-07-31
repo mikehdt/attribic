@@ -62,13 +62,15 @@ const tagLabelCache = new Map();
 async function pickExecutionProviders() {
   const candidates = [];
 
-  // DirectML — Windows GPU acceleration (AMD, Intel, NVIDIA)
   if (process.platform === 'win32') {
+    // DirectML — Windows GPU acceleration (AMD, Intel, NVIDIA).
+    // The Windows onnxruntime-node build ships no CUDA provider, so asking
+    // for it here only logs a "backend not found" line on every session.
     candidates.push('dml');
+  } else {
+    // CUDA — NVIDIA GPU (requires CUDA toolkit + cuDNN)
+    candidates.push('cuda');
   }
-
-  // CUDA — NVIDIA GPU (requires CUDA toolkit + cuDNN)
-  candidates.push('cuda');
 
   // Always fall back to CPU
   candidates.push('cpu');

@@ -1,4 +1,5 @@
 import {
+  ExternalLinkIcon,
   FolderIcon,
   FolderOpenIcon,
   FolderXIcon,
@@ -8,6 +9,7 @@ import {
   Trash2Icon,
 } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { memo, useCallback, useMemo, useState } from 'react';
 
 import {
@@ -226,29 +228,14 @@ const DatasetSectionComponent = ({
                   }`}
                 >
                   <div className="mb-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {ds.thumbnail ? (
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 dark:bg-slate-600">
-                          <Image
-                            src={projectThumbnailSrc(
-                              ds.folderName,
-                              ds.thumbnailVersion,
-                            )}
-                            alt={ds.projectName}
-                            width={24}
-                            height={24}
-                            className="h-full w-full object-cover"
-                          />
-                        </span>
-                      ) : (
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-600">
-                          <FolderIcon className="h-3.5 w-3.5 text-slate-400" />
-                        </span>
-                      )}
-                      <span className="text-sm font-medium text-(--foreground)">
-                        {ds.projectName}
-                      </span>
-                    </div>
+                    <DatasetHeading
+                      folderName={ds.folderName}
+                      projectName={ds.projectName}
+                      thumbnail={ds.thumbnail}
+                      thumbnailVersion={ds.thumbnailVersion}
+                      // A folder that isn't on disk has no tagging page to open.
+                      linkToProject={issue?.reason !== 'missing'}
+                    />
                     <div className="flex items-center gap-2">
                       <CaptionEmissionControl
                         captionMode={ds.scan?.captionMode}
@@ -386,6 +373,66 @@ const DatasetSectionComponent = ({
         )}
       </div>
     </CollapsibleSection>
+  );
+};
+
+type DatasetHeadingProps = Pick<
+  DatasetSource,
+  'projectName' | 'folderName' | 'thumbnail' | 'thumbnailVersion'
+> & {
+  linkToProject: boolean;
+};
+
+/**
+ * Thumbnail + name for an attached dataset, linking through to the project's
+ * tagging page so captions can be fixed without hunting for the project.
+ */
+const DatasetHeading = ({
+  projectName,
+  folderName,
+  thumbnail,
+  thumbnailVersion,
+  linkToProject,
+}: DatasetHeadingProps) => {
+  const avatar = thumbnail ? (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 dark:bg-slate-600">
+      <Image
+        src={projectThumbnailSrc(folderName, thumbnailVersion)}
+        alt={projectName}
+        width={24}
+        height={24}
+        className="h-full w-full object-cover"
+      />
+    </span>
+  ) : (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-600">
+      <FolderIcon className="h-3.5 w-3.5 text-slate-400" />
+    </span>
+  );
+
+  if (!linkToProject) {
+    return (
+      <div className="flex items-center gap-2">
+        {avatar}
+        <span className="text-sm font-medium text-(--foreground)">
+          {projectName}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={`/tagging/${encodeURIComponent(folderName)}/1`}
+      title={`Open project: ${projectName}`}
+      className="group flex min-w-0 items-center gap-2"
+    >
+      {avatar}
+      <span className="truncate text-sm font-medium text-(--foreground) group-hover:text-sky-500">
+        {projectName}
+      </span>
+      <ExternalLinkIcon className="h-3 w-3 shrink-0 text-slate-400 group-hover:text-sky-500" />
+    </Link>
   );
 };
 

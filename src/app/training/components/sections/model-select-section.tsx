@@ -6,7 +6,9 @@ import {
   type TrainingFieldName,
 } from '@/app/services/training/field-registry';
 import {
+  getModelComponents,
   getModelsByArchitecture,
+  getSelectableProviders,
   type ModelComponentType,
   type ModelDefinition,
 } from '@/app/services/training/models';
@@ -89,8 +91,10 @@ const ModelSelectSectionComponent = ({
   //   optional → always intermediate
   const visibleComponents = useMemo(
     () =>
-      currentModel.components.filter((c) => {
-        if (c.type === 'checkpoint') return true;
+      getModelComponents(currentModel, selectedProvider).filter((c) => {
+        // `diffusers` is the whole model for the backends that use it, so it
+        // gets the same always-visible treatment as `checkpoint`.
+        if (c.type === 'checkpoint' || c.type === 'diffusers') return true;
         if (!c.required) return isTierAtLeast(viewMode, 'intermediate');
         const hasAppDefault = !!modelDefaults?.[c.type];
         return isTierAtLeast(
@@ -98,7 +102,7 @@ const ModelSelectSectionComponent = ({
           hasAppDefault ? 'intermediate' : 'simple',
         );
       }),
-    [currentModel.components, viewMode, modelDefaults],
+    [currentModel, selectedProvider, viewMode, modelDefaults],
   );
 
   const handlePathChange = useCallback(
@@ -198,12 +202,13 @@ const ModelSelectSectionComponent = ({
                 <FormTitle>Backend</FormTitle>
 
                 <Dropdown
-                  items={currentModel.providers.map(
-                    (p): DropdownItem<TrainingProvider> => ({
-                      value: p,
-                      label: TRAINING_PROVIDER_LABELS[p],
-                    }),
-                  )}
+                  items={getSelectableProviders(
+                    currentModel,
+                    selectedProvider,
+                  ).map((p): DropdownItem<TrainingProvider> => ({
+                    value: p,
+                    label: TRAINING_PROVIDER_LABELS[p],
+                  }))}
                   selectedValue={selectedProvider}
                   onChange={onProviderChange}
                   aria-label="Training backend"

@@ -148,6 +148,32 @@ SUPPORTED_MODELS = [
             "timestep_type": "weighted",
         },
     },
+    # Anima also trains on the kohya backend, but from a different set of
+    # weights: kohya takes the single-file DiT + Qwen3 TE + VAE, while
+    # ai-toolkit builds the modular diffusers pipeline from a directory (see
+    # `extensions_built_in/diffusion_models/anima/anima.py` — `init_pipeline`
+    # then `load_components`, with no single-file path). The client sends the
+    # pipeline directory as `model_path`; the HF fallback below is the same
+    # repo ai-toolkit's own UI defaults to.
+    {
+        "id": "anima",
+        "name": "Anima",
+        "architecture": "anima",
+        "model_path": "circlestone-labs/Anima-Base-v1.0-Diffusers",
+        "config": {"arch": "anima"},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 5e-5,
+            "dtype": "bf16",
+            "resolution": [768, 1024],
+            "steps": 1600,
+            # ai-toolkit's own Anima preset sets `weighted` when the arch is
+            # selected (`ui/src/app/jobs/new/options.ts`), against the
+            # `sigmoid` it uses for other archs.
+            "timestep_type": "weighted",
+        },
+    },
     {
         "id": "wan22-14b",
         "name": "Wan 2.2 14B",

@@ -1,10 +1,15 @@
 import { useMemo } from 'react';
 
-import type { LossPoint } from '@/app/services/training/types';
+import type {
+  LossPoint,
+  TrainingProvider,
+} from '@/app/services/training/types';
 
 type UseLossChartScaleArgs = {
   lossHistory: LossPoint[];
   totalSteps: number;
+  /** Backend that produced the series — decides how much smoothing it needs. */
+  provider?: TrainingProvider;
   width: number;
   height: number;
   paddingTop: number;
@@ -16,8 +21,27 @@ type UseLossChartScaleArgs = {
 /** Minimum points before an EMA overlay says anything the raw line doesn't. */
 const MIN_POINTS_FOR_SMOOTHING = 8;
 
-/** Debiased EMA weight — TensorBoard-style trend line over noisy loss. */
-const EMA_BETA = 0.9;
+/**
+ * EMA weight per backend, because the two report fundamentally different
+ * things under the same name:
+ *
+ * - **kohya** reports `avr_loss` — sd-scripts' own moving average across the
+ *   epoch. The series arrives pre-averaged, so it needs only a light pass;
+ *   smoothing it hard would flatten movement that is already real signal.
+ * - **ai-toolkit** logs *raw per-step* loss to `loss_log.db`, which is what we
+ *   read. On flow-matching models each step draws a random timestep, and loss
+ *   varies far more with that draw than with training progress — so the raw
+ *   series is inherently noisy (very visibly so on Z-Image Turbo) and needs
+ *   real smoothing to read as a trend. ai-toolkit's own graph faces the same
+ *   data and does the same thing: its default view is smoothed, over a heavier
+ *   trend line at alpha 0.005.
+ */
+const EMA_ALPHA: Record<TrainingProvider, number> = {
+  'ai-toolkit': 0.15,
+  mock: 0.15,
+  kohya: 0.4,
+};
+const DEFAULT_EMA_ALPHA = 0.15;
 
 /**
  * A "nice" rounding step (1/2/5 × 10^n). Fine-grained (≈8 steps over the
@@ -66,21 +90,62 @@ function computeDomain(losses: number[]): { yMin: number; yMax: number } {
   };
 }
 
-/** Debiased exponential moving average (TensorBoard's smoothing formula). */
-function smoothLosses(losses: number[]): number[] {
-  const out: number[] = [];
+/**
+ * One debiased EMA pass. Each output is divided by `w = 1-(1-alpha)^n` so the
+ * early values read as a running mean rather than an accumulator warming up
+ * from zero; `w` is returned too, doubling as a confidence weight (→0 with one
+ * point seen, →1 once warmed up). `reverse` walks the series back to front.
+ */
+function emaPass(
+  losses: number[],
+  alpha: number,
+  reverse: boolean,
+): { values: number[]; weights: number[] } {
+  const values = new Array<number>(losses.length);
+  const weights = new Array<number>(losses.length);
   let acc = 0;
-  for (let i = 0; i < losses.length; i++) {
-    acc = acc * EMA_BETA + (1 - EMA_BETA) * losses[i];
-    out.push(acc / (1 - EMA_BETA ** (i + 1)));
+  const start = reverse ? losses.length - 1 : 0;
+  const step = reverse ? -1 : 1;
+  for (let i = start, n = 0; i >= 0 && i < losses.length; i += step) {
+    acc = alpha * losses[i] + (1 - alpha) * acc;
+    n += 1;
+    const w = 1 - (1 - alpha) ** n;
+    values[i] = acc / w;
+    weights[i] = w;
   }
-  return out;
+  return { values, weights };
+}
+
+/**
+ * Zero-phase (forward-backward) EMA, blended by each pass's confidence weight.
+ *
+ * A single causal EMA — what this used to be — lags the data by roughly its
+ * window, which on a falling loss curve reads as the trend line sitting
+ * persistently above the points it is meant to describe, and pins the first
+ * value to its own raw (unsmoothed) reading. Running the average both ways and
+ * weighting each index by how much data that pass had seen cancels the lag:
+ * at the start the forward pass has ~1 point and the backward, future-informed
+ * pass dominates; at the live end it is the other way round; the middle is
+ * ~50/50. Same construction ai-toolkit's own loss graph uses.
+ */
+function smoothLosses(losses: number[], alpha: number): number[] {
+  const forward = emaPass(losses, alpha, false);
+  const backward = emaPass(losses, alpha, true);
+  return losses.map((_, i) => {
+    const wf = forward.weights[i];
+    const wb = backward.weights[i];
+    const total = wf + wb;
+    return total > 0
+      ? (wf * forward.values[i] + wb * backward.values[i]) / total
+      : (forward.values[i] + backward.values[i]) / 2;
+  });
 }
 
 /** Shared scale maths for the compact and detail loss chart variants. */
 export function useLossChartScale({
   lossHistory,
   totalSteps,
+  provider,
   width,
   height,
   paddingTop,
@@ -114,10 +179,11 @@ export function useLossChartScale({
         )
         .join(' ');
 
+    const alpha = (provider && EMA_ALPHA[provider]) ?? DEFAULT_EMA_ALPHA;
     const linePath = lossHistory.length >= 2 ? toPath(losses) : null;
     const smoothedPath =
       lossHistory.length >= MIN_POINTS_FOR_SMOOTHING
-        ? toPath(smoothLosses(losses))
+        ? toPath(smoothLosses(losses, alpha))
         : null;
 
     const yTicks = [yMin, (yMin + yMax) / 2, yMax];
@@ -137,6 +203,7 @@ export function useLossChartScale({
   }, [
     lossHistory,
     totalSteps,
+    provider,
     width,
     height,
     paddingTop,

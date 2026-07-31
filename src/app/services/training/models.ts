@@ -10,7 +10,22 @@ export type ModelArchitecture =
   'flux' | 'sdxl' | 'zimage' | 'anima' | 'wan' | 'ltx';
 
 export type ModelComponentType =
-  'checkpoint' | 'vae' | 't5' | 'clip_l' | 'ae' | 'qwen' | 'training_adapter';
+  | 'checkpoint'
+  | 'vae'
+  | 't5'
+  | 'clip_l'
+  | 'ae'
+  | 'qwen'
+  | 'training_adapter'
+  /**
+   * A whole diffusers pipeline directory rather than a weights file. Distinct
+   * from `checkpoint` because a model can need *both* shapes depending on the
+   * backend — Anima is single-file DiT + TE + VAE under kohya, but a pipeline
+   * directory under ai-toolkit — and the two must not overwrite each other's
+   * path when the backend is switched. (Z-Image predates this and carries its
+   * pipeline directory under `checkpoint`; it has only ever had one backend.)
+   */
+  | 'diffusers';
 
 type ModelComponent = {
   type: ModelComponentType;
@@ -35,6 +50,12 @@ export type ModelDefinition = {
   defaults: TrainingDefaults;
   /** Model components that need local file paths (checkpoint, VAE, text encoders, etc.) */
   components: ModelComponent[];
+  /**
+   * Per-backend overrides of {@link components}, for models the two trainers
+   * load differently. Only set where the weights genuinely differ in shape —
+   * a backend with no entry uses `components`.
+   */
+  providerComponents?: Partial<Record<TrainingProvider, ModelComponent[]>>;
   /** Optional training tips displayed below the model description */
   tips?: string[];
   /** Resolution steps the user can toggle on/off for this model */
@@ -556,7 +577,9 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     architecture: 'anima',
     description:
       'Compact anime-focused DiT (~2B). Light on VRAM, trains fast on consumer GPUs',
-    providers: ['kohya', 'mock'],
+    providers: ['kohya', 'ai-toolkit', 'mock'],
+    // Kohya's `anima_train_network.py` takes the DiT, text encoder and VAE as
+    // three separate `--flag=path` arguments.
     components: [
       {
         type: 'checkpoint',
@@ -577,6 +600,21 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
         downloadId: 'shared-anima-vae',
       },
     ],
+    providerComponents: {
+      // ai-toolkit builds Anima through its modular diffusers pipeline
+      // (`AnimaAutoBlocks().init_pipeline(name_or_path)`), which only accepts a
+      // pipeline directory or HF repo id — it cannot assemble the single-file
+      // trio above. Hence a separate download of the same model.
+      'ai-toolkit': [
+        {
+          type: 'diffusers',
+          label: 'Anima Pipeline Folder',
+          required: true,
+          downloadId: 'dl-anima-diffusers',
+          hint: 'Diffusers pipeline directory — ai-toolkit cannot read the single-file DiT that Kohya uses',
+        },
+      ],
+    },
     tips: [
       'Rank 32 is the community standard for Anima — unlike SDXL, dim 16 tends to underfit',
       'Lower epochs are generally better; too many and it starts over-fitting the style',
@@ -687,48 +725,169 @@ export const ARCHITECTURE_LABELS: Record<ModelArchitecture, string> = {
   ltx: 'LTX-Video',
 };
 
-export const OPTIMIZER_OPTIONS = [
-  {
-    group: 'Recommended',
-    items: [
-      {
-        value: 'adamw8bit',
-        label: 'AdamW 8-bit',
-        hint: 'Good balance of speed and VRAM',
-      },
-    ],
-  },
-  {
-    group: 'Memory-efficient',
-    items: [
-      { value: 'adafactor', label: 'Adafactor', hint: 'Lower VRAM usage' },
-      {
-        value: 'prodigy',
-        label: 'Prodigy',
-        hint: 'Auto-adjusts learning rate',
-      },
-    ],
-  },
-  {
-    group: 'Advanced',
-    items: [
-      { value: 'adamw', label: 'AdamW', hint: 'Standard, more VRAM' },
-      { value: 'lion', label: 'Lion', hint: 'Fast convergence' },
-      {
-        value: 'dadaptation',
-        label: 'DAdaptation',
-        hint: 'Auto-adjusts learning rate',
-      },
-    ],
-  },
-];
+export type OptimizerOption = {
+  value: string;
+  label: string;
+  hint: string;
+  /**
+   * Backends whose environment actually ships this optimiser. Omitted means
+   * every backend can run it. Both trainers resolve the optimiser by name at
+   * startup and raise if the package is missing, so an option offered to the
+   * wrong backend is a run that dies seconds after launch.
+   */
+  providers?: TrainingProvider[];
+};
 
 /**
- * Optimisers that self-tune their effective learning rate. They expect an
- * LR around 1.0 rather than the ~1e-4 typical for fixed-schedule optimisers
- * (AdamW etc) — both kohya and ai-toolkit warn or misbehave if fed a tiny LR.
+ * Verified against each backend's optimiser factory and its declared
+ * dependencies — `library/optimizer.py` + `requirements.txt` for kohya,
+ * `toolkit/optimizer.py` + `requirements_base.txt` for ai-toolkit.
+ *
+ * Deliberately absent: DAdaptation. Both factories have a branch for it, but
+ * neither project depends on the `dadaptation` package, so it was an option
+ * that could only ever fail at optimiser construction. Existing saved configs
+ * that name it still load (see {@link ADAPTIVE_OPTIMIZERS}) — it just isn't
+ * offered any more.
+ */
+export const OPTIMIZER_OPTIONS: { group: string; items: OptimizerOption[] }[] =
+  [
+    {
+      group: 'Recommended',
+      items: [
+        {
+          value: 'adamw8bit',
+          label: 'AdamW 8-bit',
+          hint: 'Good balance of speed and VRAM',
+        },
+      ],
+    },
+    {
+      group: 'Self-tuning',
+      items: [
+        {
+          value: 'prodigy',
+          label: 'Prodigy',
+          hint: 'Finds its own learning rate; start at 1.0',
+        },
+        {
+          // ai-toolkit's own adaptive optimiser. Unlike Prodigy it treats the LR
+          // as a *starting* point and walks it between min_lr/max_lr, so it wants
+          // a normal ~1e-4 value — hence it is not an ADAPTIVE_OPTIMIZER here.
+          value: 'automagic',
+          label: 'Automagic',
+          hint: 'Per-parameter adaptive LR, starts from the LR above',
+          providers: ['ai-toolkit'],
+        },
+      ],
+    },
+    {
+      group: 'Memory-efficient',
+      items: [
+        { value: 'adafactor', label: 'Adafactor', hint: 'Lower VRAM usage' },
+      ],
+    },
+    {
+      group: 'Advanced',
+      items: [
+        { value: 'adamw', label: 'AdamW', hint: 'Standard, more VRAM' },
+        {
+          // `lion-pytorch` is a kohya requirement; ai-toolkit only raises an
+          // ImportError telling you to install it yourself.
+          value: 'lion',
+          label: 'Lion',
+          hint: 'Fast convergence',
+          providers: ['kohya'],
+        },
+      ],
+    },
+  ];
+
+/**
+ * The mock backend fakes a run without touching a GPU. It exists to exercise
+ * the job pipeline (progress, checkpoints, samples, the activity panel) and is
+ * never something to pick for real training, so it stays out of the Backend
+ * dropdown unless `NEXT_PUBLIC_ENABLE_MOCK_TRAINER=true` is set.
+ */
+const MOCK_TRAINER_ENABLED =
+  process.env.NEXT_PUBLIC_ENABLE_MOCK_TRAINER === 'true';
+
+/**
+ * Backends offerable for a model. `current` is always kept, so a config saved
+ * against the mock backend (or loaded with the flag since turned off) still
+ * renders its own selection rather than silently showing a different one.
+ */
+export function getSelectableProviders(
+  model: ModelDefinition,
+  current: TrainingProvider,
+): TrainingProvider[] {
+  if (MOCK_TRAINER_ENABLED) return model.providers;
+  return model.providers.filter((p) => p !== 'mock' || p === current);
+}
+
+/** The components a model needs when trained on `provider`. */
+export function getModelComponents(
+  model: ModelDefinition,
+  provider: TrainingProvider,
+): ModelComponent[] {
+  return model.providerComponents?.[provider] ?? model.components;
+}
+
+/**
+ * Every component any backend might ask for, deduplicated by type. Used where
+ * there is no backend in play — the app-wide model defaults, which pre-fill
+ * paths for whichever backend the user later picks.
+ */
+export function getAllModelComponents(
+  model: ModelDefinition,
+): ModelComponent[] {
+  const byType = new Map<ModelComponentType, ModelComponent>();
+  for (const component of [
+    ...model.components,
+    ...Object.values(model.providerComponents ?? {}).flat(),
+  ]) {
+    if (!byType.has(component.type)) byType.set(component.type, component);
+  }
+  return [...byType.values()];
+}
+
+/** Optimiser choices the given backend can actually run. */
+export function getOptimizerOptions(
+  provider: TrainingProvider,
+): { group: string; items: OptimizerOption[] }[] {
+  return OPTIMIZER_OPTIONS.map((group) => ({
+    group: group.group,
+    items: group.items.filter(
+      // The mock backend runs nothing, so it shows the unfiltered list.
+      (item) =>
+        provider === 'mock' ||
+        !item.providers ||
+        item.providers.includes(provider),
+    ),
+  })).filter((group) => group.items.length > 0);
+}
+
+/** Whether `optimizer` is one the backend can run (unknown values pass). */
+export function isOptimizerSupported(
+  optimizer: string,
+  provider: TrainingProvider,
+): boolean {
+  const option = OPTIMIZER_OPTIONS.flatMap((g) => g.items).find(
+    (o) => o.value === optimizer,
+  );
+  if (!option || !option.providers) return true;
+  return provider === 'mock' || option.providers.includes(provider);
+}
+
+/**
+ * Optimisers that self-tune their effective learning rate *and* expect an LR
+ * around 1.0 rather than the ~1e-4 typical for fixed-schedule optimisers
+ * (AdamW etc). ai-toolkit silently overrides anything below 0.1 to 1.0 and
+ * kohya warns, so a form left at 1e-4 misrepresents what actually trains.
  * Used to auto-adjust the LR on optimiser switch (see training-config slice)
- * and to show a guiding hint under the optimiser dropdown.
+ * and to relabel the LR slider, whose fixed-LR presets don't apply to these.
+ *
+ * `dadaptation` is retained for configs saved before it was dropped from
+ * {@link OPTIMIZER_OPTIONS}.
  */
 export const ADAPTIVE_OPTIMIZERS = new Set(['prodigy', 'dadaptation']);
 

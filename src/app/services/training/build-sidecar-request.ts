@@ -13,7 +13,7 @@ import {
   captionPreferenceForModel,
 } from './caption-emission';
 import {
-  DEFAULT_SAMPLE_ASPECT,
+  defaultSampleAspect,
   getSampleBase,
   resolveSampleSize,
   type SampleAspect,
@@ -176,7 +176,11 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   // Translate the ai-toolkit-relevant hyperparameters from camelCase to
   // the snake_case names the provider reads from the hyperparameters dict.
   const modelPaths = (config.modelPaths as Record<string, string>) ?? {};
-  const checkpointPath = modelPaths.checkpoint;
+  // The flat `model_path` is what ai-toolkit passes straight to `name_or_path`.
+  // A `diffusers` component wins over `checkpoint` because a model offering
+  // both (Anima) keeps a path in each — the single-file one belongs to kohya,
+  // which reads `model_paths.checkpoint` directly and only falls back to this.
+  const checkpointPath = modelPaths.diffusers || modelPaths.checkpoint;
 
   const saveEnabled = (config.saveEnabled as boolean) ?? false;
   const saveMode = (config.saveMode as string) ?? 'epochs';
@@ -294,8 +298,9 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     config.nativeResolution as string | undefined,
   );
   const sampleAspects = (config.samplePromptSizes as SampleAspect[]) ?? [];
+  const fallbackAspect = defaultSampleAspect(sampleBase);
   const sampleSizes: [number, number][] = samplePrompts.map((_, i) =>
-    resolveSampleSize(sampleAspects[i] ?? DEFAULT_SAMPLE_ASPECT, sampleBase),
+    resolveSampleSize(sampleAspects[i] ?? fallbackAspect, sampleBase),
   );
 
   return {

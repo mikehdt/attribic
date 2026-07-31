@@ -343,6 +343,49 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
     dependencies: ANIMA_DEPS,
     description: 'Anime-focused ~2B DiT — low VRAM, fast to train (~4 GB)',
   },
+  // ai-toolkit loads Anima through its modular diffusers pipeline
+  // (`AnimaAutoBlocks().init_pipeline`), which reads `modular_model_index.json`
+  // and the named subfolders below — it has no single-file loader, so the
+  // split weights above are no use to it and this is a second copy of the same
+  // model. Deliberately no `dependencies`: the pipeline bundles its own text
+  // encoder and VAE, so the shared Anima components aren't needed here.
+  //
+  // Lands beside the split files in models/anima/ — they occupy disjoint
+  // subpaths, the download engine only ever deletes files from its own
+  // manifest, and diffusers ignores directory entries it doesn't recognise.
+  // Same coexistence arrangement as the Z-Image training adapter below.
+  {
+    id: 'dl-anima-diffusers',
+    name: 'Anima Pipeline (base v1.0, diffusers)',
+    repoId: 'circlestone-labs/Anima-Base-v1.0-Diffusers',
+    feature: 'training',
+    architecture: 'anima',
+    componentType: 'diffusers',
+    description: 'Anima as a diffusers pipeline, for ai-toolkit (~5.6 GB)',
+    files: [
+      { name: 'modular_model_index.json', size: 2_414 },
+      { name: 'scheduler/scheduler_config.json', size: 487 },
+      { name: 'transformer/config.json', size: 728 },
+      {
+        name: 'transformer/diffusion_pytorch_model.safetensors',
+        size: 3_912_877_104,
+      },
+      { name: 'text_encoder/config.json', size: 1_409 },
+      { name: 'text_encoder/model.safetensors', size: 1_192_133_232 },
+      { name: 'text_conditioner/config.json', size: 333 },
+      {
+        name: 'text_conditioner/diffusion_pytorch_model.safetensors',
+        size: 269_339_400,
+      },
+      { name: 'vae/config.json', size: 753 },
+      { name: 'vae/diffusion_pytorch_model.safetensors', size: 253_806_966 },
+      { name: 'tokenizer/tokenizer.json', size: 11_422_924 },
+      { name: 'tokenizer/tokenizer_config.json', size: 421 },
+      { name: 'tokenizer/chat_template.jinja', size: 2_427 },
+      { name: 't5_tokenizer/tokenizer.json', size: 2_424_069 },
+      { name: 't5_tokenizer/tokenizer_config.json', size: 2_439 },
+    ],
+  },
 
   // --- Z-Image ---
   // Z-Image Turbo ships as a full diffusers pipeline directory: the
