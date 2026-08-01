@@ -506,6 +506,25 @@ export const selectIsTraining = createSelector(
   (job) => job !== null,
 );
 
+/**
+ * Whether GPU work is already running or waiting, so a new run would go onto
+ * the sidecar's queue rather than starting straight away. Training jobs sit at
+ * `pending` while queued; tagging batches stay `running` with a `queued`
+ * sub-state, so all three statuses count. Downloads are excluded — they don't
+ * contend for the GPU.
+ */
+export const selectGpuQueueOccupied = createSelector(
+  selectAllJobs,
+  (jobs): boolean =>
+    jobs.some(
+      (j) =>
+        (j.type === 'training' || j.type === 'tagging') &&
+        (j.status === 'pending' ||
+          j.status === 'preparing' ||
+          j.status === 'running'),
+    ),
+);
+
 /** The active tagging job for a specific project (at most one per project). */
 export const selectActiveTaggingJob = createSelector(
   [

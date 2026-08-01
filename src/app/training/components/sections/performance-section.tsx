@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
@@ -8,6 +8,7 @@ import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { Input } from '@/app/shared/input/input';
+import { RadioGroup } from '@/app/shared/radio-group';
 import type { TrainingViewMode } from '@/app/store/preferences';
 
 import { FieldTitle } from '../field-title';
@@ -18,6 +19,7 @@ import type {
 } from '../training-config-form/use-training-config-form';
 import { SectionHeaderExtra } from './section-header-extra';
 import { SectionResetButton } from './section-reset-button';
+import { type ResolutionMode, useResolutionMode } from './use-resolution-mode';
 
 type PerformanceSectionProps = {
   /** Read-only, for effective batch size display in gradient accumulation */
@@ -60,6 +62,11 @@ const QUANTIZATION_ITEMS: DropdownItem<string>[] = [
   { value: 'float8', label: 'float8 (lower VRAM)' },
 ];
 
+const RESOLUTION_MODE_OPTIONS: { value: ResolutionMode; label: string }[] = [
+  { value: 'bucketed', label: 'Training resolutions' },
+  { value: 'native', label: 'Native resolution' },
+];
+
 const PerformanceSectionComponent = ({
   batchSize,
   resolution,
@@ -88,6 +95,16 @@ const PerformanceSectionComponent = ({
 }: PerformanceSectionProps) => {
   const isKohya = provider === 'kohya';
 
+  // Hooks before the early return below.
+  const handleNativeChange = useCallback(
+    (value: string) => onFieldChange('nativeResolution', value),
+    [onFieldChange],
+  );
+  const { mode, selectMode, setNativeResolution } = useResolutionMode(
+    nativeResolution,
+    handleNativeChange,
+  );
+
   const hasVisibleFields =
     visibleFields.has('resolution') ||
     visibleFields.has('nativeResolution') ||
@@ -113,6 +130,27 @@ const PerformanceSectionComponent = ({
   const nativeActive = nativeResolution.trim().length > 0;
   const { value: native, error: nativeError } =
     parseNativeResolution(nativeResolution);
+
+  // The two are mutually exclusive rather than independent, so where both are
+  // editable they're presented as one radio choice and only the chosen
+  // control is shown. Simple mode keeps the old side-by-side layout: the
+  // exact size is read-only there, so there'd be no choice to make.
+  const showModeChoice =
+    !isSimple &&
+    visibleFields.has('resolution') &&
+    visibleFields.has('nativeResolution');
+  const showResolutions =
+    visibleFields.has('resolution') && (!showModeChoice || mode === 'bucketed');
+  const showNative =
+    visibleFields.has('nativeResolution') &&
+    (showModeChoice ? mode === 'native' : !(isSimple && !nativeActive));
+
+  // Seed for the native option so picking it lands on a valid, obvious size
+  // rather than an empty box: the largest selected size, squared.
+  const handleModeChange = (next: ResolutionMode) => {
+    const largest = resolution.length > 0 ? Math.max(...resolution) : 1024;
+    selectMode(next, `${largest}x${largest}`);
+  };
 
   // Multi-select on both backends. ai-toolkit trains each selected size;
   // Kohya trains at the largest and enables aspect bucketing across the
@@ -231,103 +269,141 @@ const PerformanceSectionComponent = ({
           )}
         </div>
 
-        {/* Resolution */}
-        {visibleFields.has('resolution') && (
-          <div>
-            <FieldTitle
-              field="resolution"
-              label="Training Resolutions"
-              value={resolution}
-              defaults={defaults}
-              onFieldChange={onFieldChange}
-            />
-            <div
-              className={`flex flex-wrap gap-1.5 ${
-                nativeActive ? 'pointer-events-none opacity-40' : ''
-              }`}
-            >
-              {availableResolutions.map((res) => {
-                const isActive = resolution.includes(res);
-                return (
-                  <button
-                    key={res}
-                    type="button"
-                    disabled={nativeActive}
-                    onClick={() => handleToggleResolution(res)}
-                    className={`cursor-pointer rounded-sm border px-3 py-1 text-xs font-medium tabular-nums transition-colors ${
-                      isActive
-                        ? 'border-sky-400 bg-sky-100 text-sky-700 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300'
-                        : 'border-(--border-subtle) text-slate-400 hover:border-slate-400 hover:text-slate-600 dark:hover:border-slate-500 dark:hover:text-slate-300'
-                    }`}
-                  >
-                    {res}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-1 text-sm text-slate-400">
-              {nativeActive
-                ? 'Overridden by the native resolution below'
-                : isKohya
-                  ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
-                  : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
-            </p>
+        {/* Resolution: a list of sizes to bucket across, or one exact native
+            size — never both. Native resolution is Kohya-only, and read-only
+            text in Simple mode (hidden there entirely when unset, since
+            there's nothing worth saying about an override that isn't in
+            play). */}
+        {(showResolutions || showNative) && (
+          <div className="space-y-3">
+            {showModeChoice && (
+              <div>
+                {mode === 'native' ? (
+                  <FieldTitle
+                    field="nativeResolution"
+                    label="Resolution"
+                    value={nativeResolution}
+                    defaults={defaults}
+                    onFieldChange={onFieldChange}
+                  />
+                ) : (
+                  <FieldTitle
+                    field="resolution"
+                    label="Resolution"
+                    value={resolution}
+                    defaults={defaults}
+                    onFieldChange={onFieldChange}
+                  />
+                )}
+                <RadioGroup
+                  name="Resolution mode"
+                  size="sm"
+                  options={RESOLUTION_MODE_OPTIONS}
+                  value={mode}
+                  onChange={handleModeChange}
+                />
+              </div>
+            )}
+
+            {showResolutions && (
+              <div>
+                {!showModeChoice && (
+                  <FieldTitle
+                    field="resolution"
+                    label="Training Resolutions"
+                    value={resolution}
+                    defaults={defaults}
+                    onFieldChange={onFieldChange}
+                  />
+                )}
+                <div
+                  className={`flex flex-wrap gap-1.5 ${
+                    nativeActive ? 'pointer-events-none opacity-40' : ''
+                  }`}
+                >
+                  {availableResolutions.map((res) => {
+                    const isActive = resolution.includes(res);
+                    return (
+                      <button
+                        key={res}
+                        type="button"
+                        disabled={nativeActive}
+                        onClick={() => handleToggleResolution(res)}
+                        className={`cursor-pointer rounded-sm border px-3 py-1 text-xs font-medium tabular-nums transition-colors ${
+                          isActive
+                            ? 'border-sky-400 bg-sky-100 text-sky-700 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300'
+                            : 'border-(--border-subtle) text-slate-400 hover:border-slate-400 hover:text-slate-600 dark:hover:border-slate-500 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        {res}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-sm text-slate-400">
+                  {nativeActive
+                    ? 'Overridden by the native resolution below'
+                    : isKohya
+                      ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
+                      : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
+                </p>
+              </div>
+            )}
+
+            {showNative && (
+              <div>
+                {!showModeChoice && (
+                  <FieldTitle
+                    field="nativeResolution"
+                    label="Native Resolution"
+                    value={nativeResolution}
+                    defaults={defaults}
+                    onFieldChange={onFieldChange}
+                  />
+                )}
+                {isSimple ? (
+                  <p className="text-sm font-medium tabular-nums">
+                    {native ? (
+                      <>
+                        {native.width}&times;{native.height}
+                        <span className="ml-2 font-normal text-slate-400">
+                          exact size, no bucketing
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-amber-500">
+                        {nativeResolution.trim()} &mdash; {nativeError}
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <>
+                    <Input
+                      type="text"
+                      value={nativeResolution}
+                      onChange={(e) => setNativeResolution(e.target.value)}
+                      placeholder="e.g. 1280x768"
+                      className="w-32"
+                      aria-label="Native resolution"
+                      aria-invalid={nativeError !== null}
+                    />
+                    <p className="mt-1 text-sm text-slate-400">
+                      Trains at this exact size with no bucketing, resizing or
+                      cropping. Images must already be this size.
+                      {!showModeChoice &&
+                        ' Leave blank to use the resolutions above.'}
+                    </p>
+                    {nativeError && (
+                      <p className="mt-1 text-sm text-amber-500">
+                        {nativeError}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
-
-        {/* Native resolution (Kohya-only). Read-only text in Simple mode, and
-            hidden there entirely when unset — nothing worth saying about an
-            override that isn't in play. Interactive from Intermediate up. */}
-        {visibleFields.has('nativeResolution') &&
-          !(isSimple && !nativeActive) && (
-            <div>
-              <FieldTitle
-                field="nativeResolution"
-                label="Native Resolution"
-                value={nativeResolution}
-                defaults={defaults}
-                onFieldChange={onFieldChange}
-              />
-              {isSimple ? (
-                <p className="text-sm font-medium tabular-nums">
-                  {native ? (
-                    <>
-                      {native.width}&times;{native.height}
-                      <span className="ml-2 font-normal text-slate-400">
-                        exact size, no bucketing
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-amber-500">
-                      {nativeResolution.trim()} &mdash; {nativeError}
-                    </span>
-                  )}
-                </p>
-              ) : (
-                <>
-                  <Input
-                    type="text"
-                    value={nativeResolution}
-                    onChange={(e) =>
-                      onFieldChange('nativeResolution', e.target.value)
-                    }
-                    placeholder="e.g. 1280x768"
-                    className="w-32"
-                    aria-label="Native resolution"
-                    aria-invalid={nativeError !== null}
-                  />
-                  <p className="mt-1 text-sm text-slate-400">
-                    Trains at this exact size with no bucketing, resizing or
-                    cropping. Images must already be this size. Leave blank to
-                    use the resolutions above.
-                  </p>
-                  {nativeError && (
-                    <p className="mt-1 text-sm text-amber-500">{nativeError}</p>
-                  )}
-                </>
-              )}
-            </div>
-          )}
 
         {/* Gradient Accumulation + Bucket Resolution Steps */}
         {(visibleFields.has('gradientAccumulationSteps') ||
