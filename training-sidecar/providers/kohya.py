@@ -314,6 +314,20 @@ def _parse_eta_seconds(eta_str: str) -> Optional[int]:
     return None
 
 
+def _sampling_phase(index: int, total: int) -> str:
+    """The sampling activity label, carrying the image count when we have one.
+
+    sd-scripts never says how many images an event will produce — but we wrote
+    the prompt file, so the total is simply how many prompts we sent, and the
+    index comes from counting the per-image `prompt:` blocks it echoes. Shaped
+    like ai-toolkit's "Generating images - 3/4" so the client reads both
+    backends through the one label formatter.
+    """
+    if index > 0 and total > 0:
+        return f"{SAMPLING_PHASE} - {min(index, total)}/{total}"
+    return SAMPLING_PHASE
+
+
 def _scan_sample_files(output_path: str, output_name: str) -> set[str]:
     """Return the sample PNGs written for this run so far.
 
@@ -932,6 +946,13 @@ class KohyaProvider(TrainingProvider):
         # Kept so the ~10/s tqdm redraws only produce an event when the count
         # actually moves. Reset at the start of each sampling pause.
         last_sample_bar: Optional[tuple[int, int]] = None
+        # Which image of the current sampling event is rendering, 1-based, and
+        # how many the event will produce. sd-scripts reports neither — but the
+        # total is just the prompt list we handed it, and the index is a count
+        # of the `prompt:` blocks it echoes, one per image. Reset at the start
+        # of each pause so every event counts from one.
+        sample_image_index = 0
+        sample_image_total = len(request.sample_prompts)
         # When the sampler's bar last triggered a sample scan. Bounds the cost
         # of scanning from inside the pause (see the sampler-bar branch below)
         # to roughly once per settle window rather than once per diffusion step.
@@ -1061,7 +1082,11 @@ class KohyaProvider(TrainingProvider):
                     # An advancing step means we're actively training — clear
                     # any transient activity label (e.g. a prior "Saving").
                     # A bar frozen mid-sample keeps the sampling label instead.
-                    phase=SAMPLING_PHASE if still_sampling else None,
+                    phase=(
+                        _sampling_phase(sample_image_index, sample_image_total)
+                        if still_sampling
+                        else None
+                    ),
                 )
             else:
                 # Collapse repeats — sd-scripts prints some output once per
@@ -1111,7 +1136,9 @@ class KohyaProvider(TrainingProvider):
                                 current_epoch=current_epoch,
                                 total_epochs=total_epochs,
                                 loss=last_loss,
-                                phase=SAMPLING_PHASE,
+                                phase=_sampling_phase(
+                                    sample_image_index, sample_image_total
+                                ),
                                 samples=samples,
                                 log_lines=log_lines[-50:],
                                 sample_progress=SampleProgress(
@@ -1146,7 +1173,6 @@ class KohyaProvider(TrainingProvider):
                         # past — "negative_prompt:" deliberately doesn't match.
                         or lower.startswith("prompt:")
                     ):
-                        activity = SAMPLING_PHASE
                         announce = SAMPLE_ANNOUNCE_PATTERN.search(lower)
                         if announce:
                             sampling_step = int(announce.group(1))
@@ -1160,11 +1186,25 @@ class KohyaProvider(TrainingProvider):
                         # suppress the first tick of the next one.
                         if not sampling_active:
                             last_sample_bar = None
+                            # A new event: restart the image count, whether this
+                            # is the announcement or a "prompt:" line we re-armed
+                            # off. The increment below then makes the latter the
+                            # event's first image, same as if we'd seen both.
+                            sample_image_index = 0
                         # Latch the pause so the sampler's own tqdm bars are read
                         # as sample progress (branch above) rather than training
                         # steps, until the real training bar ("steps" / avr_loss)
                         # moves past that step.
                         sampling_active = True
+                        # One "prompt:" block precedes each image, so counting
+                        # them tracks which one is on the GPU. The announcement
+                        # itself isn't one — it opens the event at 0, and the
+                        # first image's block takes it to 1.
+                        if lower.startswith("prompt:"):
+                            sample_image_index += 1
+                        activity = _sampling_phase(
+                            sample_image_index, sample_image_total
+                        )
                     elif "model saved" in lower:
                         activity = "Checkpoint saved"
                         saved = [current_step]

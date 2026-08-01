@@ -2,7 +2,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import type { TrainingJob } from '@/app/store/jobs';
 
-import { deriveSecPerStep, formatEta, isSamplingPhase } from '../../helpers';
+import {
+  deriveSecPerStep,
+  formatEta,
+  isSamplingPhase,
+  samplingImageIndex,
+} from '../../helpers';
 import {
   buildSamplesGrid,
   type SampleRow,
@@ -42,6 +47,16 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
   // instead of an ETA it can't honour.
   const isGenerating =
     job?.progress?.status === 'training' && isSamplingPhase(job.progress.phase);
+
+  // Which prompt column that event is rendering into, as counted by the
+  // sidecar (images generated so far, against the prompts we configured). Null
+  // until the first image of an event is announced, and clamped to the grid so
+  // a miscount can never point the bar off the end of the row.
+  const reportedGeneratingIndex = useMemo(() => {
+    if (!isGenerating) return null;
+    const index = samplingImageIndex(job?.progress?.phase);
+    return index != null && index < grid.columns.length ? index : null;
+  }, [isGenerating, job?.progress?.phase, grid.columns.length]);
 
   // Whether the newest real row belongs to the event happening right now, as
   // opposed to a past one. The step/epoch counters freeze at the position
@@ -102,8 +117,9 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
         isEpoch: false,
         upcoming: true,
         cells: grid.columns.map(() => null),
-        // Nothing has landed yet, so the first prompt is the one rendering.
-        generatingIndex: 0,
+        // Nothing has landed yet, so the counted image is the one rendering —
+        // and before the count arrives, the first prompt is.
+        generatingIndex: reportedGeneratingIndex ?? 0,
         generatingProgress: progress.sampleProgress ?? null,
       };
     }
@@ -139,7 +155,14 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
       upcoming: true,
       cells: grid.columns.map(() => null),
     };
-  }, [job, grid, isGenerating, newestRowInFlight, newestRowIsCurrentEvent]);
+  }, [
+    job,
+    grid,
+    isGenerating,
+    newestRowInFlight,
+    newestRowIsCurrentEvent,
+    reportedGeneratingIndex,
+  ]);
 
   // Display-only overlay on the grid: the in-flight row is renamed and any
   // placeholder prepended. `grid` itself keeps its step/epoch labels and stable
@@ -150,9 +173,13 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
           {
             ...grid.rows[0],
             label: 'Generating',
-            // Samples land in prompt order, so the leftmost gap is the image
-            // on the GPU right now — that's the cell that gets the bar.
-            generatingIndex: grid.rows[0].cells.findIndex((c) => c === null),
+            // The counted image is the one on the GPU right now — that's the
+            // cell that gets the bar. Until the count arrives, fall back to the
+            // leftmost gap: samples land in prompt order, so it's the same cell
+            // once every earlier image has been claimed off disk.
+            generatingIndex:
+              reportedGeneratingIndex ??
+              grid.rows[0].cells.findIndex((c) => c === null),
             generatingProgress: job?.progress?.sampleProgress ?? null,
           },
           ...grid.rows.slice(1),
@@ -162,7 +189,13 @@ export function useTrainingDetailTabs(job: TrainingJob | null) {
       return newestRowInFlight ? { columns: grid.columns, rows } : grid;
     }
     return { columns: grid.columns, rows: [upcomingRow, ...rows] };
-  }, [grid, upcomingRow, newestRowInFlight, job?.progress?.sampleProgress]);
+  }, [
+    grid,
+    upcomingRow,
+    newestRowInFlight,
+    reportedGeneratingIndex,
+    job?.progress?.sampleProgress,
+  ]);
 
   // Callers key this hook's component by job id, so tab/lightbox state resets
   // per run; within a run it survives live progress updates. When a run has no

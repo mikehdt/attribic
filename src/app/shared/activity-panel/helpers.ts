@@ -337,15 +337,44 @@ export function isSamplingPhase(phase: string | null | undefined): boolean {
 }
 
 /**
+ * The "x/y" image count both backends append to their sampling phase label —
+ * ai-toolkit's "Generating images - 3/4", Kohya's "Generating samples - 3/4"
+ * (which the sidecar counts itself, off the per-image `prompt:` block
+ * sd-scripts echoes, since sd-scripts never states the count).
+ */
+const SAMPLING_COUNT_PATTERN = /(\d+)\s*\/\s*(\d+)/;
+
+/**
  * A consistent label for the sampling phase, so ai-toolkit's "Generating
- * images - 3/4" reads the same as Kohya's "Generating samples" while keeping
- * any "x/y" count the backend supplies. Deliberately the same word the samples
- * grid stamps on the event in flight, so the Phase stat and the grid row read
- * as the one thing happening.
+ * images - 3/4" reads the same as Kohya's "Generating samples - 3/4" while
+ * keeping the count. Deliberately the same word the samples grid stamps on the
+ * event in flight, so the Phase stat and the grid row read as the one thing
+ * happening.
  */
 export function formatSamplingLabel(phase: string): string {
-  const count = phase.match(/(\d+\s*\/\s*\d+)/);
-  return count ? `Generating ${count[1]}` : 'Generating';
+  const count = SAMPLING_COUNT_PATTERN.exec(phase);
+  return count ? `Generating ${count[1]}/${count[2]}` : 'Generating';
+}
+
+/**
+ * Which prompt column the trainer is rendering into right now (0-based), read
+ * off that same count. Null when the label carries none — the event hasn't
+ * announced its first image yet, or the backend never reported one.
+ *
+ * Worth preferring over "the leftmost empty cell": images land one prompt at a
+ * time in order, so the gap is the obvious guess, but a finished image stays
+ * unclaimed until it settles on disk — long enough that the next image's bar
+ * would draw in the finished image's cell, one cell appearing to generate
+ * twice. The counted index doesn't lag behind the filesystem.
+ */
+export function samplingImageIndex(
+  phase: string | null | undefined,
+): number | null {
+  if (!phase) return null;
+  const count = SAMPLING_COUNT_PATTERN.exec(phase);
+  if (!count) return null;
+  const index = Number(count[1]) - 1;
+  return index >= 0 ? index : null;
 }
 
 /**
