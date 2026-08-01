@@ -4,6 +4,7 @@ import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
 import { parseNativeResolution } from '@/app/services/training/native-resolution';
 import type { TrainingProvider } from '@/app/services/training/types';
+import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
@@ -297,16 +298,16 @@ const PerformanceSectionComponent = ({
                 )}
                 <RadioGroup
                   name="Resolution mode"
-                  size="sm"
                   options={RESOLUTION_MODE_OPTIONS}
                   value={mode}
                   onChange={handleModeChange}
+                  size="sm"
                 />
               </div>
             )}
 
             {showResolutions && (
-              <div>
+              <>
                 {!showModeChoice && (
                   <FieldTitle
                     field="resolution"
@@ -324,19 +325,19 @@ const PerformanceSectionComponent = ({
                   {availableResolutions.map((res) => {
                     const isActive = resolution.includes(res);
                     return (
-                      <button
+                      <Button
                         key={res}
-                        type="button"
+                        variant="toggle"
+                        color="sky"
+                        neutralUnpressed
+                        size="sm"
+                        width="lg"
                         disabled={nativeActive}
                         onClick={() => handleToggleResolution(res)}
-                        className={`cursor-pointer rounded-sm border px-3 py-1 text-xs font-medium tabular-nums transition-colors ${
-                          isActive
-                            ? 'border-sky-400 bg-sky-100 text-sky-700 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300'
-                            : 'border-(--border-subtle) text-slate-400 hover:border-slate-400 hover:text-slate-600 dark:hover:border-slate-500 dark:hover:text-slate-300'
-                        }`}
+                        isPressed={isActive}
                       >
                         {res}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -347,7 +348,7 @@ const PerformanceSectionComponent = ({
                       ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
                       : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
                 </p>
-              </div>
+              </>
             )}
 
             {showNative && (

@@ -58,6 +58,10 @@ interface ButtonProps {
   ghostDisabled?: boolean;
   neutralDisabled?: boolean;
 
+  // Renders the unpressed state of a toggle in neutral (slate) rather than the
+  // button's own colour, so only the chosen option carries the colour
+  neutralUnpressed?: boolean;
+
   // Inert removes interactive behavior (no click handling, default cursor, no hover)
   inert?: boolean;
 }
@@ -230,6 +234,7 @@ export const Button = ({
   ariaExpanded,
   ghostDisabled = false,
   neutralDisabled = false,
+  neutralUnpressed = false,
   inert = false,
   ref,
   ...props
@@ -263,6 +268,9 @@ export const Button = ({
 
   // Color and state-specific styles - fallback to slate if invalid color provided
   const colorConfig = colorStyles[color] || colorStyles.slate;
+  // Unpressed toggles can opt out of the button's colour so that only the
+  // selected option is coloured and the rest read as neutral
+  const unpressedConfig = neutralUnpressed ? colorStyles.slate : colorConfig;
   let styleClasses = '';
 
   if (disabled) {
@@ -287,13 +295,13 @@ export const Button = ({
       case 'toggle':
         styleClasses = isPressed
           ? `${baseStyle.togglePressed} ${colorConfig.togglePressed}`
-          : `${baseStyle.normal} ${colorConfig.normal}`;
+          : `${baseStyle.normal} ${unpressedConfig.normal}`;
         break;
 
       case 'deep-toggle':
         styleClasses = isPressed
           ? `border-white bg-white ${baseStyle.pressed}`
-          : `${baseStyle.deepPressed} ${colorConfig.deepPressed}`;
+          : `${baseStyle.deepPressed} ${unpressedConfig.deepPressed}`;
         break;
 
       case 'ghost':
@@ -315,13 +323,13 @@ export const Button = ({
       case 'toggle':
         styleClasses = isPressed
           ? `${baseStyle.togglePressed} ${colorConfig.togglePressed}`
-          : `${baseStyle.normal} ${colorConfig.normal} ${colorConfig.hover}`;
+          : `${baseStyle.normal} ${unpressedConfig.normal} ${unpressedConfig.hover}`;
         break;
 
       case 'deep-toggle':
         styleClasses = isPressed
           ? `border-white bg-white dark:text-slate-700 ${baseStyle.pressed}`
-          : `${baseStyle.deepPressed} ${colorConfig.deepPressed}`;
+          : `${baseStyle.deepPressed} ${unpressedConfig.deepPressed}`;
         break;
 
       case 'ghost':
