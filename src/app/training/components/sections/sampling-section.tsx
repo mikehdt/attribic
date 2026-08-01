@@ -1,4 +1,3 @@
-import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { memo } from 'react';
 
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
@@ -11,12 +10,10 @@ import {
   type SampleAspect,
   sampleAspectName,
 } from '@/app/services/training/sample-sizes';
-import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
-import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { NumberInput } from '@/app/shared/number-input/number-input';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
@@ -26,6 +23,7 @@ import type {
   FormState,
   SectionName,
 } from '../training-config-form/use-training-config-form';
+import { SamplePrompts } from './sample-prompts/sample-prompts';
 import { SectionHeaderExtra } from './section-header-extra';
 import { SectionResetButton } from './section-reset-button';
 
@@ -82,6 +80,7 @@ type SamplingSectionProps = {
   onRemovePrompt: (index: number) => void;
   onSetPrompt: (index: number, value: string) => void;
   onSetPromptSize: (index: number, value: SampleAspect) => void;
+  onReorderPrompts: (from: number, to: number) => void;
   onReset: (section: SectionName) => void;
 };
 
@@ -107,6 +106,7 @@ const SamplingSectionComponent = ({
   onRemovePrompt,
   onSetPrompt,
   onSetPromptSize,
+  onReorderPrompts,
   onReset,
 }: SamplingSectionProps) => {
   const activeField =
@@ -251,61 +251,18 @@ const SamplingSectionComponent = ({
           <>
             {/* Sample Prompts — full width */}
             {visibleFields.has('samplePrompts') && (
-              <div>
-                <FormTitle>Sample Prompts</FormTitle>
-                <div className="mb-1.5 space-y-1.5">
-                  {samplePrompts.map((prompt, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <InputTray width="full" size="md">
-                        <Input
-                          type="text"
-                          value={prompt}
-                          onChange={(e) => onSetPrompt(i, e.target.value)}
-                          placeholder="e.g. a woman with red hair, sitting at a cafe"
-                          className="min-w-0 flex-1"
-                        />
-                        <Dropdown
-                          items={aspectItems}
-                          selectedValue={samplePromptSizes[i] ?? fallbackAspect}
-                          onChange={(val) => onSetPromptSize(i, val)}
-                          selectedValueRenderer={() => {
-                            const [w, h] = resolveSampleSize(
-                              samplePromptSizes[i] ?? fallbackAspect,
-                              sampleBase,
-                            );
-                            return (
-                              <span className="tabular-nums">
-                                {w} × {h}
-                              </span>
-                            );
-                          }}
-                          aria-label={`Sample image size for prompt ${i + 1}`}
-                          className="shrink-0"
-                        />
-                        {samplePrompts.length > 1 && (
-                          <Button
-                            variant="ghost"
-                            onClick={() => onRemovePrompt(i)}
-                            title="Remove prompt"
-                          >
-                            <Trash2Icon />
-                          </Button>
-                        )}
-                      </InputTray>
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  width="sm"
-                  onClick={onAddPrompt}
-                >
-                  <PlusIcon />
-                  Add prompt
-                </Button>
-              </div>
+              <SamplePrompts
+                prompts={samplePrompts}
+                sizes={samplePromptSizes}
+                fallbackAspect={fallbackAspect}
+                sampleBase={sampleBase}
+                aspectItems={aspectItems}
+                onAdd={onAddPrompt}
+                onRemove={onRemovePrompt}
+                onSet={onSetPrompt}
+                onSetSize={onSetPromptSize}
+                onReorder={onReorderPrompts}
+              />
             )}
 
             {/* Frequency + Steps + Guidance + Noise row */}

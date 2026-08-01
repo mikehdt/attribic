@@ -17,6 +17,7 @@ import {
   removeDataset as removeDatasetAction,
   removeExtraFolder as removeExtraFolderAction,
   removeSamplePrompt as removeSamplePromptAction,
+  reorderSamplePrompts as reorderSamplePromptsAction,
   resetAll as resetAllAction,
   resetSection as resetSectionAction,
   selectAppModelDefaults,
@@ -253,6 +254,13 @@ export function useTrainingConfigForm() {
     [dispatch],
   );
 
+  const reorderSamplePrompts = useCallback(
+    (from: number, to: number) => {
+      dispatch(reorderSamplePromptsAction({ from, to }));
+    },
+    [dispatch],
+  );
+
   const setAppModelDefaults = useCallback(
     (defaults: AppModelDefaults) => {
       dispatch(setAppModelDefaultsAction(defaults));
@@ -289,6 +297,7 @@ export function useTrainingConfigForm() {
     removeSamplePrompt,
     setSamplePrompt,
     setSamplePromptSize,
+    reorderSamplePrompts,
     setAppModelDefaults,
     outputFolder,
   };

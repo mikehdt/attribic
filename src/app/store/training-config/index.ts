@@ -430,6 +430,29 @@ const trainingConfigSlice = createSlice({
       sizes[index] = value;
     },
 
+    /**
+     * Move a prompt to a new position, its shape travelling with it. Sizes are
+     * padded first for the same reason as above — moving within a short array
+     * would pair prompts with shapes they were never given.
+     */
+    reorderSamplePrompts: (
+      state,
+      action: PayloadAction<{ from: number; to: number }>,
+    ) => {
+      const { from, to } = action.payload;
+      const prompts = state.form.samplePrompts;
+      if (from === to) return;
+      if (from < 0 || to < 0 || from >= prompts.length || to >= prompts.length) {
+        return;
+      }
+      const sizes = state.form.samplePromptSizes;
+      while (sizes.length < prompts.length) {
+        sizes.push(formSampleAspect(state.form));
+      }
+      prompts.splice(to, 0, prompts.splice(from, 1)[0]);
+      sizes.splice(to, 0, sizes.splice(from, 1)[0]);
+    },
+
     addDataset: (
       state,
       action: PayloadAction<{
@@ -717,6 +740,7 @@ export const {
   removeSamplePrompt,
   setSamplePrompt,
   setSamplePromptSize,
+  reorderSamplePrompts,
   addDataset,
   reconcileDatasetFolders,
   setDatasetHistogram,

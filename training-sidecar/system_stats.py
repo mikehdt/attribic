@@ -34,8 +34,27 @@ NVIDIA_SMI_QUERY = (
     "index,name,utilization.gpu,memory.used,memory.total,temperature.gpu"
 )
 
+# How long the previous GPU reading stands in for one that failed. A busy
+# driver — exactly the state someone watching the graph is interested in — can
+# make nvidia-smi slow enough to hit the timeout above, and reporting "no GPUs"
+# for that one poll drops the GPU and VRAM readouts out of the UI entirely and
+# leaves a hole in their traces. Bounded so a card that has genuinely gone away
+# stops being reported within a couple of polls.
+GPU_CARRY_FORWARD_SECONDS = 10.0
+
+# `psutil.cpu_percent(interval=None)` reports usage since the *previous* call,
+# so the first read after a long quiet spell describes minutes of history
+# rather than now. Past this, re-prime and take a short measured window
+# instead — a fresh reading is worth 150ms on a poll that only happens when
+# sampling has just resumed.
+CPU_RESYNC_AFTER_SECONDS = 10.0
+CPU_RESYNC_WINDOW_SECONDS = 0.15
+
 _cached: Optional[SystemStats] = None
 _cached_at: float = 0.0
+_last_gpus: list[GpuStats] = []
+_last_gpus_at: float = 0.0
+_last_cpu_read_at: float = 0.0
 # Serialises concurrent callers onto one measurement rather than letting each
 # spawn its own nvidia-smi while the first is still running.
 _lock = asyncio.Lock()
@@ -48,8 +67,26 @@ def prime() -> None:
     very first one always returns 0.0. Called at startup, that throwaway read
     happens long before anything asks for stats.
     """
+    global _last_cpu_read_at
     if psutil is not None:
         psutil.cpu_percent(interval=None)
+        _last_cpu_read_at = time.monotonic()
+
+
+async def _read_cpu_percent() -> Optional[float]:
+    """Current CPU load, measured over a recent window rather than since the
+    last caller — which may have been minutes ago."""
+    global _last_cpu_read_at
+    if psutil is None:
+        return None
+
+    if time.monotonic() - _last_cpu_read_at > CPU_RESYNC_AFTER_SECONDS:
+        psutil.cpu_percent(interval=None)  # discard the stale accumulation
+        await asyncio.sleep(CPU_RESYNC_WINDOW_SECONDS)
+
+    value = psutil.cpu_percent(interval=None)
+    _last_cpu_read_at = time.monotonic()
+    return value
 
 
 def _parse_float(value: str) -> Optional[float]:
@@ -109,6 +146,21 @@ async def _read_gpus() -> list[GpuStats]:
     return gpus
 
 
+async def _gpus_with_carry_forward() -> list[GpuStats]:
+    """GPU readings, falling back to the last good ones after a failed query."""
+    global _last_gpus, _last_gpus_at
+
+    gpus = await _read_gpus()
+    now = time.monotonic()
+    if gpus:
+        _last_gpus = gpus
+        _last_gpus_at = now
+        return gpus
+    if _last_gpus and now - _last_gpus_at <= GPU_CARRY_FORWARD_SECONDS:
+        return _last_gpus
+    return []
+
+
 async def collect() -> SystemStats:
     """Current host stats, re-measured at most once per `CACHE_TTL_SECONDS`."""
     global _cached, _cached_at
@@ -124,11 +176,10 @@ async def collect() -> SystemStats:
         if _cached is not None and now - _cached_at < CACHE_TTL_SECONDS:
             return _cached
 
-        cpu_percent: Optional[float] = None
         memory_used_mb: Optional[float] = None
         memory_total_mb: Optional[float] = None
+        cpu_percent = await _read_cpu_percent()
         if psutil is not None:
-            cpu_percent = psutil.cpu_percent(interval=None)
             memory = psutil.virtual_memory()
             memory_used_mb = (memory.total - memory.available) / (1024 * 1024)
             memory_total_mb = memory.total / (1024 * 1024)
@@ -137,7 +188,7 @@ async def collect() -> SystemStats:
             cpu_percent=cpu_percent,
             memory_used_mb=memory_used_mb,
             memory_total_mb=memory_total_mb,
-            gpus=await _read_gpus(),
+            gpus=await _gpus_with_carry_forward(),
         )
         _cached = stats
         _cached_at = time.monotonic()

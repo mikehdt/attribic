@@ -6,6 +6,7 @@ import { memo, useCallback, useEffect, useRef } from 'react';
 
 import { cancelTaggingJob } from '@/app/services/auto-tagger/tagging-controllers';
 import { useIsAnyModalOpen } from '@/app/shared/modal';
+import { useStatsPolling } from '@/app/shared/stats/use-stats';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   cancelTagging,
@@ -19,6 +20,7 @@ import {
   selectCompletedJobs,
   selectDetailJob,
   selectHasJobs,
+  selectIsTraining,
   selectPanelOpen,
   selectPendingJobs,
   type TaggingJob,
@@ -52,6 +54,14 @@ const ActivityPanelComponent = () => {
   const activeJobs = useAppSelector(selectActiveJobs);
   const pendingJobs = useAppSelector(selectPendingJobs);
   const completedJobs = useAppSelector(selectCompletedJobs);
+
+  // Keep host load sampling for as long as a run is training, from here —
+  // the panel is mounted in the root layout, so it outlives every surface that
+  // actually draws the figures. The rolling history behind the detail modal's
+  // sparklines is meant to be the run's timeline, and it can only be that if
+  // sampling doesn't stop each time the modal is closed or the panel minimised.
+  // Nothing polls while the machine is idle, which was the point of gating it.
+  useStatsPolling(useAppSelector(selectIsTraining));
 
   // Push up above the bottom shelf on views that have one
   const hasBottomShelf =

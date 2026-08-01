@@ -76,6 +76,7 @@ const TrainingConfigFormComponent = ({
     removeSamplePrompt,
     setSamplePrompt,
     setSamplePromptSize,
+    reorderSamplePrompts,
     setAppModelDefaults,
     outputFolder,
   } = useTrainingConfigForm();
@@ -356,6 +357,7 @@ const TrainingConfigFormComponent = ({
             onRemovePrompt={removeSamplePrompt}
             onSetPrompt={setSamplePrompt}
             onSetPromptSize={setSamplePromptSize}
+            onReorderPrompts={reorderSamplePrompts}
             onReset={resetSection}
           />
 
