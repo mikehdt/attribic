@@ -103,6 +103,24 @@ function GeneratingCell({
   );
 }
 
+/**
+ * A cell whose image has already been rendered but hasn't been claimed off disk
+ * yet. Samplers work left to right, so any gap *behind* the cell in flight is an
+ * image in that window — dashing it reads as "nothing here", then flashes to a
+ * thumbnail a moment later. Backends claim a sample as soon as its last byte
+ * lands, so this is brief where it appears at all.
+ */
+function PendingCell({ label }: { label: string }) {
+  return (
+    <div
+      className="flex h-28 w-full animate-pulse items-center justify-center rounded border border-dashed border-slate-300 text-xs text-slate-400 dark:border-slate-600 dark:text-slate-500"
+      title={`${label} — rendered, loading`}
+    >
+      Loading...
+    </div>
+  );
+}
+
 function GridRow({
   row,
   columns,
@@ -148,6 +166,9 @@ function GridRow({
                 progress={row.generatingProgress ?? null}
                 label={column.label}
               />
+            ) : row.generatingIndex != null &&
+              column.index < row.generatingIndex ? (
+              <PendingCell label={column.label} />
             ) : (
               <div className="flex h-28 w-full items-center justify-center rounded border border-dashed border-slate-200 text-xs text-slate-400 dark:border-slate-700">
                 —

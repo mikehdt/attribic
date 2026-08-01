@@ -39,7 +39,9 @@ export type SampleRow = {
   /**
    * Column index of the image the trainer is rendering right now. Set on the
    * in-flight event only (display overlay, not the base grid) so that one cell
-   * shows a progress bar instead of an empty placeholder.
+   * shows a progress bar instead of an empty placeholder — and so the empty
+   * cells behind it, whose images are written but not yet claimed, read as
+   * pending rather than as nothing.
    */
   generatingIndex?: number;
   /**

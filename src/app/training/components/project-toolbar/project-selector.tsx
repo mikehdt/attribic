@@ -70,7 +70,6 @@ const ProjectSelectorComponent = ({
 
   const triggerLabel = loadedProject ? (
     <span className="flex items-center gap-1.5">
-      <FolderOpenIcon className="h-3.5 w-3.5 text-slate-400" />
       <span className="font-medium">{loadedProject.name}</span>
       <span className="text-slate-400">
         · v{loadedProject.version}

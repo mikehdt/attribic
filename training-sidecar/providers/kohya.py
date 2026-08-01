@@ -30,7 +30,7 @@ from models import (
     StartJobRequest,
 )
 from providers.base import TrainingProvider
-from sample_archive import SETTLE_SECONDS, collect_new_samples
+from sample_archive import collect_new_samples
 
 # sd-scripts' main training bar looks like:
 #   steps:   5%|▌         | 150/3000 [00:30<09:30,  2.30it/s, avr_loss=0.0912]
@@ -63,9 +63,11 @@ SAMPLE_ANNOUNCE_PATTERN = re.compile(
 )
 
 # How often the sampler's own tqdm bar may trigger a sample scan during a
-# pause. Matched to the settle window: scanning faster can't claim anything new,
-# since a file has to sit untouched that long before it's considered written.
-SAMPLE_SCAN_INTERVAL_S = SETTLE_SECONDS
+# pause. A backstop only — each image is claimed by the scan on the following
+# `prompt:` line, which lands the moment sd-scripts has finished writing it — so
+# this just bounds the cost of the bar's ~10/s redraws to one directory listing
+# a second, for the cases that line never comes (the event's last image).
+SAMPLE_SCAN_INTERVAL_S = 1.0
 
 # sd-scripts writes samples as
 #   {output_name}_{num_suffix}_{promptIdx:02d}_{timestamp}{_seed}.png
@@ -1108,16 +1110,13 @@ class KohyaProvider(TrainingProvider):
                         if bar != last_sample_bar:
                             last_sample_bar = bar
                             # Claim whatever the previous image left on disk.
-                            # Without this the only scan points inside a pause
-                            # are the sampler's announce lines, and an image
-                            # written moments earlier always fails the settle
-                            # gate at exactly that instant — so it stayed
-                            # unclaimed for the rest of the pause. The UI reads
-                            # the leftmost empty cell as "rendering now", so the
-                            # next image's bar was drawn in the finished image's
-                            # cell: one cell appearing to generate twice while
-                            # the first image never showed up until the pause
-                            # ended. Scanning here closes that window.
+                            # The announce lines are otherwise the only scan
+                            # points inside a pause, so without this an image
+                            # stayed unclaimed for as long as the one after it
+                            # took to render — its cell dashed while the next
+                            # image's bar drew beside it. Throttled, since the
+                            # `prompt:` line that opens each image already scans
+                            # right after the previous one was written.
                             now = time.monotonic()
                             if now - last_sample_scan >= SAMPLE_SCAN_INTERVAL_S:
                                 last_sample_scan = now

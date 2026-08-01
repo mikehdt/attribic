@@ -1,6 +1,11 @@
 'use client';
 
-import { PanelsTopLeftIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
+import {
+  FolderOpenIcon,
+  PanelsTopLeftIcon,
+  RotateCcwIcon,
+  SaveIcon,
+} from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
 
 import { Button } from '@/app/shared/button';
@@ -84,57 +89,63 @@ const TrainingToolbarComponent = () => {
   return (
     <>
       {/* Left: project menu + save + reset */}
-      <ProjectSelector
-        onRequestLoad={() => setLoadOpen(true)}
-        onRequestSaveAs={() => setSaveAsOpen(true)}
-        onRequestDelete={() => setDeleteOpen(true)}
-      />
+      <ResponsiveToolbarGroup icon={<FolderOpenIcon className="h-4 w-4" />}>
+        <ProjectSelector
+          onRequestLoad={() => setLoadOpen(true)}
+          onRequestSaveAs={() => setSaveAsOpen(true)}
+          onRequestDelete={() => setDeleteOpen(true)}
+        />
 
-      <ToolbarDivider />
+        <ToolbarDivider />
 
-      {loadedProject && (
+        {loadedProject && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleSave}
+            disabled={isDirty === false}
+            title={
+              isDirty
+                ? `Save changes to v${loadedProject.version}`
+                : 'No unsaved changes'
+            }
+          >
+            <SaveIcon className="mr-1 h-3.5 w-3.5" />
+            Save
+          </Button>
+        )}
+
         <Button
           size="sm"
           variant="ghost"
-          onClick={handleSave}
-          disabled={isDirty === false}
+          onClick={handleReset}
+          disabled={canReset === false}
           title={
-            isDirty
-              ? `Save changes to v${loadedProject.version}`
-              : 'No unsaved changes'
+            canReset
+              ? resetLabel
+              : loadedProject
+                ? 'No unsaved changes to reset'
+                : 'Already at defaults'
           }
         >
-          <SaveIcon className="mr-1 h-3.5 w-3.5" />
-          Save
+          <RotateCcwIcon className="mr-1 h-3.5 w-3.5" />
+          {resetLabel}
         </Button>
-      )}
-
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={handleReset}
-        disabled={canReset === false}
-        title={
-          canReset
-            ? resetLabel
-            : loadedProject
-              ? 'No unsaved changes to reset'
-              : 'Already at defaults'
-        }
-      >
-        <RotateCcwIcon className="mr-1 h-3.5 w-3.5" />
-        {resetLabel}
-      </Button>
+      </ResponsiveToolbarGroup>
 
       {/* Spacer */}
       <div className="mr-auto!" />
 
       {/* Right: view mode toggle */}
-      <ResponsiveToolbarGroup icon={<PanelsTopLeftIcon className="h-4 w-4" />}>
+      <ResponsiveToolbarGroup
+        breakpoint="lg"
+        icon={<PanelsTopLeftIcon className="h-4 w-4" />}
+      >
         <SegmentedControl
           options={VIEW_MODE_OPTIONS}
           value={viewMode}
           onChange={handleViewModeChange}
+          tone="surface"
           size="toolbar"
         />
       </ResponsiveToolbarGroup>

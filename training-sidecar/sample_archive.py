@@ -62,22 +62,63 @@ def configure(jobs_dir: Path) -> None:
     global _jobs_dir
     _jobs_dir = jobs_dir
 
-# A sample file is only claimed once it has been untouched for this long. The
-# trainers write images with a plain `save()`, so a scan that lands mid-write
-# would otherwise copy a truncated image — and unlike the source, the copy is
-# never rewritten. Files that fail the check are simply left unclaimed for the
-# next poll.
+# Fallback gate for a format we can't inspect: claim it only once it has been
+# untouched for this long. The trainers write images with a plain `save()`, so a
+# scan that lands mid-write would otherwise copy a truncated image — and unlike
+# the source, the copy is never rewritten. Files that fail the check are simply
+# left unclaimed for the next poll.
 SETTLE_SECONDS = 1.0
+
+# End markers that can only be on disk once the whole file is. Preferred over
+# the quiet window above, which cost a finished sample up to a second of sitting
+# unclaimed — long enough that the grid dashed its cell and drew the *next*
+# image's progress bar before the finished one appeared.
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+PNG_TRAILER = b"\x00\x00\x00\x00IEND\xaeB`\x82"  # the mandatory closing chunk
+JPEG_MAGIC = b"\xff\xd8\xff"
+JPEG_TRAILER = b"\xff\xd9"  # EOI
+
+
+def _is_complete_image(path: Path, size: int) -> Optional[bool]:
+    """Whether `path` is a fully-written image, judged by its own format.
+
+    Returns None when the header names no format we can check, so the caller
+    falls back to the quiet-window rule. Every format the trainers write either
+    ends with a marker that can't be there before the last byte is (PNG's IEND
+    chunk, JPEG's EOI) or declares its own length up front (RIFF/WebP).
+    """
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(12)
+            if head.startswith(PNG_MAGIC):
+                trailer = PNG_TRAILER
+            elif head.startswith(JPEG_MAGIC):
+                trailer = JPEG_TRAILER
+            elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+                # The RIFF header states the payload size, so the file is whole
+                # once that many bytes (plus the 8-byte header) have landed.
+                return int.from_bytes(head[4:8], "little") + 8 <= size
+            else:
+                return None
+            if size < len(trailer):
+                return False
+            handle.seek(-len(trailer), 2)
+            return handle.read(len(trailer)) == trailer
+    except OSError:
+        return False
 
 
 def is_settled(path: str, now: Optional[float] = None) -> bool:
-    """True if `path` looks completely written (non-empty and not just touched)."""
+    """True if `path` looks completely written (non-empty and not truncated)."""
     try:
         stat = Path(path).stat()
     except OSError:
         return False
     if stat.st_size == 0:
         return False
+    complete = _is_complete_image(Path(path), stat.st_size)
+    if complete is not None:
+        return complete
     return (now if now is not None else time.time()) - stat.st_mtime >= SETTLE_SECONDS
 
 
