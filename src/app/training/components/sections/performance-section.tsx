@@ -65,7 +65,7 @@ const QUANTIZATION_ITEMS: DropdownItem<string>[] = [
 
 const RESOLUTION_MODE_OPTIONS: { value: ResolutionMode; label: string }[] = [
   { value: 'bucketed', label: 'Training resolutions' },
-  { value: 'native', label: 'Native resolution' },
+  { value: 'native', label: 'Exact resolution' },
 ];
 
 const PerformanceSectionComponent = ({
@@ -271,7 +271,7 @@ const PerformanceSectionComponent = ({
         </div>
 
         {/* Resolution: a list of sizes to bucket across, or one exact native
-            size — never both. Native resolution is Kohya-only, and read-only
+            size — never both. Exact resolution is Kohya-only, and read-only
             text in Simple mode (hidden there entirely when unset, since
             there's nothing worth saying about an override that isn't in
             play). */}
@@ -307,7 +307,7 @@ const PerformanceSectionComponent = ({
             )}
 
             {showResolutions && (
-              <>
+              <div>
                 {!showModeChoice && (
                   <FieldTitle
                     field="resolution"
@@ -318,7 +318,7 @@ const PerformanceSectionComponent = ({
                   />
                 )}
                 <div
-                  className={`flex flex-wrap gap-1.5 ${
+                  className={`flex flex-wrap gap-x-1.5 ${
                     nativeActive ? 'pointer-events-none opacity-40' : ''
                   }`}
                 >
@@ -343,12 +343,12 @@ const PerformanceSectionComponent = ({
                 </div>
                 <p className="mt-1 text-sm text-slate-400">
                   {nativeActive
-                    ? 'Overridden by the native resolution below'
+                    ? 'Overridden by the Exact resolution below'
                     : isKohya
                       ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
                       : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
                 </p>
-              </>
+              </div>
             )}
 
             {showNative && (
@@ -356,7 +356,7 @@ const PerformanceSectionComponent = ({
                 {!showModeChoice && (
                   <FieldTitle
                     field="nativeResolution"
-                    label="Native Resolution"
+                    label="Single Resolution"
                     value={nativeResolution}
                     defaults={defaults}
                     onFieldChange={onFieldChange}
@@ -385,7 +385,8 @@ const PerformanceSectionComponent = ({
                       onChange={(e) => setNativeResolution(e.target.value)}
                       placeholder="e.g. 1280x768"
                       className="w-32"
-                      aria-label="Native resolution"
+                      size="sm"
+                      aria-label="Single resolution"
                       aria-invalid={nativeError !== null}
                     />
                     <p className="mt-1 text-sm text-slate-400">
