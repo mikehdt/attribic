@@ -245,14 +245,15 @@ const DatasetSectionComponent = ({
                           onSetCaptionEmission(dsIndex, emission)
                         }
                       />
-                      <button
-                        type="button"
+                      <Button
                         onClick={() => onRemoveDataset(dsIndex)}
-                        className="cursor-pointer rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-700 dark:hover:text-rose-300"
+                        variant="ghost"
+                        width="sm"
+                        size="sm"
                         title="Remove dataset source"
                       >
                         <Trash2Icon className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
 

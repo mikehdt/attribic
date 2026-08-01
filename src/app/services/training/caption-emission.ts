@@ -86,22 +86,22 @@ export function resolveCaptionEmission({
 /** How an emission reads when describing what the user chose. */
 const CHOICE_PHRASE: Record<CaptionEmission, string> = {
   tags: 'tags only',
-  both: 'tags and caption together',
+  both: 'tags and natural language together',
   natural: 'natural language only',
 };
 
 /** How a preference reads when describing what a model was trained on. */
 const TRAINED_ON_PHRASE: Record<CaptionEmission, string> = {
   tags: 'keyword tags',
-  both: 'tags and a natural-language caption together',
-  natural: 'natural-language captions',
+  both: 'tags and natural language together',
+  natural: 'natural language',
 };
 
 /** How a single-mode dataset describes itself. */
 const DATASET_PHRASE: Record<CaptionMode, string> = {
-  tags: 'tagged with keywords',
-  caption: 'captioned in natural language',
-  hybrid: 'both tagged and captioned',
+  tags: 'tagged only',
+  caption: 'natural language only',
+  hybrid: 'both tags and natural language',
 };
 
 /**
