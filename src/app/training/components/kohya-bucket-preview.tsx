@@ -100,10 +100,10 @@ const KohyaBucketPreviewComponent = ({
       </p>
       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-slate-400 tabular-nums">
         {visibleRows.map((r) => (
-          <span key={`${r.w}x${r.h}`}>
+          <span key={`${r.w}x${r.h}`} className="mr-2">
             {r.w}&times;{r.h}
             {hasImageData && (
-              <span className="ml-0.5 text-sky-500">({r.count})</span>
+              <span className="ml-1 text-sky-500">: {r.count}</span>
             )}
           </span>
         ))}

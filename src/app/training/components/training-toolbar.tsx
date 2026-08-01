@@ -1,9 +1,10 @@
 'use client';
 
-import { RotateCcwIcon, SaveIcon } from 'lucide-react';
+import { PanelsTopLeftIcon, RotateCcwIcon, SaveIcon } from 'lucide-react';
 import { memo, useCallback, useState } from 'react';
 
 import { Button } from '@/app/shared/button';
+import { ResponsiveToolbarGroup } from '@/app/shared/responsive-toolbar-group';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
 import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
@@ -129,12 +130,14 @@ const TrainingToolbarComponent = () => {
       <div className="mr-auto!" />
 
       {/* Right: view mode toggle */}
-      <SegmentedControl
-        options={VIEW_MODE_OPTIONS}
-        value={viewMode}
-        onChange={handleViewModeChange}
-        size="toolbar"
-      />
+      <ResponsiveToolbarGroup icon={<PanelsTopLeftIcon className="h-4 w-4" />}>
+        <SegmentedControl
+          options={VIEW_MODE_OPTIONS}
+          value={viewMode}
+          onChange={handleViewModeChange}
+          size="toolbar"
+        />
+      </ResponsiveToolbarGroup>
 
       <SaveAsModal isOpen={saveAsOpen} onClose={() => setSaveAsOpen(false)} />
       <LoadProjectModal isOpen={loadOpen} onClose={() => setLoadOpen(false)} />
