@@ -134,7 +134,9 @@ SUPPORTED_MODELS = [
             "lr": 1e-4,
             "dtype": "bf16",
             "resolution": [512, 768, 1024],
-            "steps": 2000,
+            # Distilled base trained through the de-distilling adapter: even a
+            # small dataset is only starting to take at ~2,000 steps.
+            "steps": 4000,
             # Turbo is guidance-distilled — the reference recipe is 8 steps at
             # CFG off. ai-toolkit's zimage sampler passes
             # `max(0, guidance_scale - 1)` to a pipeline whose CFG is
@@ -164,10 +166,12 @@ SUPPORTED_MODELS = [
         "train_defaults": {
             "noise_scheduler": "flowmatch",
             "optimizer": "adamw8bit",
-            "lr": 5e-5,
+            "lr": 1e-4,
             "dtype": "bf16",
             "resolution": [768, 1024],
-            "steps": 1600,
+            # 1,600 at 5e-5 comes out under-baked in practice; ~2,400-3,200 at
+            # 1e-4 is where the concept actually lands.
+            "steps": 2800,
             # ai-toolkit's own Anima preset sets `weighted` when the arch is
             # selected (`ui/src/app/jobs/new/options.ts`), against the
             # `sigmoid` it uses for other archs.

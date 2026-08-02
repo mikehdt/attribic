@@ -1,10 +1,11 @@
 import { ImagesIcon } from 'lucide-react';
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 
 import type { TrainingJob } from '@/app/store/jobs';
 
 import { CollapsibleSection } from '../../collapsible-section';
 import { ProgressBar } from '../../progress-bar/progress-bar';
+import { SegmentedControl } from '../../segmented-control/segmented-control';
 import {
   formatMemory,
   formatPercent,
@@ -29,6 +30,11 @@ import {
   isSamplingPhase,
 } from '../helpers';
 import { LossChart } from '../loss-chart/loss-chart';
+import {
+  DEFAULT_SMOOTHING,
+  SMOOTHING_OPTIONS,
+  type SmoothingLevel,
+} from '../loss-chart/use-loss-chart-scale';
 import { SpeedChart } from '../speed-chart/speed-chart';
 import { Stat } from '../stat';
 import { showsSamplesView } from './training-detail-tabs/samples-model';
@@ -103,6 +109,11 @@ function HostStat({
 export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   const { progress, config, lrCurve, isPreparing, logRef, handleLogScroll } =
     useTrainingDetailView(job);
+
+  // Trend-line strength. Deliberately a control rather than a constant: how
+  // smooth the line is decides how convincing the run looks, so being able to
+  // loosen it back off is part of reading the graph honestly.
+  const [smoothing, setSmoothing] = useState<SmoothingLevel>(DEFAULT_SMOOTHING);
 
   // Only measure while the run is live. The history modal renders this same
   // body for archived snapshots, where current machine load says nothing about
@@ -260,8 +271,18 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-center justify-between gap-4">
           <span className="text-xs text-slate-400 uppercase">Loss</span>
+          <span className="flex items-center gap-2">
+            <span className="text-xs text-slate-400">Smoothing</span>
+            <SegmentedControl
+              options={SMOOTHING_OPTIONS}
+              value={smoothing}
+              onChange={setSmoothing}
+              size="xs"
+              tone="surface"
+            />
+          </span>
         </div>
         <div className="mt-1 rounded border border-slate-300 bg-slate-100 p-2 dark:border-slate-600 dark:bg-slate-900">
           <LossChart
@@ -277,6 +298,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             maxSavesToKeep={maxSavesToKeep}
             provider={config?.provider}
             lrCurve={lrCurve}
+            smoothing={smoothing}
             variant="detail"
             width={chartWidth}
             height={220}
@@ -288,10 +310,12 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             <span className="inline-block h-0.5 w-3 rounded-full bg-emerald-600" />
             Loss
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-3 rounded-full bg-amber-600" />
-            Smoothed
-          </span>
+          {smoothing !== 'off' && (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-0.5 w-3 rounded-full bg-amber-600" />
+              Smoothed
+            </span>
+          )}
           {lrCurve && (
             <span className="flex items-center gap-1.5">
               <span className="inline-block h-2 w-3 rounded-sm border-t border-sky-600/60 bg-sky-600/15" />

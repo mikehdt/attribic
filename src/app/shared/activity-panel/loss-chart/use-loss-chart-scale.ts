@@ -5,11 +5,30 @@ import type {
   TrainingProvider,
 } from '@/app/services/training/types';
 
+/**
+ * How hard the trend line pulls the noise in. A stronger setting reads as a
+ * cleaner story, which is exactly why it's exposed rather than fixed — the
+ * honest way to use it is to check whether a trend survives being loosened.
+ */
+export type SmoothingLevel = 'off' | 'light' | 'medium' | 'heavy' | 'max';
+
+export const DEFAULT_SMOOTHING: SmoothingLevel = 'medium';
+
+export const SMOOTHING_OPTIONS: { value: SmoothingLevel; label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'light', label: 'Light' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'heavy', label: 'Heavy' },
+  { value: 'max', label: 'Max' },
+];
+
 type UseLossChartScaleArgs = {
   lossHistory: LossPoint[];
   totalSteps: number;
   /** Backend that produced the series — decides how much smoothing it needs. */
   provider?: TrainingProvider;
+  /** Trend-line strength; 'off' drops the overlay entirely. */
+  smoothing?: SmoothingLevel;
   width: number;
   height: number;
   paddingTop: number;
@@ -22,7 +41,7 @@ type UseLossChartScaleArgs = {
 const MIN_POINTS_FOR_SMOOTHING = 8;
 
 /**
- * EMA weight per backend, because the two report fundamentally different
+ * Base EMA weight per backend, because the two report fundamentally different
  * things under the same name:
  *
  * - **kohya** reports `avr_loss` — sd-scripts' own moving average across the
@@ -35,13 +54,28 @@ const MIN_POINTS_FOR_SMOOTHING = 8;
  *   real smoothing to read as a trend. ai-toolkit's own graph faces the same
  *   data and does the same thing: its default view is smoothed, over a heavier
  *   trend line at alpha 0.005.
+ *
+ * These are the 'medium' weights; `SMOOTHING_FACTOR` scales them from there.
  */
 const EMA_ALPHA: Record<TrainingProvider, number> = {
-  'ai-toolkit': 0.15,
-  mock: 0.15,
-  kohya: 0.4,
+  'ai-toolkit': 0.07,
+  mock: 0.07,
+  kohya: 0.22,
 };
-const DEFAULT_EMA_ALPHA = 0.15;
+const DEFAULT_EMA_ALPHA = 0.07;
+
+/**
+ * Multipliers on the backend's base weight, so every level stays relative to
+ * how noisy that backend's series actually is. Smaller alpha = longer window =
+ * smoother line: as a rough guide the averaging window is ~2/alpha points, so
+ * on ai-toolkit these run from ~9 points (light) to ~190 (max).
+ */
+const SMOOTHING_FACTOR: Record<Exclude<SmoothingLevel, 'off'>, number> = {
+  light: 2.5,
+  medium: 1,
+  heavy: 0.4,
+  max: 0.15,
+};
 
 /**
  * A "nice" rounding step (1/2/5 × 10^n). Fine-grained (≈8 steps over the
@@ -146,6 +180,7 @@ export function useLossChartScale({
   lossHistory,
   totalSteps,
   provider,
+  smoothing = DEFAULT_SMOOTHING,
   width,
   height,
   paddingTop,
@@ -179,11 +214,16 @@ export function useLossChartScale({
         )
         .join(' ');
 
-    const alpha = (provider && EMA_ALPHA[provider]) ?? DEFAULT_EMA_ALPHA;
+    const base = (provider && EMA_ALPHA[provider]) ?? DEFAULT_EMA_ALPHA;
     const linePath = lossHistory.length >= 2 ? toPath(losses) : null;
     const smoothedPath =
-      lossHistory.length >= MIN_POINTS_FOR_SMOOTHING
-        ? toPath(smoothLosses(losses, alpha))
+      smoothing !== 'off' && lossHistory.length >= MIN_POINTS_FOR_SMOOTHING
+        ? toPath(
+            smoothLosses(
+              losses,
+              Math.min(1, base * SMOOTHING_FACTOR[smoothing]),
+            ),
+          )
         : null;
 
     const yTicks = [yMin, (yMin + yMax) / 2, yMax];
@@ -204,6 +244,7 @@ export function useLossChartScale({
     lossHistory,
     totalSteps,
     provider,
+    smoothing,
     width,
     height,
     paddingTop,

@@ -23,7 +23,7 @@ export function Stat({
   if (value == null) return null;
   return (
     <div
-      className={`relative overflow-hidden rounded border px-2.5 py-1.5 text-shadow-2xs text-shadow-white dark:text-shadow-slate-900 ${
+      className={`relative overflow-hidden rounded border px-2.5 py-1.5 text-shadow-[1px_1px_0] text-shadow-white dark:text-shadow-slate-900 ${
         tone === 'warning'
           ? 'border-amber-500 bg-amber-50 dark:border-amber-500/70 dark:bg-amber-950/20'
           : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60'

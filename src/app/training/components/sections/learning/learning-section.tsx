@@ -110,6 +110,41 @@ const CONTENT_OR_STYLE_ITEMS: DropdownItem<string>[] = [
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
+/**
+ * Dataset size each model's `defaults.steps` is calibrated against — a
+ * mid-sized set of a few related concepts, not a minimal single-subject one.
+ */
+const REFERENCE_DATASET_SIZE = 60;
+
+/**
+ * Bounds on how far the step target may move from `defaults.steps`. Both are
+ * deliberately tight: overshooting costs real GPU hours, and an under-trained
+ * LoRA is cheaper to diagnose (and resume from a checkpoint) than an
+ * over-baked one, so the curve errs low at both ends.
+ */
+const MIN_STEP_SCALE = 0.9;
+const MAX_STEP_SCALE = 1.4;
+
+/**
+ * Scale the model's step guideline by dataset size. A bigger set is rarely
+ * more of the same thing — extra images usually mean extra concepts, and each
+ * one needs its own exposure, which a fixed step budget silently divides.
+ *
+ * Image count is only a proxy for concept breadth (nothing in the pipeline
+ * counts concepts), so the curve is very shallow — an exponent of 0.35 — and
+ * clamped at both ends. A tight single-subject set trims a little off the
+ * baseline; a broad one adds at most 40%.
+ */
+const targetStepsFor = (baseSteps: number, datasetSize: number) => {
+  if (datasetSize <= 0) return baseSteps;
+  const scale = clamp(
+    (datasetSize / REFERENCE_DATASET_SIZE) ** 0.35,
+    MIN_STEP_SCALE,
+    MAX_STEP_SCALE,
+  );
+  return Math.round((baseSteps * scale) / 100) * 100;
+};
+
 const LearningSectionComponent = ({
   durationMode,
   epochs,
@@ -245,10 +280,12 @@ const LearningSectionComponent = ({
   );
 
   // Epoch guidance derived from dataset size: recommend how many epochs it
-  // takes to land near the model's community-consensus target step count.
+  // takes to land near the model's target step count, itself scaled up for
+  // larger (and so usually broader) datasets.
+  const targetSteps = targetStepsFor(defaults.steps, totalEffective);
   const recommendedEpochs =
     totalEffective > 0
-      ? clamp(Math.round((defaults.steps * batchSize) / totalEffective), 1, 999)
+      ? clamp(Math.round((targetSteps * batchSize) / totalEffective), 1, 999)
       : 0;
   const epochsDivergent =
     durationMode === 'epochs' &&
@@ -333,12 +370,16 @@ const LearningSectionComponent = ({
                     }`}
                   >
                     &asymp;{recommendedEpochs} epochs suits this dataset
-                    (targets ~{defaults.steps.toLocaleString()} steps for{' '}
+                    (targets ~{targetSteps.toLocaleString()} steps for{' '}
                     {modelName})
                   </p>
                 ) : (
                   <p className="mt-1 text-xs text-slate-400 tabular-nums">
-                    Model guideline: ~{defaults.steps.toLocaleString()} steps
+                    Model guideline: ~{targetSteps.toLocaleString()} steps
+                    {targetSteps !== defaults.steps &&
+                      ` (${defaults.steps.toLocaleString()} baseline, ${
+                        targetSteps > defaults.steps ? 'raised' : 'trimmed'
+                      } for ${totalEffective} images)`}
                   </p>
                 ))}
             </div>

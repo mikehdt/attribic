@@ -30,6 +30,7 @@ import { useHydrated } from '@/app/utils/use-hydrated';
 
 import { DeleteProjectModal } from './project-toolbar/delete-project-modal';
 import { LoadProjectModal } from './project-toolbar/load-project-modal';
+import { ProjectMenuButton } from './project-toolbar/project-menu-button';
 import { ProjectSelector } from './project-toolbar/project-selector';
 import { SaveAsModal } from './project-toolbar/save-as-modal';
 import { useTrainingViewMode } from './use-training-view-mode';
@@ -88,10 +89,15 @@ const TrainingToolbarComponent = () => {
 
   return (
     <>
-      {/* Left: project menu + save + reset */}
-      <ResponsiveToolbarGroup icon={<FolderOpenIcon className="h-4 w-4" />}>
+      {/* Far left: switching away from this project (new / load / recents) */}
+      <ProjectMenuButton onRequestLoad={() => setLoadOpen(true)} />
+
+      {/* Left: current project's menu + save + reset */}
+      <ResponsiveToolbarGroup
+        title="Project"
+        icon={<FolderOpenIcon className="h-4 w-4" />}
+      >
         <ProjectSelector
-          onRequestLoad={() => setLoadOpen(true)}
           onRequestSaveAs={() => setSaveAsOpen(true)}
           onRequestDelete={() => setDeleteOpen(true)}
         />
@@ -138,6 +144,7 @@ const TrainingToolbarComponent = () => {
 
       {/* Right: view mode toggle */}
       <ResponsiveToolbarGroup
+        title="Interface Options"
         breakpoint="lg"
         icon={<PanelsTopLeftIcon className="h-4 w-4" />}
       >

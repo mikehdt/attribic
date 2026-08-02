@@ -10,7 +10,11 @@ import {
   splitPrunedCheckpoints,
   trimSettleSteps,
 } from '../helpers';
-import { useLossChartScale } from './use-loss-chart-scale';
+import {
+  DEFAULT_SMOOTHING,
+  type SmoothingLevel,
+  useLossChartScale,
+} from './use-loss-chart-scale';
 
 type LossChartVariant = 'compact' | 'detail';
 
@@ -42,6 +46,8 @@ type LossChartProps = {
    * the full step range.
    */
   lrCurve?: number[] | null;
+  /** Trend-line strength. 'off' leaves the raw loss to carry the shape. */
+  smoothing?: SmoothingLevel;
   variant?: LossChartVariant;
   width: number;
   height: number;
@@ -101,6 +107,7 @@ const LossChartComponent = ({
   maxSavesToKeep = 0,
   provider,
   lrCurve = null,
+  smoothing = DEFAULT_SMOOTHING,
   variant = 'compact',
   width,
   height,
@@ -146,6 +153,7 @@ const LossChartComponent = ({
     lossHistory: visibleHistory,
     totalSteps,
     provider,
+    smoothing,
     width,
     height,
     paddingTop: plotTop,

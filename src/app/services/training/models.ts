@@ -559,10 +559,16 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Uses unconditioned generation (guidance scale 1.0)',
       'Uses Qwen3-4B as the text encoder — no separate T5/CLIP needed',
       'ai-toolkit needs the training adapter to de-distil Turbo while training',
+      'Hungry for steps — a small single-subject set needs 2,000+ before the concept shows, and multi-concept sets want well past that',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
     defaults: {
       ...BASE_DEFAULTS,
+      // Distilled base, trained through the de-distilling adapter: progress
+      // per step is slower than an undistilled model. Even small datasets are
+      // only starting to take at ~2,000 steps, so aim well past that.
+      steps: 4000,
+      epochs: 40,
       sampleEvery: 250,
       guidanceScale: 1,
       sampleSteps: 8,
@@ -617,7 +623,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     },
     tips: [
       'Rank 32 is the community standard for Anima — unlike SDXL, dim 16 tends to underfit',
-      'Lower epochs are generally better; too many and it starts over-fitting the style',
+      'Wants ~2,500–3,500 steps at 1e-4 — one subject sits at the low end, multi-concept sets higher',
       'Batch 2+ trains more reliably than batch 1 (bump the LR if you raise it to 4)',
     ],
     availableResolutions: [512, 768, 1024, 1536],
@@ -639,9 +645,12 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     ],
     defaults: {
       ...BASE_DEFAULTS,
-      steps: 1600,
-      epochs: 16,
-      learningRate: 5e-5,
+      // Trains fast, but not as briefly as its size suggests: 1,600 steps at
+      // 5e-5 consistently comes out under-baked. ~2,400–3,200 at 1e-4 lands
+      // the concept; 2,800 is the middle of that band.
+      steps: 2800,
+      epochs: 28,
+      learningRate: 1e-4,
       scheduler: 'cosine',
       warmupSteps: 100,
       batchSize: 2,

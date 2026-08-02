@@ -3,9 +3,7 @@
 import {
   ChevronDownIcon,
   CircleIcon,
-  ClockIcon,
   FolderOpenIcon,
-  FolderPlusIcon,
   PencilIcon,
   SaveIcon,
   Trash2Icon,
@@ -17,11 +15,9 @@ import { Input } from '@/app/shared/input/input';
 import { Popup, usePopup } from '@/app/shared/popup';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
-  resetToSuggestedDefaults,
   selectIsDirty,
   selectLoadedProject,
 } from '@/app/store/training-config';
-import { loadRecentProjects } from '@/app/store/training-config/recent-projects';
 import {
   loadProject,
   renameProject,
@@ -29,23 +25,18 @@ import {
 } from '@/app/store/training-config/thunks';
 import type { LoadedProject } from '@/app/store/training-config/types';
 
-import { MENU_HEADING_CLASS, MENU_ITEM_CLASS } from './menu-styles';
+import { MENU_ITEM_CLASS } from './menu-styles';
 import { ModelBackendBadges } from './model-backend-badges';
 import { ProjectListError } from './project-list-error';
 import { RecentRuns } from './recent-runs';
 import { useTrainingProjectList } from './use-training-project-list';
 
-/** How many recent projects the menu lists (fewer than are stored). */
-const MAX_RECENT_SHOWN = 3;
-
 type ProjectSelectorProps = {
-  onRequestLoad: () => void;
   onRequestSaveAs: () => void;
   onRequestDelete: () => void;
 };
 
 const ProjectSelectorComponent = ({
-  onRequestLoad,
   onRequestSaveAs,
   onRequestDelete,
 }: ProjectSelectorProps) => {
@@ -116,10 +107,6 @@ const ProjectSelectorComponent = ({
       >
         <PopupContent
           loadedProject={loadedProject}
-          onRequestLoad={() => {
-            handleClose();
-            onRequestLoad();
-          }}
           onRequestSaveAs={() => {
             handleClose();
             onRequestSaveAs();
@@ -145,7 +132,6 @@ export const ProjectSelector = memo(ProjectSelectorComponent);
 
 type PopupContentProps = {
   loadedProject: LoadedProject | null;
-  onRequestLoad: () => void;
   onRequestSaveAs: () => void;
   onRequestDelete: () => void;
   onClose: () => void;
@@ -153,19 +139,15 @@ type PopupContentProps = {
 
 const PopupContent = ({
   loadedProject,
-  onRequestLoad,
   onRequestSaveAs,
   onRequestDelete,
   onClose,
 }: PopupContentProps) => {
   const dispatch = useAppDispatch();
-  // Fetch the fresh project list on mount (popup just opened). It backs both
-  // the loaded project's version list and the recent-projects section.
+  // Fetch the fresh project list on mount (popup just opened). It backs the
+  // loaded project's version list.
   const { projects, status, error, reload } = useTrainingProjectList(true);
   const isReady = status === 'ready';
-  // Read once: the popup remounts on every open, so this is always current
-  // without having to watch localStorage.
-  const [recents] = useState(loadRecentProjects);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [labelEditVersion, setLabelEditVersion] = useState<number | null>(null);
@@ -178,39 +160,6 @@ const PopupContent = ({
         : null,
     [projects, isReady, loadedProject],
   );
-
-  /**
-   * Recents resolved against what's actually on disk: names come from the
-   * fetched list (so a rename can't show stale text), deleted projects drop
-   * out, and an entry whose version has since been deleted falls back to the
-   * project's latest.
-   */
-  const recentEntries = useMemo(() => {
-    if (!isReady) return [];
-    const out: { id: string; name: string; version: number }[] = [];
-    for (const entry of recents) {
-      // The loaded project already sits at the top of this menu.
-      if (entry.id === loadedProject?.id) continue;
-      const project = projects.find((p) => p.id === entry.id);
-      if (!project) continue;
-      const version = project.versions.some((v) => v.version === entry.version)
-        ? entry.version
-        : project.latestVersion;
-      out.push({ id: project.id, name: project.name, version });
-      if (out.length === MAX_RECENT_SHOWN) break;
-    }
-    return out;
-  }, [projects, isReady, recents, loadedProject]);
-
-  const handleOpenRecent = (id: string, version: number) => {
-    onClose();
-    void dispatch(loadProject(id, version));
-  };
-
-  const handleGoEphemeral = () => {
-    onClose();
-    dispatch(resetToSuggestedDefaults());
-  };
 
   const handleSwitchVersion = (version: number) => {
     if (!loadedProject) return;
@@ -394,52 +343,8 @@ const PopupContent = ({
         )}
       </div>
 
-      {/* Still about the project above it, so it sits ahead of the actions
-          that leave the project behind. */}
       {loadedProject && (
         <RecentRuns project={loadedProject} onClose={onClose} />
-      )}
-
-      <div className="flex flex-col">
-        {loadedProject && (
-          <button
-            type="button"
-            onClick={handleGoEphemeral}
-            className={MENU_ITEM_CLASS}
-          >
-            <FolderPlusIcon className="h-4 w-4" />
-            New Project
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={onRequestLoad}
-          className={MENU_ITEM_CLASS}
-        >
-          <FolderOpenIcon className="h-4 w-4" />
-          {loadedProject ? 'Load other project…' : 'Load project…'}
-        </button>
-      </div>
-
-      {recentEntries.length > 0 && (
-        <div className="flex flex-col py-1">
-          <p className={MENU_HEADING_CLASS}>Recent Projects</p>
-          {recentEntries.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => handleOpenRecent(entry.id, entry.version)}
-              className={MENU_ITEM_CLASS}
-            >
-              <ClockIcon className="h-4 w-4 shrink-0 text-slate-400" />
-              <span className="truncate">{entry.name}</span>
-              <span className="ml-auto shrink-0 text-slate-400 tabular-nums">
-                v{entry.version}
-              </span>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );
