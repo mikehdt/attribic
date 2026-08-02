@@ -2,7 +2,6 @@ import {
   ArrowUpFromLineIcon,
   ChevronsDownIcon,
   CopyIcon,
-  HighlighterIcon,
   SparklesIcon,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
@@ -20,14 +19,12 @@ import { AutoTaggerModal } from '@/app/tagging/components/auto-tagger/auto-tagge
 import { useAutoTaggerLaunch } from '@/app/tagging/components/auto-tagger/use-auto-tagger-launch';
 
 import { CopyTagsModal } from './copy-tags-modal';
-import { TriggerPhrasesModal } from './trigger-phrases-modal';
 
 export const TagActionsMenu = () => {
   const dispatch = useAppDispatch();
   const store = useAppStore();
 
   const [isCopyTagsModalOpen, setIsCopyTagsModalOpen] = useState(false);
-  const [isTriggersModalOpen, setIsTriggersModalOpen] = useState(false);
 
   const filterTags = useAppSelector(selectFilterTags);
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
@@ -60,12 +57,6 @@ export const TagActionsMenu = () => {
     }
   }, [dispatch, filterTags, store]);
 
-  const openTriggersModal = useCallback(() => setIsTriggersModalOpen(true), []);
-  const closeTriggersModal = useCallback(
-    () => setIsTriggersModalOpen(false),
-    [],
-  );
-
   const overflowMenuItems: MenuItem[] = useMemo(
     () => [
       {
@@ -86,11 +77,6 @@ export const TagActionsMenu = () => {
         onClick: openTaggerModal,
         disabled: !canAutoTag,
       },
-      {
-        label: 'Trigger Phrases',
-        icon: <HighlighterIcon />,
-        onClick: openTriggersModal,
-      },
     ],
     [
       openCopyTagsModal,
@@ -100,7 +86,6 @@ export const TagActionsMenu = () => {
       filterTags.length,
       openTaggerModal,
       canAutoTag,
-      openTriggersModal,
     ],
   );
 
@@ -122,11 +107,6 @@ export const TagActionsMenu = () => {
         isOpen={isTaggerModalOpen}
         onClose={closeTaggerModal}
         selectedAssets={assetsForTagger}
-      />
-
-      <TriggerPhrasesModal
-        isOpen={isTriggersModalOpen}
-        onClose={closeTriggersModal}
       />
     </>
   );

@@ -2,6 +2,7 @@ import {
   BoxIcon,
   CalculatorIcon,
   ChevronDownIcon,
+  HighlighterIcon,
   ImagePlusIcon,
   MessageSquareTextIcon,
   RefreshCwIcon,
@@ -41,6 +42,7 @@ import { updateProject } from '@/app/utils/project-actions';
 import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 import { BucketCropModal } from '../asset-controls/bucket-crop-modal';
+import { TriggerPhrasesModal } from '../tag-controls/trigger-phrases-modal';
 import { CaptionPromptModal } from './caption-prompt-modal';
 import { MenuCaptionModeSwitcher } from './menu-caption-mode-switcher';
 import { SwitchToHybridModal } from './switch-to-hybrid-modal';
@@ -64,6 +66,7 @@ const ProjectMenuComponent = () => {
 
   const [isBucketModalOpen, setIsBucketModalOpen] = useState(false);
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+  const [isTriggersModalOpen, setIsTriggersModalOpen] = useState(false);
   // Non-zero while the hybrid→tags confirm dialog is open; holds the count of
   // captions that would be discarded.
   const [switchToTagsCount, setSwitchToTagsCount] = useState<number | null>(
@@ -131,6 +134,15 @@ const ProjectMenuComponent = () => {
 
   const handleClosePromptModal = useCallback(() => {
     setIsPromptModalOpen(false);
+  }, []);
+
+  const handleOpenTriggersModal = useCallback(() => {
+    closePopup(popupId);
+    setIsTriggersModalOpen(true);
+  }, [closePopup, popupId]);
+
+  const handleCloseTriggersModal = useCallback(() => {
+    setIsTriggersModalOpen(false);
   }, []);
 
   const handleSetTagEditMode = useCallback(
@@ -295,6 +307,12 @@ const ProjectMenuComponent = () => {
             />
           )}
 
+          <MenuItem
+            icon={<HighlighterIcon className="h-5 w-5" />}
+            label="Trigger Phrases"
+            onClick={handleOpenTriggersModal}
+          />
+
           <MenuEditModeSwitcher
             editMode={tagEditMode}
             setEditMode={handleSetTagEditMode}
@@ -310,6 +328,11 @@ const ProjectMenuComponent = () => {
       <CaptionPromptModal
         isOpen={isPromptModalOpen}
         onClose={handleClosePromptModal}
+      />
+
+      <TriggerPhrasesModal
+        isOpen={isTriggersModalOpen}
+        onClose={handleCloseTriggersModal}
       />
 
       <SwitchToTagsModal
