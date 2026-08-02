@@ -74,9 +74,8 @@ const ProjectSelectorComponent = ({
       )}
     </span>
   ) : (
-    <span className="flex items-center gap-1.5 text-slate-500">
-      <FolderOpenIcon className="h-3.5 w-3.5 text-slate-400" />
-      <span>Unsaved</span>
+    <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+      Unsaved
     </span>
   );
 
