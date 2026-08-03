@@ -10,6 +10,7 @@ import {
 } from '../store/preferences';
 import { loadPreferences } from '../store/preferences/local-storage';
 import type { PreferencesState } from '../store/preferences/types';
+import { makeTrainingConfigState } from '../store/training-config';
 
 type StoreProviderProps = {
   children: React.ReactNode;
@@ -27,10 +28,19 @@ export const StoreProvider = ({
   preloadedPreferences,
 }: StoreProviderProps) => {
   // Create the store once, seeding preferences from the server-provided
-  // cookie state so the first client render matches the server HTML.
+  // cookie state so the first client render matches the server HTML. The
+  // training form starts on the last-chosen model for the same reason —
+  // both sides derive it from the same cookie, so no post-mount flip.
   const [store] = useState(() => {
     const s = makeStore(
-      preloadedPreferences ? { preferences: preloadedPreferences } : undefined,
+      preloadedPreferences
+        ? {
+            preferences: preloadedPreferences,
+            trainingConfig: makeTrainingConfigState(
+              preloadedPreferences.lastTrainingModelId,
+            ),
+          }
+        : undefined,
     );
     subscribePreferencesPersistence(s);
     return s;

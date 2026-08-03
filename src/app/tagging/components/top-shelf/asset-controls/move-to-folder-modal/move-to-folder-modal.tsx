@@ -304,9 +304,13 @@ export const MoveToFolderModal = ({
         {collisionError && (
           <div className="w-full rounded-md border border-rose-300 bg-rose-50 p-3 dark:border-rose-700 dark:bg-rose-900/30">
             <p className="text-sm font-medium text-rose-700 dark:text-rose-300">
-              Cannot move: {collisionError.length}{' '}
-              {collisionError.length !== 1 ? 'files' : 'file'} would collide in
-              the destination folder.
+              Cannot move:{' '}
+              {collisionError.length === 1
+                ? '1 file'
+                : `${collisionError.length} files`}{' '}
+              would collide in the destination folder. Rename them so each asset
+              has its own name — assets sharing a name would overwrite each
+              other&rsquo;s tags.
             </p>
             <ul className="mt-1 ml-4 list-disc text-xs text-rose-600 dark:text-rose-400">
               {collisionError.slice(0, 10).map((name) => (

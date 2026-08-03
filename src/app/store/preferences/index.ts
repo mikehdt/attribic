@@ -24,6 +24,7 @@ const preferencesSlice = createSlice({
     selectTagEditMode: (state) => state.tagEditMode,
     selectTrainingViewMode: (state) => state.trainingViewMode,
     selectKeepTaggerModelInMemory: (state) => state.keepTaggerModelInMemory,
+    selectLastTrainingModelId: (state) => state.lastTrainingModelId,
   },
 });
 
@@ -33,6 +34,7 @@ export const {
   setTagEditMode,
   setTrainingViewMode,
   setKeepTaggerModelInMemory,
+  setLastTrainingModelId,
   hydratePreferences,
 } = preferencesSlice.actions;
 export const {
@@ -40,6 +42,7 @@ export const {
   selectTagEditMode,
   selectTrainingViewMode,
   selectKeepTaggerModelInMemory,
+  selectLastTrainingModelId,
 } = preferencesSlice.selectors;
 
 /**

@@ -93,23 +93,60 @@ function niceStep(range: number): number {
 }
 
 /**
+ * How many extreme points the domain may clip at each end. This used to be a
+ * flat 5% of the series, which scales with the run: at 2,000 steps a hundred
+ * points had to push past the top edge before the scale moved, so a genuine
+ * rise sat clamped flat against the ceiling for minutes. As a bounded count
+ * the dilution stops growing, and a handful of one-off spikes are still
+ * absorbed rather than squashing the rest of the curve.
+ */
+const MAX_CLIPPED_POINTS = 20;
+
+/** Min/max of a series, without spreading it into `Math.max` as arguments. */
+function extent(values: number[]): { min: number; max: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return { min, max };
+}
+
+/**
  * Y-domain fitted to where the loss actually sits, so a curve hovering
  * around 0.05 doesn't render as a flat line at the bottom of a 0–0.1 plot.
  *
- * - Top: clamped just above the 95th percentile — warmup/first-batch spikes
- *   clip at the top edge instead of distorting the whole scale.
- * - Bottom: raised off zero (to a nice tick below the 5th percentile) only
+ * - Top: clamped just above the highest non-outlier point — warmup/first-batch
+ *   spikes clip at the top edge instead of distorting the whole scale.
+ * - Bottom: raised off zero (to a nice tick below the lowest non-outlier) only
  *   when the data floats well clear of it; otherwise the zero baseline stays.
+ * - The trend line always fits inside, whatever the raw outlier rule says: it's
+ *   the line you actually read, so it must never run into an edge. That's also
+ *   what makes the scale responsive — a real move carries the trend with it,
+ *   where a lone spike barely shifts it and is left to clip.
  */
-function computeDomain(losses: number[]): { yMin: number; yMax: number } {
+function computeDomain(
+  losses: number[],
+  trend: number[] | null,
+): { yMin: number; yMax: number } {
   if (losses.length === 0) return { yMin: 0, yMax: 1 };
   const sorted = [...losses].sort((a, b) => a - b);
-  const at = (frac: number) =>
-    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * frac))];
+  const clipped = Math.min(
+    MAX_CLIPPED_POINTS,
+    Math.floor(sorted.length * 0.05),
+  );
 
   const max = sorted[sorted.length - 1];
-  let hi = Math.min(max, at(0.95) * 1.15);
-  let lo = at(0.05);
+  let hi = Math.min(max, sorted[sorted.length - 1 - clipped] * 1.15);
+  let lo = sorted[clipped];
+
+  if (trend && trend.length > 0) {
+    const trendExtent = extent(trend);
+    hi = Math.max(hi, Math.min(max, trendExtent.max * 1.05));
+    lo = Math.min(lo, trendExtent.min);
+  }
+
   if (hi <= lo) {
     // Flat (or single-point) series — pad so the line sits mid-plot.
     hi = lo > 0 ? lo * 1.1 : 1;
@@ -196,7 +233,15 @@ export function useLossChartScale({
     const losses = lossHistory.map((p) => p.loss);
     const maxObservedStep = steps.length > 0 ? Math.max(...steps) : 0;
     const xMax = totalSteps > 0 ? totalSteps : Math.max(1, maxObservedStep);
-    const { yMin, yMax } = computeDomain(losses);
+
+    const base = (provider && EMA_ALPHA[provider]) ?? DEFAULT_EMA_ALPHA;
+    const canSmooth = lossHistory.length >= MIN_POINTS_FOR_SMOOTHING;
+
+    // The domain fits the backend's own ('medium') trend rather than whichever
+    // level is on display, so changing the smoothing control redraws the line
+    // without also moving the y axis under it.
+    const trend = canSmooth ? smoothLosses(losses, base) : null;
+    const { yMin, yMax } = computeDomain(losses, trend);
 
     const xScale = (step: number) =>
       paddingLeft + (Math.min(Math.max(step, 0), xMax) / xMax) * innerWidth;
@@ -214,17 +259,17 @@ export function useLossChartScale({
         )
         .join(' ');
 
-    const base = (provider && EMA_ALPHA[provider]) ?? DEFAULT_EMA_ALPHA;
     const linePath = lossHistory.length >= 2 ? toPath(losses) : null;
-    const smoothedPath =
-      smoothing !== 'off' && lossHistory.length >= MIN_POINTS_FOR_SMOOTHING
-        ? toPath(
-            smoothLosses(
+    const smoothedValues =
+      smoothing === 'off' || !canSmooth
+        ? null
+        : smoothing === 'medium'
+          ? trend
+          : smoothLosses(
               losses,
               Math.min(1, base * SMOOTHING_FACTOR[smoothing]),
-            ),
-          )
-        : null;
+            );
+    const smoothedPath = smoothedValues ? toPath(smoothedValues) : null;
 
     const yTicks = [yMin, (yMin + yMax) / 2, yMax];
 

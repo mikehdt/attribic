@@ -44,10 +44,6 @@ export function TrainingTab() {
             <p className="mt-0.5 text-sm text-slate-500">
               {selectedModel.description}
             </p>
-            <p className="mt-1 text-sm text-slate-400">
-              Point each component at your own weights, or download them here.
-              Paths save automatically and pre-fill the training form.
-            </p>
           </div>
 
           {/* Every backend's components, since defaults are set before a

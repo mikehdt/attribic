@@ -34,6 +34,7 @@ export const preferenceDefaults: PreferencesState = {
   tagEditMode: TagEditMode.BUTTON,
   trainingViewMode: 'intermediate',
   keepTaggerModelInMemory: true,
+  lastTrainingModelId: null,
 };
 
 /**
@@ -59,6 +60,12 @@ const sanitisePreferences = (parsed: unknown): PreferencesState => {
       typeof o.keepTaggerModelInMemory === 'boolean'
         ? o.keepTaggerModelInMemory
         : preferenceDefaults.keepTaggerModelInMemory,
+    // Existence against the model registry is checked at use, not here —
+    // a stale id should fall through gracefully, not corrupt the whole state.
+    lastTrainingModelId:
+      typeof o.lastTrainingModelId === 'string' && o.lastTrainingModelId !== ''
+        ? o.lastTrainingModelId
+        : null,
   };
 };
 

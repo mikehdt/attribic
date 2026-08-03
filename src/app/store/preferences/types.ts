@@ -19,4 +19,10 @@ export type PreferencesState = {
    * next batch (~15-30s for a VLM). Default true for iteration speed.
    */
   keepTaggerModelInMemory: boolean;
+  /**
+   * The base model the user last picked in the training form, so a fresh
+   * visit reopens on it rather than the registry's first entry. Null until
+   * a model is explicitly chosen.
+   */
+  lastTrainingModelId: string | null;
 };

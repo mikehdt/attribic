@@ -99,6 +99,12 @@ interface DropdownProps<T> {
   size?: DropdownSize;
   variant?: DropdownVariant;
   fullWidth?: boolean;
+  /**
+   * Rendered pinned below the option list, inside the popup. For controls
+   * that adjust the list itself (filters, toggles) — interacting with it
+   * does not select anything or close the dropdown.
+   */
+  footer?: ReactNode;
 }
 
 /**
@@ -139,6 +145,7 @@ export function Dropdown<T>({
   size = 'md',
   variant = 'default',
   fullWidth = false,
+  footer,
 }: DropdownProps<T>) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
@@ -444,6 +451,18 @@ export function Dropdown<T>({
             ),
           )}
         </div>
+
+        {footer && (
+          // Mousedown is swallowed so footer clicks don't blur the trigger,
+          // which would close the popup mid-interaction.
+          <div
+            className="border-t border-slate-200 dark:border-slate-600"
+            onMouseDown={handleItemMouseDown}
+            role="presentation"
+          >
+            {footer}
+          </div>
+        )}
       </Popup>
     </div>
   );

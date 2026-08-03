@@ -215,6 +215,25 @@ const initialState: TrainingConfigState = {
   baselineSnapshot: null,
 };
 
+/**
+ * Initial slice state seeded with a specific model — used by the store
+ * factory to start the form on the user's last-chosen model (from the
+ * cookie-seeded preferences) on both server and client, so the first
+ * render is already correct instead of flipping post-mount. Falls back
+ * to the standard initial state when the id is missing or stale.
+ */
+export function makeTrainingConfigState(
+  modelId?: string | null,
+): TrainingConfigState {
+  const valid = modelId && getModelById(modelId) ? modelId : null;
+  return {
+    ...initialState,
+    form: valid
+      ? defaultsToFormState(getDefaults(valid), valid)
+      : initialFormState(),
+  };
+}
+
 const trainingConfigSlice = createSlice({
   name: 'trainingConfig',
   initialState,

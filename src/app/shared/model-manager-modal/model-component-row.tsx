@@ -149,6 +149,14 @@ export function ModelComponentRow({
                 {providerNote}
               </span>
             )}
+            {downloadable?.sharedId && (
+              <span
+                className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+                title="Shared component — downloaded once, used by every model that needs it"
+              >
+                Shared
+              </span>
+            )}
             {isReady && (
               <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs text-teal-700 dark:bg-teal-900 dark:text-teal-300">
                 Installed
@@ -166,11 +174,6 @@ export function ModelComponentRow({
             )}
           </div>
 
-          {downloadable?.description && (
-            <p className="mt-0.5 text-sm text-slate-500">
-              {downloadable.description}
-            </p>
-          )}
           {!downloadable && (
             <p className="mt-0.5 text-sm text-slate-500">
               Supply your own weights — no managed download available.
@@ -271,12 +274,6 @@ export function ModelComponentRow({
 
       {component.hint && (
         <p className="mt-1 text-xs text-slate-400">{component.hint}</p>
-      )}
-      {downloadable?.sharedId && (
-        <p className="mt-1 text-xs text-slate-400">
-          Shared component — downloaded once, used by every model that needs
-          it.
-        </p>
       )}
 
       {downloadable?.requiresLicense && !isReady && (

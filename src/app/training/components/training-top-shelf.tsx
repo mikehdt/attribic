@@ -1,11 +1,6 @@
 'use client';
 
-import {
-  ChevronDownIcon,
-  FolderCogIcon,
-  GpuIcon,
-  HistoryIcon,
-} from 'lucide-react';
+import { ChevronDownIcon, GpuIcon, HistoryIcon } from 'lucide-react';
 import { memo, useCallback, useId, useRef } from 'react';
 
 import { GlobalMenu } from '@/app/shared/global-menu';
@@ -17,9 +12,6 @@ import {
   TopShelfFrame,
 } from '@/app/shared/shelf';
 import { ToolbarDivider } from '@/app/shared/toolbar-divider';
-import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
-import { openModelManagerModal } from '@/app/store/model-manager';
-import { selectForm } from '@/app/store/training-config';
 
 import { useTrainingHistoryModal } from './training-history-modal/use-training-history-modal';
 import { TrainingToolbar } from './training-toolbar';
@@ -29,8 +21,6 @@ const TrainingMenuComponent = () => {
   const { openPopup, closePopup, getPopupState } = usePopup();
   const popupId = useId();
 
-  const dispatch = useAppDispatch();
-  const currentModelId = useAppSelector(selectForm).modelId;
   const { openModal: openHistory } = useTrainingHistoryModal();
   const isOpen = getPopupState(popupId).isOpen;
 
@@ -44,13 +34,6 @@ const TrainingMenuComponent = () => {
       });
     }
   }, [isOpen, closePopup, openPopup, popupId]);
-
-  const handleOpenModelSetup = useCallback(() => {
-    closePopup(popupId);
-    dispatch(
-      openModelManagerModal({ tab: 'training', modelId: currentModelId }),
-    );
-  }, [closePopup, popupId, dispatch, currentModelId]);
 
   const handleOpenHistory = useCallback(() => {
     closePopup(popupId);
@@ -83,11 +66,8 @@ const TrainingMenuComponent = () => {
         className="min-w-48 rounded-md border border-slate-200 bg-white shadow-lg shadow-slate-600/50 dark:border-slate-600 dark:bg-slate-800 dark:shadow-slate-950/50"
       >
         <div className="divide-y divide-slate-100 dark:divide-slate-700">
-          <MenuItem
-            icon={<FolderCogIcon className="h-5 w-5" />}
-            label="Model Setup…"
-            onClick={handleOpenModelSetup}
-          />
+          {/* Model Setup lives in the global app menu — it's app-wide, not
+              training-specific, so it isn't duplicated here. */}
           <MenuItem
             icon={<HistoryIcon className="h-5 w-5" />}
             label="Run History…"

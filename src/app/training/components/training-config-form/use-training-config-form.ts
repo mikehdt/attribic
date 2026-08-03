@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CaptionEmission } from '@/app/services/training/caption-emission';
-import type {
-  ModelComponentType,
-  ModelDefinition,
+import {
+  getModelById,
+  getModelsByArchitecture,
+  type ModelComponentType,
+  type ModelDefinition,
 } from '@/app/services/training/models';
 import { resolveLoraOutputDir } from '@/app/services/training/output-path';
 import type { SampleAspect } from '@/app/services/training/sample-sizes';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { selectHasLoadedModelStatuses } from '@/app/store/model-manager';
+import {
+  selectLastTrainingModelId,
+  setLastTrainingModelId,
+} from '@/app/store/preferences';
 import {
   addDataset as addDatasetAction,
   addExtraFolder as addExtraFolderAction,
@@ -23,11 +30,13 @@ import {
   selectAppModelDefaults,
   selectCalculatedEpochs,
   selectCalculatedSteps,
+  selectConfiguredModelIds,
   selectCurrentModel,
   selectDatasetIssues,
   selectDatasetStats,
   selectEffectiveModelDefaults,
   selectForm,
+  selectLoadedProject,
   selectModelDefaults,
   selectSectionHasChanges,
   setAppModelDefaults as setAppModelDefaultsAction,
@@ -84,6 +93,10 @@ export function useTrainingConfigForm() {
   const calculatedSteps = useAppSelector(selectCalculatedSteps);
   const calculatedEpochs = useAppSelector(selectCalculatedEpochs);
   const sectionHasChanges = useAppSelector(selectSectionHasChanges);
+  const lastTrainingModelId = useAppSelector(selectLastTrainingModelId);
+  const configuredModelIds = useAppSelector(selectConfiguredModelIds);
+  const hasLoadedStatuses = useAppSelector(selectHasLoadedModelStatuses);
+  const loadedProject = useAppSelector(selectLoadedProject);
 
   // One-time fetch of app-level model defaults (paths per architecture).
   useEffect(() => {
@@ -113,6 +126,44 @@ export function useTrainingConfigForm() {
     [projectsFolder],
   );
 
+  // Pick a sensible starting model instead of the registry's first entry:
+  // the model the user last chose (preference, cookie-seeded), else the
+  // first configured one once installed-ness is known. One-shot, and only
+  // while the form is untouched — never fights a user or a loaded project.
+  const touchedRef = useRef(false);
+  const autoPickedRef = useRef(false);
+  useEffect(() => {
+    if (autoPickedRef.current) return;
+    if (touchedRef.current || loadedProject) {
+      autoPickedRef.current = true;
+      return;
+    }
+    if (lastTrainingModelId && getModelById(lastTrainingModelId)) {
+      autoPickedRef.current = true;
+      if (lastTrainingModelId !== state.modelId) {
+        dispatch(setModelAction(lastTrainingModelId));
+      }
+      return;
+    }
+    // No usable last-choice — wait until statuses are in, then take the
+    // first configured model in display order.
+    if (!hasLoadedStatuses) return;
+    autoPickedRef.current = true;
+    const firstConfigured = getModelsByArchitecture()
+      .flatMap((group) => group.models)
+      .find((model) => configuredModelIds.has(model.id));
+    if (firstConfigured && firstConfigured.id !== state.modelId) {
+      dispatch(setModelAction(firstConfigured.id));
+    }
+  }, [
+    lastTrainingModelId,
+    hasLoadedStatuses,
+    configuredModelIds,
+    loadedProject,
+    state.modelId,
+    dispatch,
+  ]);
+
   // Apply effective defaults (saved defaults backfilled with installed
   // downloads) when the model changes or they load/update — so a freshly
   // downloaded model pre-fills without a saved default. Only empty fields
@@ -126,6 +177,7 @@ export function useTrainingConfigForm() {
 
   const setField = useCallback(
     <K extends keyof FormState>(field: K, value: FormState[K]) => {
+      touchedRef.current = true;
       dispatch(setFieldAction({ field, value }));
     },
     [dispatch],
@@ -140,13 +192,19 @@ export function useTrainingConfigForm() {
 
   const setModel = useCallback(
     (modelId: string) => {
+      touchedRef.current = true;
       dispatch(setModelAction(modelId));
+      // Remembered so the next visit reopens on this model. Only explicit
+      // dropdown picks count — auto-picks and hydrations don't come through
+      // here, so they never overwrite the user's actual choice.
+      dispatch(setLastTrainingModelId(modelId));
     },
     [dispatch],
   );
 
   const setProvider = useCallback(
     (provider: TrainingProvider) => {
+      touchedRef.current = true;
       dispatch(setProviderAction(provider));
     },
     [dispatch],
@@ -154,6 +212,7 @@ export function useTrainingConfigForm() {
 
   const setModelPath = useCallback(
     (component: ModelComponentType, path: string) => {
+      touchedRef.current = true;
       dispatch(setModelPathAction({ component, path }));
     },
     [dispatch],
@@ -172,6 +231,7 @@ export function useTrainingConfigForm() {
 
   const addDataset = useCallback(
     (project: PickedProject) => {
+      touchedRef.current = true;
       dispatch(addDatasetAction(project));
     },
     [dispatch],

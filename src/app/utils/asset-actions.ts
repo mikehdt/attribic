@@ -137,6 +137,27 @@ const isCacheSidecarOf = (fileName: string, basename: string): boolean =>
   fileName.toLowerCase().endsWith('.npz') &&
   (fileName === `${basename}.npz` || fileName.startsWith(`${basename}_`));
 
+/**
+ * File names of the assets directly inside a folder, applying the same filters
+ * as discovery so callers see the folder the way the store does. Video posters
+ * are sidecars of their clip, not assets in their own right.
+ */
+const listSupportedAssets = (folderPath: string): string[] => {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(folderPath, { withFileTypes: true });
+  } catch (err) {
+    console.warn(`Failed to read folder ${folderPath}:`, err);
+    return [];
+  }
+
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((file) => isSupportedAssetExtension(path.extname(file)))
+    .filter((file) => !file.toLowerCase().endsWith(POSTER_SIDECAR_SUFFIX));
+};
+
 // Returns just a list of image files without processing them
 // Includes images from root folder and valid repeat subfolders
 export const getImageFileList = async (
@@ -816,16 +837,56 @@ export const moveAssetsToFolder = async (
     };
   }
 
-  // Pre-flight collision check
-  const collisions: string[] = [];
-  for (const plan of movePlan) {
-    const destImagePath = path.join(
-      dir,
-      `${plan.newFileId}.${plan.asset.fileExtension}`,
-    );
-    if (fs.existsSync(destImagePath)) {
-      collisions.push(plan.basename);
+  // Pre-flight collision check. Two assets collide when they'd land on the same
+  // extension-less name, not just the same file: `cat.png` and `cat.jpg` share
+  // `cat.txt` and `cat_*.npz`, so the second move would clobber the first
+  // one's tags and caches, and both would claim the fileId `<dest>/cat`.
+  // Names are compared case-insensitively because a rename onto a name that
+  // differs only in case still overwrites on Windows.
+  const collisionKey = (fileId: string): string => fileId.toLowerCase();
+
+  // Assets already sitting in the destination stay put — they were skipped from
+  // the plan above — so anything found here is something to collide with
+  const occupiedNames = new Set<string>();
+  const destFolder = destination ? path.join(dir, destination) : dir;
+  if (fs.existsSync(destFolder)) {
+    for (const entry of listSupportedAssets(destFolder)) {
+      const withoutExtension = entry.substring(
+        0,
+        entry.length - path.extname(entry).length,
+      );
+      occupiedNames.add(
+        collisionKey(
+          destination ? `${destination}/${withoutExtension}` : withoutExtension,
+        ),
+      );
     }
+  }
+
+  // Merging folders is the case the destination listing can't catch: two
+  // same-named assets from different sources both pass an existence check taken
+  // before either has moved, then the second silently overwrites the first
+  const collisions: string[] = [];
+  const claimedBy = new Map<string, string>();
+
+  for (const plan of movePlan) {
+    const key = collisionKey(plan.newFileId);
+
+    if (occupiedNames.has(key)) {
+      collisions.push(plan.oldFileId);
+      continue;
+    }
+
+    const claimant = claimedBy.get(key);
+    if (claimant) {
+      // Report the asset that claimed the name first as well, so the message
+      // names both halves of the clash rather than an arbitrary one
+      if (!collisions.includes(claimant)) collisions.push(claimant);
+      collisions.push(plan.oldFileId);
+      continue;
+    }
+
+    claimedBy.set(key, plan.oldFileId);
   }
 
   if (collisions.length > 0) {

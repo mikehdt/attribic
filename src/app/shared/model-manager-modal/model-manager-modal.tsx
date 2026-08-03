@@ -14,7 +14,7 @@ export function ModelManagerModal() {
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      className="max-w-3xl"
+      className="max-w-4xl"
       labelledById="model-manager-modal-title"
     >
       <div className="flex flex-col gap-4">

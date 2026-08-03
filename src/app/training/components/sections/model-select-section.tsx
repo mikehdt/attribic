@@ -16,6 +16,7 @@ import {
   TRAINING_PROVIDER_LABELS,
   type TrainingProvider,
 } from '@/app/services/training/types';
+import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
@@ -33,12 +34,6 @@ import type {
   ModelPaths,
 } from '../training-config-form/use-training-config-form';
 import { SectionHeaderExtra } from './section-header-extra';
-
-/**
- * Sentinel dropdown entry that reveals unconfigured models instead of
- * changing the selection.
- */
-const SHOW_ALL_VALUE = '__show-all__';
 
 const ExperimentalBadge = () => (
   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900 dark:text-amber-300">
@@ -86,7 +81,7 @@ const ModelSelectSectionComponent = ({
   const filterActive = hasLoadedStatuses && !showAll;
 
   const modelGroups = useMemo(() => {
-    const groups = getModelsByArchitecture()
+    return getModelsByArchitecture()
       .map((group) => ({
         groupLabel: group.label,
         items: group.models
@@ -118,31 +113,18 @@ const ModelSelectSectionComponent = ({
           ),
       }))
       .filter((group) => group.items.length > 0);
-
-    if (filterActive) {
-      return [
-        ...groups,
-        {
-          value: SHOW_ALL_VALUE,
-          label: (
-            <span className="text-slate-500 italic">Show all models…</span>
-          ),
-        } satisfies DropdownItem<string>,
-      ];
-    }
-    return groups;
   }, [filterActive, configuredIds, hasLoadedStatuses, modelId]);
 
-  const handleModelChange = useCallback(
-    (value: string) => {
-      if (value === SHOW_ALL_VALUE) {
-        setShowAll(true);
-        return;
-      }
-      onModelChange(value);
-    },
-    [onModelChange],
-  );
+  // The toggle only appears when it would change the list — i.e. something
+  // is actually hidden (or currently revealed by it).
+  const hasHiddenModels = useMemo(() => {
+    if (!hasLoadedStatuses) return false;
+    return getModelsByArchitecture().some((group) =>
+      group.models.some(
+        (m) => !configuredIds.has(m.id) && m.id !== modelId,
+      ),
+    );
+  }, [hasLoadedStatuses, configuredIds, modelId]);
 
   const currentConfigured =
     !hasLoadedStatuses || configuredIds.has(currentModel.id);
@@ -237,7 +219,7 @@ const ModelSelectSectionComponent = ({
                 <Dropdown
                   items={modelGroups}
                   selectedValue={modelId}
-                  onChange={handleModelChange}
+                  onChange={onModelChange}
                   selectedValueRenderer={() => (
                     <span className="flex items-center gap-1.5 text-sm">
                       {currentModel.name}
@@ -245,6 +227,19 @@ const ModelSelectSectionComponent = ({
                     </span>
                   )}
                   aria-label="Select base model"
+                  footer={
+                    hasHiddenModels ? (
+                      <div className="px-3 py-2">
+                        <Checkbox
+                          size="sm"
+                          isSelected={showAll}
+                          onChange={() => setShowAll((v) => !v)}
+                          label="Show models that aren't set up"
+                          ariaLabel="Show models that aren't set up"
+                        />
+                      </div>
+                    ) : undefined
+                  }
                 />
                 <p className="mt-2 text-sm text-slate-400">
                   {currentModel.description}

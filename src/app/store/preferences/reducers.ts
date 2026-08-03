@@ -35,4 +35,11 @@ export const coreReducers = {
   ) => {
     state.keepTaggerModelInMemory = payload;
   },
+
+  setLastTrainingModelId: (
+    state: PreferencesState,
+    { payload }: PayloadAction<string>,
+  ) => {
+    state.lastTrainingModelId = payload;
+  },
 };
