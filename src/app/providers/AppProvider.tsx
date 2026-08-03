@@ -59,13 +59,14 @@ export const AppProvider = ({ children }: { children: React.ReactNode }) => {
   // A no-op when one is already running (the route health-checks and reconnects
   // before spawning), and failure is deliberately quiet: a user who never trains
   // shouldn't be shown an error about a process they don't use. The run-history
-  // modal reports the status where it actually matters.
+  // modal reports the status where it actually matters. The server vetoes the
+  // spawn (`skipped`) when start-on-launch is disabled in Settings.
   const sidecarLaunched = useRef(false);
   useEffect(() => {
     if (sidecarLaunched.current) return;
     sidecarLaunched.current = true;
-    void requestSidecarStart().then((result) => {
-      if (result.status !== 'ready') {
+    void requestSidecarStart({ trigger: 'app-launch' }).then((result) => {
+      if (!result.skipped && result.status !== 'ready') {
         console.warn(
           `[training] Sidecar did not start on app launch: ${result.error}`,
         );

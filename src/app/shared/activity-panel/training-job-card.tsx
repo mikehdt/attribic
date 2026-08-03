@@ -108,11 +108,6 @@ export function TrainingJobCard({
     ? formatPct(progress!.currentStep, progress!.totalSteps)
     : '0.0';
 
-  const elapsed =
-    progress?.completedAt != null && progress.startedAt != null
-      ? progress.completedAt - progress.startedAt
-      : null;
-
   const checkpointPositions = progress?.checkpointSteps ?? [];
   const generatedSampleSteps = useMemo(
     () => deriveSampleImageSteps(progress),

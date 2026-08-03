@@ -13,10 +13,14 @@ import { Button } from '../button';
 import { Checkbox } from '../checkbox';
 import { Input } from '../input/input';
 import { refreshHfTokenStatus } from '../use-hf-token-status';
+import { BackendPathsSection } from './backend-paths-section';
+import { SidecarLaunchSection } from './sidecar-launch-section';
 
 type ConfigResponse = {
   hfTokenMasked: string | null;
   hasHfToken: boolean;
+  startSidecarOnLaunch?: boolean;
+  trainingBackends?: Record<string, string>;
 };
 
 export function SettingsTab() {
@@ -25,6 +29,10 @@ export function SettingsTab() {
 
   const [hasToken, setHasToken] = useState(false);
   const [maskedToken, setMaskedToken] = useState<string | null>(null);
+  // Initial values for the sections that manage their own saves — null until
+  // the config loads, so a failed load can't hand them wrong defaults that a
+  // save would then write back to config.json.
+  const [serverConfig, setServerConfig] = useState<ConfigResponse | null>(null);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -80,6 +88,7 @@ export function SettingsTab() {
       const data = (await res.json()) as ConfigResponse;
       setHasToken(!!data.hasHfToken);
       setMaskedToken(data.hfTokenMasked);
+      setServerConfig(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load config');
     } finally {
@@ -269,6 +278,17 @@ export function SettingsTab() {
           </div>
         )}
       </section>
+
+      {serverConfig && (
+        <>
+          <SidecarLaunchSection
+            initialEnabled={serverConfig.startSidecarOnLaunch !== false}
+          />
+          <BackendPathsSection
+            initialPaths={serverConfig.trainingBackends ?? {}}
+          />
+        </>
+      )}
     </div>
   );
 }

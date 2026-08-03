@@ -9,6 +9,8 @@ interface AppConfig {
   infoFolder?: string;
   modelsFolder?: string;
   hfToken?: string;
+  startSidecarOnLaunch?: boolean;
+  trainingBackends?: Record<string, string>;
 }
 
 function getConfigPath() {
@@ -68,6 +70,42 @@ export async function POST(request: Request) {
       }
 
       config.projectsFolder = folder;
+    }
+
+    if (body.startSidecarOnLaunch !== undefined) {
+      config.startSidecarOnLaunch = !!body.startSidecarOnLaunch;
+    }
+
+    if (body.trainingBackends !== undefined) {
+      // Per-key merge: only the submitted backends change, an empty string
+      // clears that backend, and untouched entries survive.
+      const existing =
+        config.trainingBackends &&
+        typeof config.trainingBackends === 'object' &&
+        !Array.isArray(config.trainingBackends)
+          ? (config.trainingBackends as Record<string, string>)
+          : {};
+
+      for (const [key, value] of Object.entries(body.trainingBackends)) {
+        const folder = typeof value === 'string' ? value.trim() : '';
+        if (!folder) {
+          delete existing[key];
+          continue;
+        }
+        if (!fs.existsSync(folder)) {
+          return NextResponse.json(
+            { error: `Folder does not exist: ${folder}` },
+            { status: 400 },
+          );
+        }
+        existing[key] = folder;
+      }
+
+      if (Object.keys(existing).length > 0) {
+        config.trainingBackends = existing;
+      } else {
+        delete config.trainingBackends;
+      }
     }
 
     if (body.hfToken !== undefined) {

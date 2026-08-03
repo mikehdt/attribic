@@ -50,6 +50,15 @@ export function getProjectsFolderOrDefault(): string {
   return getProjectsFolder() || DEFAULT_PROJECTS_FOLDER;
 }
 
+/**
+ * Whether the training sidecar should be spawned automatically when the app
+ * loads. Defaults to true — only an explicit `false` in config.json disables
+ * the warm-up. Manual starts from the global menu ignore this.
+ */
+export function getStartSidecarOnLaunch(): boolean {
+  return readConfig().startSidecarOnLaunch !== false;
+}
+
 /** Read the configured models folder, defaulting to `<cwd>/public/models`. */
 export function getModelsFolder(): string {
   const mf = readConfig().modelsFolder;

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { getStartSidecarOnLaunch } from '@/app/services/config/server-config';
 import {
   connectSidecar,
   ensureSidecar,
@@ -31,8 +32,22 @@ export async function GET() {
 
 /**
  * POST /api/training/sidecar — Ensure the sidecar is running (start if needed).
+ *
+ * The app-launch warm-up passes `trigger: 'app-launch'` so the user's
+ * start-on-launch setting can veto it — checked here rather than in the client
+ * because config.json lives server-side. When vetoed we still `connectSidecar`
+ * so an already-running sidecar (started manually, or surviving a Node
+ * restart) is reconnected and reported accurately, just never spawned.
+ * Explicit starts from the global menu send no trigger and always spawn.
  */
-export async function POST() {
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+
+  if (body?.trigger === 'app-launch' && !getStartSidecarOnLaunch()) {
+    await connectSidecar();
+    return NextResponse.json({ ...getSidecarStatus(), skipped: true });
+  }
+
   const result = await ensureSidecar();
   const httpStatus = result.status === 'ready' ? 200 : 503;
   return NextResponse.json(result, { status: httpStatus });

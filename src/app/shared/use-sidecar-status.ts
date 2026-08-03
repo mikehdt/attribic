@@ -22,14 +22,33 @@ const errMessage = (err: unknown) =>
  * so callers that have no status readout to drive — the app-launch warm-up in
  * `AppProvider` — can start one without mounting the hook. Never throws; a
  * failure comes back as `error` with the reason.
+ *
+ * The warm-up passes `trigger: 'app-launch'` so the server can honour the
+ * start-on-launch setting; a veto comes back as `skipped` rather than an
+ * error. Manual starts pass nothing and always spawn.
  */
-export const requestSidecarStart = async (): Promise<{
+export const requestSidecarStart = async (options?: {
+  trigger?: 'app-launch';
+}): Promise<{
   status: SidecarStatus;
   error?: string;
+  skipped?: boolean;
 }> => {
   try {
-    const res = await fetch('/api/training/sidecar', { method: 'POST' });
+    const res = await fetch('/api/training/sidecar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        options?.trigger ? { trigger: options.trigger } : {},
+      ),
+    });
     const data = await res.json().catch(() => ({}));
+    if (data.skipped) {
+      return {
+        status: (data.status as SidecarStatus) ?? 'stopped',
+        skipped: true,
+      };
+    }
     if (res.ok && data.status === 'ready') return { status: 'ready' };
     return { status: 'error', error: data.error ?? 'unknown error' };
   } catch (err) {
