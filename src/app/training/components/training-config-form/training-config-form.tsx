@@ -14,8 +14,6 @@ import {
 import type { FormState } from '@/app/store/training-config/types';
 
 import { TrainingBottomShelf } from '../bottom-shelf/training-bottom-shelf';
-import { ModelDefaultsModal } from '../model-defaults-modal/model-defaults-modal';
-import { useModelDefaultsModal } from '../model-defaults-modal/use-model-defaults-modal';
 import { DatasetSection } from '../sections/dataset/dataset-section';
 import { LearningSection } from '../sections/learning/learning-section';
 import { LoraShapeSection } from '../sections/lora-shape-section';
@@ -77,12 +75,8 @@ const TrainingConfigFormComponent = ({
     setSamplePrompt,
     setSamplePromptSize,
     reorderSamplePrompts,
-    setAppModelDefaults,
     outputFolder,
   } = useTrainingConfigForm();
-
-  const { isOpen: isDefaultsModalOpen, closeModal: closeDefaultsModal } =
-    useModelDefaultsModal();
 
   const visibleFields = useMemo(() => {
     const fields = getVisibleFields(
@@ -379,11 +373,6 @@ const TrainingConfigFormComponent = ({
             onReset={resetSection}
           />
 
-          <ModelDefaultsModal
-            isOpen={isDefaultsModalOpen}
-            onClose={closeDefaultsModal}
-            onSaved={setAppModelDefaults}
-          />
 
           <TrainingHistoryModal />
         </div>

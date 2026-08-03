@@ -6,6 +6,7 @@
  */
 
 import {
+  createAsyncThunk,
   createSelector,
   createSlice,
   type PayloadAction,
@@ -20,9 +21,37 @@ const initialState: ModelManagerState = {
   models: {},
   modelsFolder: null,
   isScanning: false,
+  hasLoadedStatuses: false,
   isModalOpen: false,
   modalInitialTab: undefined,
+  modalInitialModelId: undefined,
 };
+
+type StatusResponse = {
+  statuses?: Record<
+    string,
+    {
+      status: ModelStatus;
+      localPath: string | null;
+      resolvedPath?: string | null;
+    }
+  >;
+  modelsFolder?: string;
+};
+
+/**
+ * Fetch installation statuses for all downloadable models from disk.
+ * The single entry point for status loading — dispatched on modal open
+ * and on training form mount.
+ */
+export const fetchModelStatuses = createAsyncThunk(
+  'modelManager/fetchStatuses',
+  async (): Promise<StatusResponse> => {
+    const res = await fetch('/api/model-manager/status');
+    if (!res.ok) throw new Error(`Status check failed (${res.status})`);
+    return (await res.json()) as StatusResponse;
+  },
+);
 
 const modelManagerSlice = createSlice({
   name: 'modelManager',
@@ -37,15 +66,18 @@ const modelManagerSlice = createSlice({
         modelId: string;
         status: ModelStatus;
         localPath?: string | null;
+        resolvedPath?: string | null;
         sizeBytes?: number;
       }>,
     ) => {
-      const { modelId, status, localPath, sizeBytes } = action.payload;
+      const { modelId, status, localPath, resolvedPath, sizeBytes } =
+        action.payload;
       const existing = state.models[modelId];
       state.models[modelId] = {
         modelId,
         status,
         localPath: localPath ?? existing?.localPath ?? null,
+        resolvedPath: resolvedPath ?? existing?.resolvedPath ?? null,
         sizeBytes: sizeBytes ?? existing?.sizeBytes ?? 0,
       };
     },
@@ -61,16 +93,50 @@ const modelManagerSlice = createSlice({
     openModelManagerModal: (
       state,
       action: PayloadAction<
-        'auto-tagger' | 'training' | 'settings' | undefined
+        | {
+            tab?: 'auto-tagger' | 'training' | 'settings';
+            modelId?: string;
+          }
+        | undefined
       >,
     ) => {
       state.isModalOpen = true;
-      state.modalInitialTab = action.payload;
+      state.modalInitialTab = action.payload?.tab;
+      state.modalInitialModelId = action.payload?.modelId;
     },
 
     closeModelManagerModal: (state) => {
       state.isModalOpen = false;
     },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchModelStatuses.pending, (state) => {
+        state.isScanning = true;
+      })
+      .addCase(fetchModelStatuses.fulfilled, (state, action) => {
+        for (const [modelId, entry] of Object.entries(
+          action.payload.statuses ?? {},
+        )) {
+          const existing = state.models[modelId];
+          state.models[modelId] = {
+            modelId,
+            status: entry.status,
+            localPath: entry.localPath,
+            resolvedPath: entry.resolvedPath ?? null,
+            sizeBytes: existing?.sizeBytes ?? 0,
+          };
+        }
+        if (action.payload.modelsFolder) {
+          state.modelsFolder = action.payload.modelsFolder;
+        }
+        state.hasLoadedStatuses = true;
+        state.isScanning = false;
+      })
+      .addCase(fetchModelStatuses.rejected, (state) => {
+        // Statuses fall back to whatever was last seen
+        state.isScanning = false;
+      });
   },
 });
 
@@ -104,9 +170,19 @@ export const selectModelManagerInitialTab = createSelector(
   (s) => s.modalInitialTab,
 );
 
+export const selectModelManagerInitialModelId = createSelector(
+  selectModelManager,
+  (s) => s.modalInitialModelId,
+);
+
 export const selectIsScanningModels = createSelector(
   selectModelManager,
   (s) => s.isScanning,
+);
+
+export const selectHasLoadedModelStatuses = createSelector(
+  selectModelManager,
+  (s) => s.hasLoadedStatuses,
 );
 
 /** All model entries as a status map (modelId → { status, localPath }). */

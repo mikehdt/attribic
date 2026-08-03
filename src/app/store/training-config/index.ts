@@ -22,9 +22,15 @@ import {
   type TrainingFieldName,
 } from '@/app/services/training/field-registry';
 import {
+  isModelConfigured,
+  resolveInstalledPath,
+} from '@/app/services/training/model-configured';
+import {
   ADAPTIVE_OPTIMIZERS,
+  getAllModelComponents,
   getModelById,
   isOptimizerSupported,
+  MODEL_DEFINITIONS,
   type ModelComponentType,
 } from '@/app/services/training/models';
 import {
@@ -790,6 +796,51 @@ export const selectCurrentModel = createSelector(selectForm, (form) =>
 
 export const selectModelDefaults = createSelector(selectForm, (form) =>
   getDefaults(form.modelId),
+);
+
+// --- Configured-ness (cross-slice: saved defaults + installed downloads) ---
+
+const selectAllModelStatusesFromRoot = (state: RootState) =>
+  state.modelManager.models;
+
+/**
+ * IDs of models the training form should offer by default: those where at
+ * least one backend has every required component resolvable to a saved
+ * default path or an installed download.
+ */
+export const selectConfiguredModelIds = createSelector(
+  selectAppModelDefaults,
+  selectAllModelStatusesFromRoot,
+  (defaults, statuses) => {
+    const ids = new Set<string>();
+    for (const model of MODEL_DEFINITIONS) {
+      if (isModelConfigured(model, defaults[model.id], statuses)) {
+        ids.add(model.id);
+      }
+    }
+    return ids;
+  },
+);
+
+/**
+ * The current model's saved defaults, backfilled with installed-download
+ * paths for components that have no saved default — so a freshly downloaded
+ * model pre-fills the form without the user ever opening Model Setup.
+ */
+export const selectEffectiveModelDefaults = createSelector(
+  selectCurrentModel,
+  selectAppModelDefaults,
+  selectAllModelStatusesFromRoot,
+  (model, defaults, statuses): ModelPaths => {
+    if (!model) return {};
+    const effective: ModelPaths = { ...(defaults[model.id] ?? {}) };
+    for (const component of getAllModelComponents(model)) {
+      if (effective[component.type]?.trim()) continue;
+      const installed = resolveInstalledPath(component.downloadId, statuses);
+      if (installed) effective[component.type] = installed;
+    }
+    return effective;
+  },
 );
 
 export const selectDatasetStats = createSelector(selectForm, datasetTotals);

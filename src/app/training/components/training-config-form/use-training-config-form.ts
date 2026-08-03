@@ -26,6 +26,7 @@ import {
   selectCurrentModel,
   selectDatasetIssues,
   selectDatasetStats,
+  selectEffectiveModelDefaults,
   selectForm,
   selectModelDefaults,
   selectSectionHasChanges,
@@ -77,6 +78,7 @@ export function useTrainingConfigForm() {
   const currentModel = useAppSelector(selectCurrentModel);
   const defaults = useAppSelector(selectModelDefaults);
   const appModelDefaults = useAppSelector(selectAppModelDefaults);
+  const effectiveModelDefaults = useAppSelector(selectEffectiveModelDefaults);
   const datasetStats = useAppSelector(selectDatasetStats);
   const datasetIssues = useAppSelector(selectDatasetIssues);
   const calculatedSteps = useAppSelector(selectCalculatedSteps);
@@ -111,14 +113,16 @@ export function useTrainingConfigForm() {
     [projectsFolder],
   );
 
-  // Apply app defaults when model changes or defaults are first loaded.
+  // Apply effective defaults (saved defaults backfilled with installed
+  // downloads) when the model changes or they load/update — so a freshly
+  // downloaded model pre-fills without a saved default. Only empty fields
+  // are filled; user edits are preserved.
   useEffect(() => {
     if (!currentModel) return;
-    const modelDefaults = appModelDefaults[state.modelId];
-    if (modelDefaults && Object.keys(modelDefaults).length > 0) {
-      dispatch(applyAppDefaults(modelDefaults));
+    if (Object.keys(effectiveModelDefaults).length > 0) {
+      dispatch(applyAppDefaults(effectiveModelDefaults));
     }
-  }, [state.modelId, appModelDefaults, currentModel, dispatch]);
+  }, [state.modelId, effectiveModelDefaults, currentModel, dispatch]);
 
   const setField = useCallback(
     <K extends keyof FormState>(field: K, value: FormState[K]) => {

@@ -1,4 +1,4 @@
-import type { DownloadableModel } from '@/app/services/model-manager/types';
+import type { DownloadableModel } from './types';
 
 /**
  * Given the directory where a downloadable model was installed and its
@@ -10,6 +10,11 @@ import type { DownloadableModel } from '@/app/services/model-manager/types';
  * that ship transformer/text_encoder/vae as separate files under one
  * directory — don't have a single "model file", so we return the parent
  * directory instead.
+ *
+ * Uses the registry's default file list, so a variant install with a
+ * different layout may resolve wrongly — the server-computed `resolvedPath`
+ * (from the download manifest) is authoritative when available; this is
+ * the client-side fallback.
  */
 export function resolveDownloadedPath(
   dir: string,

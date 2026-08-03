@@ -63,6 +63,21 @@ function writeManifest(
 }
 
 /**
+ * File names actually installed for a model, from its manifest. The manifest
+ * records what was really downloaded — which may be a variant with a
+ * different file layout than the registry default (e.g. an fp8 file instead
+ * of fp16). Returns null when no manifest exists.
+ */
+export function getInstalledFileNames(
+  modelDir: string,
+  modelId: string,
+): string[] | null {
+  const manifest = loadManifest(modelDir, modelId);
+  if (!manifest || manifest.files.length === 0) return null;
+  return manifest.files.map((f) => f.name);
+}
+
+/**
  * Check if a model is fully downloaded in `modelDir`.
  *
  * Per-model manifest lookup (`<modelId>.manifest.json`) is the source of

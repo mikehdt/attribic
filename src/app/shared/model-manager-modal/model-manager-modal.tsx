@@ -14,7 +14,7 @@ export function ModelManagerModal() {
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      className="max-w-2xl"
+      className="max-w-3xl"
       labelledById="model-manager-modal-title"
     >
       <div className="flex flex-col gap-4">
@@ -29,7 +29,7 @@ export function ModelManagerModal() {
         <SegmentedControl
           options={[
             { value: 'auto-tagger' as const, label: 'Image Tagging' },
-            { value: 'training' as const, label: 'Image Training (WIP)' },
+            { value: 'training' as const, label: 'Training Models' },
             { value: 'settings' as const, label: 'Settings' },
           ]}
           value={activeTab}

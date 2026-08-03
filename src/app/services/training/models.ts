@@ -27,7 +27,7 @@ export type ModelComponentType =
    */
   | 'diffusers';
 
-type ModelComponent = {
+export type ModelComponent = {
   type: ModelComponentType;
   label: string;
   required: boolean;

@@ -17,8 +17,10 @@ import {
   TopShelfFrame,
 } from '@/app/shared/shelf';
 import { ToolbarDivider } from '@/app/shared/toolbar-divider';
+import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { openModelManagerModal } from '@/app/store/model-manager';
+import { selectForm } from '@/app/store/training-config';
 
-import { useModelDefaultsModal } from './model-defaults-modal/use-model-defaults-modal';
 import { useTrainingHistoryModal } from './training-history-modal/use-training-history-modal';
 import { TrainingToolbar } from './training-toolbar';
 
@@ -27,7 +29,8 @@ const TrainingMenuComponent = () => {
   const { openPopup, closePopup, getPopupState } = usePopup();
   const popupId = useId();
 
-  const { openModal: openModelDefaults } = useModelDefaultsModal();
+  const dispatch = useAppDispatch();
+  const currentModelId = useAppSelector(selectForm).modelId;
   const { openModal: openHistory } = useTrainingHistoryModal();
   const isOpen = getPopupState(popupId).isOpen;
 
@@ -42,10 +45,12 @@ const TrainingMenuComponent = () => {
     }
   }, [isOpen, closePopup, openPopup, popupId]);
 
-  const handleOpenModelDefaults = useCallback(() => {
+  const handleOpenModelSetup = useCallback(() => {
     closePopup(popupId);
-    openModelDefaults();
-  }, [closePopup, popupId, openModelDefaults]);
+    dispatch(
+      openModelManagerModal({ tab: 'training', modelId: currentModelId }),
+    );
+  }, [closePopup, popupId, dispatch, currentModelId]);
 
   const handleOpenHistory = useCallback(() => {
     closePopup(popupId);
@@ -80,8 +85,8 @@ const TrainingMenuComponent = () => {
         <div className="divide-y divide-slate-100 dark:divide-slate-700">
           <MenuItem
             icon={<FolderCogIcon className="h-5 w-5" />}
-            label="Model Defaults…"
-            onClick={handleOpenModelDefaults}
+            label="Model Setup…"
+            onClick={handleOpenModelSetup}
           />
           <MenuItem
             icon={<HistoryIcon className="h-5 w-5" />}

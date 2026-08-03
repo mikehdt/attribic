@@ -12,14 +12,17 @@ import { checkModelStatus } from '@/app/services/auto-tagger/model-manager';
 import { getModelsFolder } from '@/app/services/config/server-config';
 import { isDownloadActive } from '@/app/services/model-manager/active-downloads';
 import { ALL_TRAINING_MODELS } from '@/app/services/model-manager/registries/training-models';
-import { checkModelFiles } from '@/app/services/model-manager/status-checker';
+import {
+  checkModelFiles,
+  getInstalledFileNames,
+} from '@/app/services/model-manager/status-checker';
 
 export async function GET() {
   try {
     const modelsFolder = getModelsFolder();
     const statuses: Record<
       string,
-      { status: string; localPath: string | null }
+      { status: string; localPath: string | null; resolvedPath?: string | null }
     > = {};
 
     // Check auto-tagger models. An active download in this process (e.g.
@@ -46,9 +49,26 @@ export async function GET() {
 
       const diskStatus = checkModelFiles(modelDir, model.id, model.files);
       const status = isDownloadActive(model.id) ? 'downloading' : diskStatus;
+
+      // Path the training form should use for a ready install. The manifest
+      // knows which variant's files actually exist, so it wins over the
+      // registry's default file list (an fp8 install must not resolve to
+      // the fp16 filename). Single file → the file; bundle → the directory.
+      let resolvedPath: string | null = null;
+      if (status === 'ready') {
+        const fileNames =
+          getInstalledFileNames(modelDir, model.id) ??
+          model.files.map((f) => f.name);
+        resolvedPath =
+          fileNames.length === 1
+            ? path.join(modelDir, fileNames[0])
+            : modelDir;
+      }
+
       statuses[model.id] = {
         status,
         localPath: status === 'ready' ? modelDir : null,
+        resolvedPath,
       };
     }
 

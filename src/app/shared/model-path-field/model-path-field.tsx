@@ -1,9 +1,9 @@
 'use client';
 
-import { DownloadIcon, FolderOpenIcon, RotateCcwIcon } from 'lucide-react';
+import { FolderOpenIcon, RotateCcwIcon, WrenchIcon } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 
-import { getTrainingDownloadable } from '@/app/services/model-manager/registries/training-models';
+import { resolveInstalledPath } from '@/app/services/training/model-configured';
 import { Button } from '@/app/shared/button';
 import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
@@ -11,9 +11,6 @@ import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { openModelManagerModal } from '@/app/store/model-manager';
 import { selectAllModelStatuses } from '@/app/store/model-manager';
-
-import { useModelDefaultsModal } from '../model-defaults-modal/use-model-defaults-modal';
-import { resolveDownloadedPath } from './resolve-downloaded-path';
 
 const MODEL_FILE_FILTER = 'safetensors,ckpt,bin,pt,pth';
 
@@ -31,6 +28,12 @@ type ModelPathFieldProps = {
    * back to the system-downloaded path (if the download status is ready).
    */
   resetTo?: string;
+  /**
+   * When set, an unresolved downloadable component offers a "Set up…"
+   * action that opens the Model Setup modal preselected on this model.
+   * Leave unset inside the modal's own rows.
+   */
+  setupModelId?: string;
   className?: string;
 };
 
@@ -41,30 +44,16 @@ export function ModelPathField({
   placeholder,
   downloadId,
   resetTo,
+  setupModelId,
   className,
 }: ModelPathFieldProps) {
   const dispatch = useAppDispatch();
   const statuses = useAppSelector(selectAllModelStatuses);
-  const { closeModal: closeDefaultsModal } = useModelDefaultsModal();
 
-  const downloadable = useMemo(
-    () => (downloadId ? getTrainingDownloadable(downloadId) : undefined),
-    [downloadId],
+  const downloadedPath = useMemo(
+    () => resolveInstalledPath(downloadId, statuses),
+    [downloadId, statuses],
   );
-
-  const entry = downloadId ? statuses[downloadId] : undefined;
-
-  const downloadedPath = useMemo(() => {
-    if (
-      !downloadable ||
-      !entry ||
-      entry.status !== 'ready' ||
-      !entry.localPath
-    ) {
-      return null;
-    }
-    return resolveDownloadedPath(entry.localPath, downloadable);
-  }, [downloadable, entry]);
 
   const trimmedValue = value.trim();
   const trimmedResetTo = resetTo?.trim() ?? '';
@@ -73,8 +62,10 @@ export function ModelPathField({
   const resetTarget = trimmedResetTo !== '' ? trimmedResetTo : downloadedPath;
   const canReset =
     resetTarget !== null && resetTarget !== '' && trimmedValue !== resetTarget;
-  const canDownload =
-    downloadable !== undefined &&
+  const entry = downloadId ? statuses[downloadId] : undefined;
+  const canOfferSetup =
+    setupModelId !== undefined &&
+    downloadId !== undefined &&
     downloadedPath === null &&
     trimmedValue === '' &&
     !canReset;
@@ -98,17 +89,16 @@ export function ModelPathField({
     if (resetTarget) onChange(resetTarget);
   }, [resetTarget, onChange]);
 
-  // Hand download off to the Model Manager rather than kicking off the
-  // download inline — gives the user variant/precision choice, progress
-  // visibility, and a single canonical place to reason about downloads.
-  // The defaults modal closes since both are full-screen modals; the user
-  // can reopen it to set paths once the download finishes.
-  const handleOpenManager = useCallback(() => {
-    closeDefaultsModal();
-    dispatch(openModelManagerModal('training'));
-  }, [closeDefaultsModal, dispatch]);
+  // Hand acquisition off to Model Setup rather than downloading inline —
+  // gives the user variant/precision choice, progress visibility, and a
+  // single canonical place to reason about downloads and defaults.
+  const handleOpenSetup = useCallback(() => {
+    dispatch(
+      openModelManagerModal({ tab: 'training', modelId: setupModelId }),
+    );
+  }, [dispatch, setupModelId]);
 
-  const hasExtra = canReset || (canDownload && !isDownloading);
+  const hasExtra = canReset || (canOfferSetup && !isDownloading);
 
   return (
     <InputTray size="md" width="full" className={className}>
@@ -149,16 +139,16 @@ export function ModelPathField({
         </Button>
       )}
 
-      {canDownload && !isDownloading && (
+      {canOfferSetup && !isDownloading && (
         <Button
-          onClick={handleOpenManager}
+          onClick={handleOpenSetup}
           variant="ghost"
           size="md"
           color="indigo"
-          title={`Download ${browseTitle} in Model Manager`}
+          title={`Download or configure ${browseTitle} in Model Setup`}
         >
-          <DownloadIcon />
-          Download…
+          <WrenchIcon />
+          Set up…
         </Button>
       )}
     </InputTray>

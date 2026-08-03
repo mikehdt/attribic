@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 
 import {
   type ExpertiseTier,
@@ -19,14 +19,26 @@ import {
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
+import { ModelPathField } from '@/app/shared/model-path-field/model-path-field';
+import { useEnsureModelStatuses } from '@/app/shared/model-path-field/use-ensure-model-statuses';
+import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import {
+  openModelManagerModal,
+  selectHasLoadedModelStatuses,
+} from '@/app/store/model-manager';
+import { selectConfiguredModelIds } from '@/app/store/training-config';
 
-import { ModelPathField } from '../model-path-field/model-path-field';
-import { useEnsureModelStatuses } from '../model-path-field/use-ensure-model-statuses';
 import type {
   AppModelDefaults,
   ModelPaths,
 } from '../training-config-form/use-training-config-form';
 import { SectionHeaderExtra } from './section-header-extra';
+
+/**
+ * Sentinel dropdown entry that reveals unconfigured models instead of
+ * changing the selection.
+ */
+const SHOW_ALL_VALUE = '__show-all__';
 
 const ExperimentalBadge = () => (
   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900 dark:text-amber-300">
@@ -62,26 +74,84 @@ const ModelSelectSectionComponent = ({
   hiddenChangesCount,
 }: ModelSelectSectionProps) => {
   useEnsureModelStatuses();
+  const dispatch = useAppDispatch();
+
+  const configuredIds = useAppSelector(selectConfiguredModelIds);
+  const hasLoadedStatuses = useAppSelector(selectHasLoadedModelStatuses);
+  const [showAll, setShowAll] = useState(false);
+
+  // Only offer models that are actually set up (paths saved or downloads
+  // installed). Until statuses load, installed-ness is unknown — show
+  // everything rather than a briefly empty list.
+  const filterActive = hasLoadedStatuses && !showAll;
 
   const modelGroups = useMemo(() => {
-    return getModelsByArchitecture().map((group) => ({
-      groupLabel: group.label,
-      items: group.models.map(
-        (m) =>
-          ({
-            value: m.id,
-            label: (
-              <div className="flex flex-col">
-                <span className="flex items-center gap-1.5">
-                  {m.name}
-                  {m.experimental && <ExperimentalBadge />}
-                </span>
-              </div>
-            ),
-          }) satisfies DropdownItem<string>,
-      ),
-    }));
-  }, []);
+    const groups = getModelsByArchitecture()
+      .map((group) => ({
+        groupLabel: group.label,
+        items: group.models
+          // The current model always stays listed (mirrors the keep-current
+          // rule in getSelectableProviders) so a loaded config renders its
+          // own selection.
+          .filter(
+            (m) =>
+              !filterActive || configuredIds.has(m.id) || m.id === modelId,
+          )
+          .map(
+            (m) =>
+              ({
+                value: m.id,
+                label: (
+                  <div className="flex flex-col">
+                    <span className="flex items-center gap-1.5">
+                      {m.name}
+                      {m.experimental && <ExperimentalBadge />}
+                      {hasLoadedStatuses && !configuredIds.has(m.id) && (
+                        <span className="text-xs text-slate-400">
+                          Not set up
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                ),
+              }) satisfies DropdownItem<string>,
+          ),
+      }))
+      .filter((group) => group.items.length > 0);
+
+    if (filterActive) {
+      return [
+        ...groups,
+        {
+          value: SHOW_ALL_VALUE,
+          label: (
+            <span className="text-slate-500 italic">Show all models…</span>
+          ),
+        } satisfies DropdownItem<string>,
+      ];
+    }
+    return groups;
+  }, [filterActive, configuredIds, hasLoadedStatuses, modelId]);
+
+  const handleModelChange = useCallback(
+    (value: string) => {
+      if (value === SHOW_ALL_VALUE) {
+        setShowAll(true);
+        return;
+      }
+      onModelChange(value);
+    },
+    [onModelChange],
+  );
+
+  const currentConfigured =
+    !hasLoadedStatuses || configuredIds.has(currentModel.id);
+
+  const handleOpenModelSetup = useCallback(() => {
+    dispatch(
+      openModelManagerModal({ tab: 'training', modelId: currentModel.id }),
+    );
+  }, [dispatch, currentModel.id]);
 
   const modelDefaults = appModelDefaults[currentModel.id];
 
@@ -141,6 +211,7 @@ const ModelSelectSectionComponent = ({
         browseTitle={component.label}
         downloadId={component.downloadId}
         resetTo={modelDefaults?.[component.type]}
+        setupModelId={currentModel.id}
       />
 
       {component.hint && (
@@ -166,7 +237,7 @@ const ModelSelectSectionComponent = ({
                 <Dropdown
                   items={modelGroups}
                   selectedValue={modelId}
-                  onChange={onModelChange}
+                  onChange={handleModelChange}
                   selectedValueRenderer={() => (
                     <span className="flex items-center gap-1.5 text-sm">
                       {currentModel.name}
@@ -178,6 +249,19 @@ const ModelSelectSectionComponent = ({
                 <p className="mt-2 text-sm text-slate-400">
                   {currentModel.description}
                 </p>
+
+                {!currentConfigured && (
+                  <p className="mt-1 text-sm text-slate-500">
+                    Some components aren&apos;t set up.{' '}
+                    <button
+                      type="button"
+                      onClick={handleOpenModelSetup}
+                      className="cursor-pointer text-indigo-600 underline hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    >
+                      Open Model Setup…
+                    </button>
+                  </p>
+                )}
 
                 {currentModel.experimental && (
                   <p className="mt-1 text-sm text-amber-600 dark:text-amber-400">

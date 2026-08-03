@@ -14,10 +14,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   closeModelManagerModal,
+  fetchModelStatuses,
   selectIsModelManagerModalOpen,
   selectModelManagerInitialTab,
-  setIsScanning,
-  setModelStatus,
 } from '@/app/store/model-manager';
 import type { ModelEntry } from '@/app/store/model-manager/types';
 
@@ -49,34 +48,7 @@ export function useModelManager() {
   // Fetch model statuses from disk when the modal opens
   useEffect(() => {
     if (!isOpen) return;
-
-    let cancelled = false;
-    dispatch(setIsScanning(true));
-    fetch('/api/model-manager/status')
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        for (const [modelId, entry] of Object.entries(data.statuses ?? {})) {
-          const e = entry as { status: string; localPath: string | null };
-          dispatch(
-            setModelStatus({
-              modelId,
-              status: e.status as 'ready' | 'not_installed',
-              localPath: e.localPath,
-            }),
-          );
-        }
-      })
-      .catch(() => {
-        // Silently fail — statuses fall back to whatever was last seen
-      })
-      .finally(() => {
-        if (!cancelled) dispatch(setIsScanning(false));
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    dispatch(fetchModelStatuses());
   }, [isOpen, dispatch]);
 
   const handleClose = useCallback(() => {

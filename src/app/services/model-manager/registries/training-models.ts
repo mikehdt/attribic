@@ -16,7 +16,7 @@ import type { DownloadableModel } from '../types';
 // Shared components — downloaded once, used by multiple model families
 // ---------------------------------------------------------------------------
 
-export const SHARED_COMPONENTS: DownloadableModel[] = [
+const SHARED_COMPONENTS: DownloadableModel[] = [
   // --- Flux.1 / Z-Image text encoders ---
   {
     id: 'shared-t5-xxl',
@@ -500,29 +500,4 @@ export function getTrainingDownloadable(
   id: string,
 ): DownloadableModel | undefined {
   return ALL_TRAINING_MODELS.find((m) => m.id === id);
-}
-
-/**
- * Get all downloadable models (checkpoint + dependencies) needed for a
- * given training model architecture.
- */
-export function getDownloadablesForArchitecture(architecture: string): {
-  checkpoints: DownloadableModel[];
-  dependencies: DownloadableModel[];
-} {
-  const checkpoints = TRAINING_CHECKPOINTS.filter(
-    (m) => m.architecture === architecture,
-  );
-
-  // Collect unique dependency sharedIds
-  const depIds = new Set<string>();
-  for (const cp of checkpoints) {
-    for (const dep of cp.dependencies ?? []) {
-      depIds.add(dep);
-    }
-  }
-
-  const dependencies = SHARED_COMPONENTS.filter((m) => depIds.has(m.sharedId!));
-
-  return { checkpoints, dependencies };
 }
