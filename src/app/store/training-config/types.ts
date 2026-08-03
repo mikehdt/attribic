@@ -15,7 +15,12 @@ export type DatasetSource = {
   folderName: string;
   thumbnail?: boolean;
   thumbnailVersion?: number;
-  dimensionHistogram?: Record<string, number>;
+  /**
+   * Image sizes found on disk, per folder — `{ Root: { '1024x1024': 12 } }`.
+   * Keyed by the same folder names as `folders` so the previews can count only
+   * the folders a run will actually train on. Derived; absent until scanned.
+   */
+  folderHistograms?: Record<string, Record<string, number>>;
   /**
    * Which half of a hybrid caption this dataset trains on, or null/absent to
    * follow the selected model's preference.

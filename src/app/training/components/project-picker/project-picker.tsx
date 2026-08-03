@@ -26,7 +26,7 @@ export type PickedProject = {
   folders: PickedFolder[];
   thumbnail?: boolean;
   thumbnailVersion?: number;
-  dimensionHistogram?: Record<string, number>;
+  folderHistograms?: Record<string, Record<string, number>>;
   captionMode?: CaptionMode;
 };
 

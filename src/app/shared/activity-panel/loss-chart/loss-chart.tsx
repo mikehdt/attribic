@@ -35,6 +35,12 @@ type LossChartProps = {
   /** True while the trainer is paused generating sample images right now. */
   generatingSample?: boolean;
   /**
+   * The run is over. Predicted checkpoints and samples ahead of where it
+   * stopped are never going to happen, so they're dropped rather than drawn as
+   * upcoming — a cancelled run shouldn't keep advertising work it won't do.
+   */
+  runEnded?: boolean;
+  /**
    * Rolling checkpoint window from the run's config. When > 0 the trainer
    * keeps only the last N saves, so earlier ones are drawn as pruned.
    */
@@ -104,6 +110,7 @@ const LossChartComponent = ({
   sampleSteps = [],
   generatedSampleSteps = [],
   generatingSample = false,
+  runEnded = false,
   maxSavesToKeep = 0,
   provider,
   lrCurve = null,
@@ -120,7 +127,7 @@ const LossChartComponent = ({
   // runs that sample — everything below is measured from `plotTop`, not the
   // raw padding, so a non-sampling run keeps the full height for the curve.
   const hasSampleLane =
-    sampleSteps.length > 0 ||
+    (!runEnded && sampleSteps.length > 0) ||
     generatedSampleSteps.length > 0 ||
     generatingSample;
   const laneHeight = hasSampleLane
@@ -200,10 +207,13 @@ const LossChartComponent = ({
   // Upcoming checkpoints that haven't been reached (and weren't confirmed
   // saved already — a provider may confirm a save ahead of its predicted
   // position). Reached-but-unconfirmed predictions aren't drawn at all, to
-  // avoid implying a save that may not have happened.
-  const upcomingCheckpoints = checkpointSteps.filter(
-    (step) => step > currentStep && !savedCheckpoints.includes(step),
-  );
+  // avoid implying a save that may not have happened. A run that has ended has
+  // nothing upcoming at all, however far short of its step count it stopped.
+  const upcomingCheckpoints = runEnded
+    ? []
+    : checkpointSteps.filter(
+        (step) => step > currentStep && !savedCheckpoints.includes(step),
+      );
 
   const { pruned: prunedCheckpoints, live: liveCheckpoints } =
     splitPrunedCheckpoints({
@@ -255,15 +265,18 @@ const LossChartComponent = ({
     xScale,
     markerGap,
   );
-  const upcomingDots = spaceOutMarkers(
-    sampleSteps
-      .filter(
-        (step) => step > currentStep && !generatedSampleSteps.includes(step),
-      )
-      .sort((a, b) => a - b),
-    xScale,
-    markerGap,
-  );
+  const upcomingDots = runEnded
+    ? []
+    : spaceOutMarkers(
+        sampleSteps
+          .filter(
+            (step) =>
+              step > currentStep && !generatedSampleSteps.includes(step),
+          )
+          .sort((a, b) => a - b),
+        xScale,
+        markerGap,
+      );
 
   // The generation happening right now. Its position has been passed but no
   // image exists yet, so the rules above drop it — draw it pulsing instead,
@@ -432,17 +445,21 @@ const LossChartComponent = ({
           />
         ))}
 
-      {/* Final checkpoint: always on the right edge (the run's end save).
-          Dashed until confirmed written, solid once saved. */}
-      <line
-        x1={rightEdgeX}
-        x2={rightEdgeX}
-        y1={lineTop}
-        y2={lineBottom}
-        strokeWidth={1}
-        strokeDasharray={finalCheckpointSaved ? undefined : '2,3'}
-        className="stroke-violet-500/70 dark:stroke-violet-400/70"
-      />
+      {/* Final checkpoint: sits on the right edge (the run's end save). Dashed
+          until confirmed written, solid once saved — and drawn at all only
+          while it's still coming, since a run that ended without writing it
+          never will. */}
+      {(finalCheckpointSaved || !runEnded) && (
+        <line
+          x1={rightEdgeX}
+          x2={rightEdgeX}
+          y1={lineTop}
+          y2={lineBottom}
+          strokeWidth={1}
+          strokeDasharray={finalCheckpointSaved ? undefined : '2,3'}
+          className="stroke-violet-500/70 dark:stroke-violet-400/70"
+        />
+      )}
 
       {/* Raw loss: recedes when the smoothed trend line carries the shape. */}
       {linePath ? (

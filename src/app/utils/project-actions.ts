@@ -530,31 +530,44 @@ export const getProjectFolders = async (
 };
 
 /**
- * Scan all images in a project and return a dimension histogram.
- * Uses sharp metadata (header-only reads) so this is fast even for
- * hundreds of images. Returns e.g. { "1920x1080": 15, "1024x768": 8 }.
+ * Scan all images in a project and return a dimension histogram per folder,
+ * e.g. `{ Root: { "1920x1080": 15 }, "5_concept": { "1024x768": 8 } }`.
+ *
+ * Split by folder rather than totalled because a folder can be excluded from a
+ * run (repeats set to 0) — a whole-project histogram would keep counting images
+ * the run never sees into the bucket preview. Keys match the folder names from
+ * {@link getProjectFolders}, `Root` included, so the two line up.
+ *
+ * Uses sharp metadata (header-only reads) so this is fast even for hundreds of
+ * images.
  */
-export const getProjectDimensionHistogram = async (
+export const getProjectFolderHistograms = async (
   projectName: string,
-): Promise<Record<string, number>> => {
+): Promise<Record<string, Record<string, number>>> => {
   const config = getServerConfig();
   const projectPath = path.join(config.projectsFolder, projectName);
   if (!fs.existsSync(projectPath)) return {};
 
-  // Collect all image file paths (root + repeat subfolders)
-  const imagePaths: string[] = [];
+  // Collect image file paths, tagged with the folder they came from.
+  const images: { folder: string; filePath: string }[] = [];
   const entries = fs.readdirSync(projectPath, { withFileTypes: true });
 
   for (const entry of entries) {
     if (entry.isFile() && isSupportedImageExtension(path.extname(entry.name))) {
-      imagePaths.push(path.join(projectPath, entry.name));
+      images.push({
+        folder: 'Root',
+        filePath: path.join(projectPath, entry.name),
+      });
     }
     if (entry.isDirectory() && isValidRepeatFolder(entry.name)) {
       try {
         const subdirPath = path.join(projectPath, entry.name);
         for (const file of fs.readdirSync(subdirPath)) {
           if (isSupportedImageExtension(path.extname(file))) {
-            imagePaths.push(path.join(subdirPath, file));
+            images.push({
+              folder: entry.name,
+              filePath: path.join(subdirPath, file),
+            });
           }
         }
       } catch {
@@ -565,10 +578,12 @@ export const getProjectDimensionHistogram = async (
 
   // Read dimensions in parallel (header-only, fast)
   const results = await Promise.all(
-    imagePaths.map(async (filePath) => {
+    images.map(async ({ folder, filePath }) => {
       try {
         const meta = await sharp(filePath).metadata();
-        if (meta.width && meta.height) return `${meta.width}x${meta.height}`;
+        if (meta.width && meta.height) {
+          return { folder, key: `${meta.width}x${meta.height}` };
+        }
       } catch {
         // Skip unreadable files
       }
@@ -576,11 +591,13 @@ export const getProjectDimensionHistogram = async (
     }),
   );
 
-  const histogram: Record<string, number> = {};
-  for (const key of results) {
-    if (key) histogram[key] = (histogram[key] ?? 0) + 1;
+  const histograms: Record<string, Record<string, number>> = {};
+  for (const result of results) {
+    if (!result) continue;
+    const histogram = (histograms[result.folder] ??= {});
+    histogram[result.key] = (histogram[result.key] ?? 0) + 1;
   }
-  return histogram;
+  return histograms;
 };
 
 export type ProjectDatasetScan = {
@@ -600,7 +617,7 @@ export type ProjectDatasetScan = {
  * Re-scan a project folder that a training config has attached as a dataset.
  *
  * This is the readdir half of a rescan, deliberately kept apart from
- * {@link getProjectDimensionHistogram}: this one is a directory listing and
+ * {@link getProjectFolderHistograms}: this one is a directory listing and
  * returns in microseconds, while the histogram opens every image. The form
  * needs the folder breakdown before it can render a dataset at all, so pairing
  * them would make every project load wait on the slow one.

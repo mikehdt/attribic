@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
 
+import { includedDimensionHistogram } from './dataset-dimensions';
 import type { DatasetSource } from './training-config-form/use-training-config-form';
 
 type NativeResolutionPreviewProps = {
@@ -23,12 +24,11 @@ const NativeResolutionPreviewComponent = ({
     const target = `${width}x${height}`;
     let matched = 0;
     let seen = 0;
-    for (const ds of datasets) {
-      if (!ds.dimensionHistogram) continue;
-      for (const [dimKey, count] of Object.entries(ds.dimensionHistogram)) {
-        seen += count;
-        if (dimKey === target) matched += count;
-      }
+    for (const [dimKey, count] of Object.entries(
+      includedDimensionHistogram(datasets),
+    )) {
+      seen += count;
+      if (dimKey === target) matched += count;
     }
     return { matching: matched, total: seen };
   }, [datasets, width, height]);

@@ -2,7 +2,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 
 import { usePopup } from '@/app/shared/popup';
 import {
-  getProjectDimensionHistogram,
+  getProjectFolderHistograms,
   getProjectFolders,
   getProjectList,
   type Project,
@@ -62,9 +62,9 @@ export function useProjectPicker({
 
       setSelectingFolder(project.name);
       try {
-        const [details, dimensionHistogram] = await Promise.all([
+        const [details, folderHistograms] = await Promise.all([
           getProjectFolders(project.name),
-          getProjectDimensionHistogram(project.name),
+          getProjectFolderHistograms(project.name),
         ]);
         const folders: PickedFolder[] = details.map((f) => ({
           ...f,
@@ -76,7 +76,7 @@ export function useProjectPicker({
           folders,
           thumbnail: project.thumbnail || undefined,
           thumbnailVersion: project.thumbnailVersion,
-          dimensionHistogram,
+          folderHistograms,
           // Already on the list entry, so the dataset card can render its
           // caption control on the first paint rather than waiting for a rescan.
           captionMode: project.captionMode,

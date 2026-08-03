@@ -13,7 +13,7 @@ import type {
 } from '@/app/services/training-projects/disk-schema';
 import { fetchJson, isJsonStatus } from '@/app/utils/fetch-json';
 import {
-  getProjectDimensionHistogram,
+  getProjectFolderHistograms,
   scanDatasetFolders,
 } from '@/app/utils/project-actions';
 
@@ -91,8 +91,8 @@ const scanDataset =
     }
 
     try {
-      const dimensionHistogram = await getProjectDimensionHistogram(folderName);
-      dispatch(setDatasetHistogram({ folderName, dimensionHistogram }));
+      const folderHistograms = await getProjectFolderHistograms(folderName);
+      dispatch(setDatasetHistogram({ folderName, folderHistograms }));
     } catch {
       // Bucket preview keeps whatever it had; the folder list is current.
     }

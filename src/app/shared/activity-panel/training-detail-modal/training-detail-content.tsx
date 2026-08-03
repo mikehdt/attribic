@@ -150,6 +150,11 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
 
   const isRunning = job.status === 'running' || job.status === 'preparing';
   const isCompleted = job.status === 'completed';
+  // Queued is the only non-running state with work still ahead of it. Anything
+  // else has stopped for good, so the graph and its legend drop the predicted
+  // checkpoints and samples: a run cancelled at step 300 of 2000 shouldn't
+  // still be drawing the saves it would have made.
+  const runEnded = !isRunning && job.status !== 'pending';
 
   // How a run ended, for the Phase box. A finished job keeps whatever phase it
   // was last in (usually "Training"), so the outcome has to win over
@@ -295,6 +300,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
             sampleSteps={sampleSteps}
             generatedSampleSteps={generatedSampleSteps}
             generatingSample={isSamplingPhase(progress.phase)}
+            runEnded={runEnded}
             maxSavesToKeep={maxSavesToKeep}
             provider={config?.provider}
             lrCurve={lrCurve}
@@ -328,14 +334,15 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
               Saved checkpoint
             </span>
           )}
-          {checkpointSteps.some(
-            (s) => s > currentStep && !savedCheckpoints.includes(s),
-          ) && (
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-0.5 border-l border-dashed border-violet-500/70 dark:border-violet-400/70" />
-              Upcoming checkpoint
-            </span>
-          )}
+          {!runEnded &&
+            checkpointSteps.some(
+              (s) => s > currentStep && !savedCheckpoints.includes(s),
+            ) && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-0.5 border-l border-dashed border-violet-500/70 dark:border-violet-400/70" />
+                Upcoming checkpoint
+              </span>
+            )}
           {progress.totalEpochs >= 2 && (
             <span className="flex items-center gap-1.5">
               <span className="inline-block h-2 w-0.5 border-l border-dashed border-slate-300/70 dark:border-slate-600/60" />
@@ -348,7 +355,7 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
               Sample
             </span>
           )}
-          {sampleSteps.some((s) => s > currentStep) && (
+          {!runEnded && sampleSteps.some((s) => s > currentStep) && (
             <span className="flex items-center gap-1.5">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-pink-500/30 dark:bg-pink-400/30" />
               Upcoming sample

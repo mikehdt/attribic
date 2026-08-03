@@ -3,7 +3,6 @@
 import {
   ChevronDownIcon,
   CircleIcon,
-  FolderOpenIcon,
   PencilIcon,
   SaveIcon,
   Trash2Icon,

@@ -5,6 +5,7 @@ import {
   generateBucketList,
 } from '@/app/utils/image-utils';
 
+import { includedDimensionHistogram } from './dataset-dimensions';
 import type { DatasetSource } from './training-config-form/use-training-config-form';
 
 type KohyaBucketPreviewProps = {
@@ -26,23 +27,24 @@ const KohyaBucketPreviewComponent = ({
     [baseResolution],
   );
 
-  // Assign images from dimension histograms to their target buckets.
+  // Assign images from dimension histograms to their target buckets. Only the
+  // folders the run will train on — a folder switched off still sits in the
+  // dataset list, but none of its images reach a bucket.
   const bucketCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const ds of datasets) {
-      if (!ds.dimensionHistogram) continue;
-      for (const [dimKey, count] of Object.entries(ds.dimensionHistogram)) {
-        const [w, h] = dimKey.split('x').map(Number);
-        if (!w || !h) continue;
-        const bucket = calculateKohyaBucket(w, h, {
-          targetResolution: baseResolution,
-          stepSize: 64,
-          minSize: 256,
-          maxSize: baseResolution * 2,
-        });
-        const key = `${bucket.width}x${bucket.height}`;
-        counts.set(key, (counts.get(key) ?? 0) + count);
-      }
+    for (const [dimKey, count] of Object.entries(
+      includedDimensionHistogram(datasets),
+    )) {
+      const [w, h] = dimKey.split('x').map(Number);
+      if (!w || !h) continue;
+      const bucket = calculateKohyaBucket(w, h, {
+        targetResolution: baseResolution,
+        stepSize: 64,
+        minSize: 256,
+        maxSize: baseResolution * 2,
+      });
+      const key = `${bucket.width}x${bucket.height}`;
+      counts.set(key, (counts.get(key) ?? 0) + count);
     }
     return counts;
   }, [datasets, baseResolution]);

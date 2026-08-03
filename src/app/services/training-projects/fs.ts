@@ -114,7 +114,7 @@ async function readVersion(
  * a timestamp, and persisting it means a config saved today keeps asserting
  * yesterday's disk after the folder changes, with nothing to invalidate it:
  *
- * - `dimensionHistogram` — image sizes; drives the native-resolution mismatch
+ * - `folderHistograms` — image sizes; drives the native-resolution mismatch
  *   warning, so a stale copy can call a dataset correctly sized when it isn't.
  * - `scan` — whether the folder was there at all, and how much it held.
  * - per-folder `imageCount` — goes stale the moment an image is added or
@@ -133,7 +133,7 @@ async function readVersion(
  */
 type PersistedDataset = Omit<
   DatasetSource,
-  'folders' | 'dimensionHistogram' | 'scan'
+  'folders' | 'folderHistograms' | 'scan'
 > & {
   folders: Omit<DatasetFolder, 'imageCount' | 'detectedRepeats'>[];
 };
@@ -150,7 +150,7 @@ function stripDerived(form: FormState): PersistedForm {
   return {
     ...form,
     datasets: form.datasets.map(
-      ({ dimensionHistogram, scan, folders, ...dataset }) => ({
+      ({ folderHistograms, scan, folders, ...dataset }) => ({
         ...dataset,
         folders: folders.map(
           ({ imageCount, detectedRepeats, ...folder }) => folder,

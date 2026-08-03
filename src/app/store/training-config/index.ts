@@ -442,7 +442,12 @@ const trainingConfigSlice = createSlice({
       const { from, to } = action.payload;
       const prompts = state.form.samplePrompts;
       if (from === to) return;
-      if (from < 0 || to < 0 || from >= prompts.length || to >= prompts.length) {
+      if (
+        from < 0 ||
+        to < 0 ||
+        from >= prompts.length ||
+        to >= prompts.length
+      ) {
         return;
       }
       const sizes = state.form.samplePromptSizes;
@@ -460,7 +465,7 @@ const trainingConfigSlice = createSlice({
         displayName: string;
         thumbnail?: boolean;
         thumbnailVersion?: number;
-        dimensionHistogram?: Record<string, number>;
+        folderHistograms?: Record<string, Record<string, number>>;
         captionMode?: CaptionMode;
         folders: Omit<DatasetFolder, keyof FolderAugmentation>[];
       }>,
@@ -473,7 +478,7 @@ const trainingConfigSlice = createSlice({
         folderName: action.payload.folderName,
         thumbnail: action.payload.thumbnail,
         thumbnailVersion: action.payload.thumbnailVersion,
-        dimensionHistogram: action.payload.dimensionHistogram,
+        folderHistograms: action.payload.folderHistograms,
         // Unpinned: follow the model's preference until the user says otherwise.
         captionEmission: null,
         // The picker read these folders off disk moments ago, so record that
@@ -567,14 +572,14 @@ const trainingConfigSlice = createSlice({
       state,
       action: PayloadAction<{
         folderName: string;
-        dimensionHistogram: Record<string, number>;
+        folderHistograms: Record<string, Record<string, number>>;
       }>,
     ) => {
-      const { folderName, dimensionHistogram } = action.payload;
+      const { folderName, folderHistograms } = action.payload;
       for (const form of [state.form, state.baselineSnapshot]) {
         const dataset = form?.datasets.find((d) => d.folderName === folderName);
         if (!dataset) continue;
-        dataset.dimensionHistogram = dimensionHistogram;
+        dataset.folderHistograms = folderHistograms;
       }
     },
 
@@ -969,7 +974,7 @@ function normalizeDatasets(form: FormState): FormState {
     ...form,
     datasets: form.datasets.map((dataset) => ({
       ...dataset,
-      dimensionHistogram: undefined,
+      folderHistograms: undefined,
       scan: undefined,
       folders: (dataset.folders ?? []).map((folder) => ({
         ...folder,
