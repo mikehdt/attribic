@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 
-import { buildSidecarStartRequest } from '@/app/services/training/build-sidecar-request';
+import {
+  buildSidecarStartRequest,
+  type TrainingStartBody,
+} from '@/app/services/training/build-sidecar-request';
 import { ensureSidecar } from '@/app/services/training/sidecar-manager';
 
 /**
@@ -20,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const clientConfig = await request.json();
+    const clientConfig = (await request.json()) as TrainingStartBody;
     const body = buildSidecarStartRequest(clientConfig);
     const res = await fetch(`http://127.0.0.1:${sidecar.port}/jobs/start`, {
       method: 'POST',

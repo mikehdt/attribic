@@ -13,6 +13,7 @@ import {
   SCHEDULER_OPTIONS,
 } from '@/app/services/training/models';
 import { parseNativeResolution } from '@/app/services/training/native-resolution';
+import { hasCapability } from '@/app/services/training/provider-capabilities';
 import type { TrainingProvider } from '@/app/services/training/types';
 import type { DatasetIssue } from '@/app/store/training-config';
 
@@ -202,11 +203,14 @@ const TrainingSummaryComponent = ({
   // work from, and the bucket one degrades into an innocent-looking list of
   // every bucket the resolution allows. Warn in their place instead.
   const hasIssues = datasetIssues.length > 0;
-  const isKohya = selectedProvider === 'kohya';
+  const showsDatasetShape = hasCapability(
+    selectedProvider,
+    'datasetShapePreview',
+  );
   const showNative =
-    isKohya && !hasIssues && native !== null && datasets.length > 0;
+    showsDatasetShape && !hasIssues && native !== null && datasets.length > 0;
   const showBuckets =
-    isKohya &&
+    showsDatasetShape &&
     !hasIssues &&
     !native &&
     resolution.length > 0 &&
@@ -264,7 +268,7 @@ const TrainingSummaryComponent = ({
           applies to every backend, not just Kohya */}
       {hasIssues && <DatasetIssueWarning issues={datasetIssues} />}
 
-      {/* Bucketing (Kohya only) */}
+      {/* Bucketing (sd-scripts-lineage backends only) */}
       {showBuckets && (
         <div className="rounded-lg border border-slate-200 bg-(--surface)/30 p-3 dark:border-slate-700">
           <span className="mb-2 block text-xs font-medium text-(--foreground)/70">
@@ -277,7 +281,7 @@ const TrainingSummaryComponent = ({
         </div>
       )}
 
-      {/* Exact WxH size (Kohya only) — replaces the bucket panel */}
+      {/* Exact WxH size (sd-scripts-lineage backends only) — replaces the bucket panel */}
       {showNative && native && (
         <div className="rounded-lg border border-slate-200 bg-(--surface)/30 p-3 dark:border-slate-700">
           <span className="mb-2 block text-xs font-medium text-(--foreground)/70">

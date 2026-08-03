@@ -199,7 +199,7 @@ SUPPORTED_MODELS = [
         "id": "ltx2",
         "name": "LTX-Video 2",
         "architecture": "ltx2",
-        "model_path": "Lightricks/LTX-Video-0.9.7-dev",
+        "model_path": "Lightricks/LTX-2",
         "config": {"arch": "ltx2"},
         "train_defaults": {
             "noise_scheduler": "flowmatch",

@@ -4,6 +4,7 @@
  * and what their sensible defaults are.
  */
 
+import type { TrainingFieldName } from './field-registry';
 import type { TrainingProvider } from './types';
 
 export type ModelArchitecture =
@@ -60,8 +61,13 @@ export type ModelDefinition = {
   tips?: string[];
   /** Resolution steps the user can toggle on/off for this model */
   availableResolutions: number[];
-  /** Fields that are irrelevant for this model (auto-set, not configurable) */
-  hiddenFields?: (keyof TrainingDefaults)[];
+  /**
+   * Fields that are irrelevant for this model (auto-set, not configurable).
+   * Matched against {@link TrainingFieldName} directly — not the
+   * `TrainingDefaults` key — so fields with `defaultKey: null` (no model
+   * default to compare against) can still be hidden per-model.
+   */
+  hiddenFields?: TrainingFieldName[];
   /**
    * Marks a model as experimental/untested — shows a warning badge in the
    * model select UI. Used for video models that currently only train on

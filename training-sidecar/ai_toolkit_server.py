@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+import psutil
 
 
 class AiToolkitServer:
@@ -158,7 +159,20 @@ class AiToolkitServer:
         try:
             if sys.platform == "win32":
                 # Kill the npm process tree (npm spawns workers + Next).
-                os.system(f"taskkill /F /T /PID {self._process.pid} >nul 2>&1")
+                # Spawned rather than os.system() so the kill doesn't block
+                # the event loop (and with it every other job's progress)
+                # while it runs — mirrors the pattern already used for
+                # cancelling a Kohya run in providers/kohya.py.
+                killer = await asyncio.create_subprocess_exec(
+                    "taskkill",
+                    "/F",
+                    "/T",
+                    "/PID",
+                    str(self._process.pid),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await killer.wait()
             else:
                 self._process.terminate()
             try:
@@ -265,18 +279,84 @@ class AiToolkitServer:
             pass
         return list(pids)
 
+    def _is_reclaimable(self, pid: int) -> bool:
+        """Best-effort guard so we only kill processes that look like our own
+        ai-toolkit UI server — not some unrelated app that happens to be
+        listening on the configured port.
+
+        A process is considered ours if its cmdline references our toolkit
+        path, or it's a node/next process (npm's tree is `npm` → `node`
+        running `next start` + the cron worker). Anything else is refused.
+        If the process is already gone or we can't inspect it (permissions),
+        we treat it as reclaimable rather than block port reuse forever over
+        a pid that may not even exist anymore.
+        """
+        try:
+            proc = psutil.Process(pid)
+            name = (proc.name() or "").lower()
+            cmdline = " ".join(proc.cmdline()).lower()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            return True
+
+        toolkit_needle = str(self._toolkit_path).lower()
+        if toolkit_needle and toolkit_needle in cmdline:
+            return True
+        if "node" in name or "next" in cmdline or "npm" in name:
+            return True
+
+        print(
+            f"[aitk-server] Port {self._port} is held by an unrelated process "
+            f"({name!r}, pid {pid}) — not killing it. Change 'aiToolkitPort' "
+            "in config.json or free the port manually.",
+            flush=True,
+        )
+        return False
+
     async def _reclaim_port(self) -> None:
         """Kill whatever is listening on our port, tree-wide, and wait for it
-        to free. Resets our own ownership flags so the next spawn is clean."""
-        for pid in self._listener_pids():
+        to free. Resets our own ownership flags so the next spawn is clean.
+
+        Refuses to kill a listener that doesn't look like our own ai-toolkit
+        UI server (see `_is_reclaimable`) — raises instead, so an unrelated
+        process holding the port fails loudly rather than getting killed.
+        """
+        pids = self._listener_pids()
+        blocked = [pid for pid in pids if not self._is_reclaimable(pid)]
+        killable = [pid for pid in pids if pid not in blocked]
+
+        for pid in killable:
             try:
                 if sys.platform == "win32":
                     # /T kills the whole tree (npm → concurrently → worker+next).
-                    os.system(f"taskkill /F /T /PID {pid} >nul 2>&1")
+                    # Spawned rather than os.system() so this doesn't block the
+                    # event loop while it runs.
+                    killer = await asyncio.create_subprocess_exec(
+                        "taskkill",
+                        "/F",
+                        "/T",
+                        "/PID",
+                        str(pid),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    await killer.wait()
                 else:
+                    # Kills the whole process group in one go. Left as SIGKILL
+                    # (rather than SIGTERM-then-SIGKILL) — the `_is_reclaimable`
+                    # guard above already limits this to processes that look
+                    # like our own ai-toolkit tree, and graceful shutdown isn't
+                    # this path's job (this only runs when the server is
+                    # already unhealthy or wedged).
                     os.killpg(os.getpgid(pid), signal.SIGKILL)
             except (OSError, ProcessLookupError):
                 pass
+
+        if blocked:
+            raise RuntimeError(
+                f"Port {self._port} is held by a process that doesn't look "
+                "like ai-toolkit's UI server, so it wasn't killed. Change "
+                "'aiToolkitPort' in config.json or free the port manually."
+            )
 
         # Any handle we held points at a now-dead tree.
         self._process = None

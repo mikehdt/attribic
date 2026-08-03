@@ -542,9 +542,10 @@ class AiToolkitUiProvider(TrainingProvider):
     def __init__(self, toolkit_path: str, server: AiToolkitServer):
         self._toolkit_path = Path(toolkit_path)
         self._server = server
-        # Tracked so cancel_training can stop the in-flight job without
-        # the caller having to thread the id back through.
-        self._current_job_id: Optional[str] = None
+        # Manager job id → ai-toolkit's own job id, one entry per in-flight run.
+        # The provider is a singleton, so this can't be a single field: cancel
+        # has to stop the run it was asked about, not whichever started last.
+        self._aitk_ids: dict[str, str] = {}
 
     async def validate_environment(self) -> tuple[bool, Optional[str]]:
         ui_dir = self._toolkit_path / "ui"
@@ -571,6 +572,29 @@ class AiToolkitUiProvider(TrainingProvider):
         gpu_id: int = 0,
         job_id: Optional[str] = None,
     ) -> AsyncGenerator[JobProgress, None]:
+        # Own the `_aitk_ids` entry's lifetime here so it's dropped however the
+        # run ends — completion, failure, or the consumer abandoning the
+        # generator — rather than only on the normal path through the poll loop.
+        # The manager always passes its id; the fallback key only matters for a
+        # standalone run, which nothing cancels.
+        run_key = job_id or request.output_name
+        inner = self._run(request, config_path, gpu_id, job_id, run_key)
+        try:
+            async for progress in inner:
+                yield progress
+        finally:
+            await inner.aclose()
+            self._aitk_ids.pop(run_key, None)
+
+    async def _run(
+        self,
+        request: StartJobRequest,
+        config_path: str,
+        gpu_id: int,
+        job_id: Optional[str],
+        run_key: str,
+    ) -> AsyncGenerator[JobProgress, None]:
+        """The run itself — see `start_training`, which owns the id mapping."""
         # The local job_id used by the parent JobManager is opaque to us;
         # ai-toolkit assigns its own id when we POST /api/jobs. We use
         # the parent id as the human-readable name and remember the
@@ -671,7 +695,7 @@ class AiToolkitUiProvider(TrainingProvider):
                 )
             created = create_res.json()
             aitk_id: str = created["id"]
-            self._current_job_id = aitk_id
+            self._aitk_ids[run_key] = aitk_id
 
             yield _emit(f"Job created: {aitk_id}")
 
@@ -1006,16 +1030,16 @@ class AiToolkitUiProvider(TrainingProvider):
                     )
                     break
 
-            self._current_job_id = None
-
-    async def cancel_training(self) -> None:
-        if not self._current_job_id:
+    async def cancel_training(self, job_id: str) -> None:
+        """Cancel the run the manager knows as `job_id`. No-op if unknown."""
+        aitk_id = self._aitk_ids.get(job_id)
+        if not aitk_id:
             return
         try:
             async with httpx.AsyncClient(
                 base_url=self._server.base_url, timeout=10.0
             ) as client:
-                await client.get(f"/api/jobs/{self._current_job_id}/stop")
+                await client.get(f"/api/jobs/{aitk_id}/stop")
         except httpx.HTTPError as err:
             print(f"[ai-toolkit-ui] cancel failed: {err}")
 
@@ -1024,6 +1048,26 @@ class AiToolkitUiProvider(TrainingProvider):
             {"id": m["id"], "name": m["name"], "architecture": m["architecture"]}
             for m in SUPPORTED_MODELS
         ]
+
+    def validate_request(self, request: StartJobRequest) -> list[str]:
+        """Checkpoint/diffusers path must exist when it resolves to a local
+        path.
+
+        Mirrors the `model` block's `name_or_path` resolution in
+        `_build_config_dict`: `hp["model_path"]` if the client sent one, else
+        the catalogue's own HF-repo-id default. A repo id (never absolute —
+        the app never ships bare relative paths) is left to ai-toolkit/HF Hub
+        to resolve at run time and is not checked here.
+        """
+        model_def = find_model(request.base_model)
+        if model_def is None:
+            return []
+
+        hp = request.hyperparameters
+        resolved = hp.get("model_path") or model_def.get("model_path")
+        if resolved and Path(resolved).is_absolute() and not Path(resolved).exists():
+            return [f"Model path does not exist: {resolved}"]
+        return []
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,11 @@
  * on `ws/progress` to stream live progress into Redux.
  */
 
+import type { TrainingStartBody } from '@/app/services/training/build-sidecar-request';
+import {
+  deriveCheckpointSteps,
+  deriveSampleSteps,
+} from '@/app/services/training/cadence';
 import type {
   TrainingJobConfig,
   TrainingJobStatus,
@@ -573,114 +578,38 @@ function ensureProgressSocket(
 }
 
 // ---------------------------------------------------------------------------
-// Checkpoint step derivation (UI-only — sidecar doesn't report these)
-// ---------------------------------------------------------------------------
-
-/**
- * Step positions a repeating cadence lands on across a run. Saving and
- * sampling both express their cadence as "every N epochs" or "every N steps"
- * over the same timeline, so they share this: only the config keys and the
- * enablement rule differ.
- */
-function deriveCadenceSteps({
-  mode,
-  everyEpochs,
-  everySteps,
-  totalSteps,
-  epochs,
-}: {
-  mode: string;
-  everyEpochs: number;
-  everySteps: number;
-  totalSteps: number;
-  epochs: number;
-}): number[] {
-  const out: number[] = [];
-  if (mode === 'epochs' && everyEpochs > 0 && epochs > 0) {
-    const stepsPerEpoch = Math.max(1, Math.ceil(totalSteps / epochs));
-    for (let e = everyEpochs; e <= epochs; e += everyEpochs) {
-      out.push(Math.min(e * stepsPerEpoch, totalSteps));
-    }
-  } else if (mode === 'steps' && everySteps > 0) {
-    for (let s = everySteps; s <= totalSteps; s += everySteps) {
-      out.push(s);
-    }
-  }
-  return out;
-}
-
-function deriveCheckpointSteps(config: Record<string, unknown>): number[] {
-  if (!((config.saveEnabled as boolean) ?? false)) return [];
-
-  return deriveCadenceSteps({
-    mode: (config.saveMode as string) ?? 'epochs',
-    everyEpochs: (config.saveEveryEpochs as number) ?? 1,
-    everySteps: (config.saveEverySteps as number) ?? 100,
-    totalSteps: (config.steps as number) || 0,
-    epochs: (config.epochs as number) || 0,
-  });
-}
-
-/**
- * Predicted sample-generation step positions from the form config — the
- * fallback twin of `deriveCheckpointSteps` for sidecar payloads predating
- * `sample_steps`. Gated on prompts because that's what actually enables
- * sampling in the providers.
- */
-function deriveSampleSteps(config: Record<string, unknown>): number[] {
-  const samplingEnabled = (config.samplingEnabled as boolean) ?? false;
-  const prompts = ((config.samplePrompts as string[]) ?? []).filter((p) =>
-    p.trim(),
-  );
-  if (!samplingEnabled || prompts.length === 0) return [];
-
-  return deriveCadenceSteps({
-    mode: (config.sampleMode as string) ?? 'steps',
-    everyEpochs: (config.sampleEveryEpochs as number) ?? 1,
-    everySteps: (config.sampleEverySteps as number) ?? 250,
-    totalSteps: (config.steps as number) || 0,
-    epochs: (config.epochs as number) || 0,
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Config snapshot for the Redux TrainingJob
 // ---------------------------------------------------------------------------
 
-function snapshotClientConfig(
-  config: Record<string, unknown>,
-): TrainingJobConfig {
+function snapshotClientConfig(config: TrainingStartBody): TrainingJobConfig {
   return {
     projectPath: '',
-    provider: (config.provider as TrainingProvider) ?? 'ai-toolkit',
-    baseModel: (config.modelId as string) ?? '',
-    modelPaths: (config.modelPaths as Record<string, string>) ?? {},
+    provider: config.provider,
+    baseModel: config.modelId,
+    modelPaths: config.modelPaths,
     outputPath: '',
-    outputName: (config.outputName as string) ?? 'unnamed-lora',
+    outputName: config.outputName,
     datasets: [],
     hyperparameters: {
-      learningRate: (config.learningRate as number) ?? 1e-4,
-      epochs: (config.epochs as number) ?? 20,
-      batchSize: (config.batchSize as number) ?? 1,
-      resolution: Array.isArray(config.resolution)
-        ? ((config.resolution as number[])[0] ?? 1024)
-        : ((config.resolution as number) ?? 1024),
-      networkDim: (config.networkDim as number) ?? 16,
-      networkAlpha: (config.networkAlpha as number) ?? 16,
-      optimizer: (config.optimizer as string) ?? 'adamw8bit',
-      scheduler: (config.scheduler as string) ?? 'constant',
-      warmupSteps: (config.warmupSteps as number) ?? 0,
-      saveEveryNEpochs: (config.saveEveryEpochs as number) ?? 1,
-      sampleEveryNSteps: (config.sampleEverySteps as number) ?? 250,
-      gradientAccumulationSteps:
-        (config.gradientAccumulationSteps as number) ?? 1,
-      mixedPrecision: (config.mixedPrecision as 'bf16' | 'fp16') ?? 'bf16',
+      learningRate: config.learningRate,
+      epochs: config.epochs,
+      batchSize: config.batchSize,
+      resolution: config.resolution[0] ?? 1024,
+      networkDim: config.networkDim,
+      networkAlpha: config.networkAlpha,
+      optimizer: config.optimizer,
+      scheduler: config.scheduler,
+      warmupSteps: config.warmupSteps,
+      saveEveryNEpochs: config.saveEveryEpochs,
+      sampleEveryNSteps: config.sampleEverySteps,
+      gradientAccumulationSteps: config.gradientAccumulationSteps,
+      mixedPrecision: config.mixedPrecision,
       extra: {
-        numRestarts: (config.numRestarts as number) ?? 1,
-        maxSavesToKeep: (config.maxSavesToKeep as number) ?? 0,
+        numRestarts: config.numRestarts,
+        maxSavesToKeep: config.maxSavesToKeep,
       },
     },
-    samplePrompts: (config.samplePrompts as string[]) ?? [],
+    samplePrompts: config.samplePrompts,
   };
 }
 
@@ -693,13 +622,19 @@ export function startTraining(
   formSnapshot?: FormState,
 ): AppThunk {
   return async (dispatch, getState) => {
+    // The component boundary (training-config-form.tsx) still hands this
+    // thunk the spread form plus a couple of overrides as a loose object —
+    // asserted once here into the typed wire shape everything downstream
+    // (this thunk, buildSidecarStartRequest) actually reads by name.
+    const startBody = config as TrainingStartBody;
+
     // Snapshot the loaded project up front, before any await: the user can
     // load or clear a project while the sidecar handshake is in flight, and
     // the run belongs to whatever was loaded when they pressed start.
     const loadedProject = getState().trainingConfig.loadedProject;
     // Built once and used twice: it's both what this session's job card renders
     // and what the sidecar stores, so a reloaded run redisplays identically.
-    const clientConfig = snapshotClientConfig(config);
+    const clientConfig = snapshotClientConfig(startBody);
 
     // No client-side GPU-busy gate — the sidecar owns a shared queue
     // across training + tagging, so additional jobs enqueue behind whatever
@@ -772,8 +707,8 @@ export function startTraining(
     }
 
     // Stash per-job metadata used by the WS progress router.
-    ws.checkpointStepsByJob.set(jobId, deriveCheckpointSteps(config));
-    ws.sampleStepsByJob.set(jobId, deriveSampleSteps(config));
+    ws.checkpointStepsByJob.set(jobId, deriveCheckpointSteps(startBody));
+    ws.sampleStepsByJob.set(jobId, deriveSampleSteps(startBody));
     ws.startedAtByJob.set(jobId, Date.now());
 
     const job: TrainingJob = {

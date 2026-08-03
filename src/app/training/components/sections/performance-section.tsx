@@ -3,6 +3,7 @@ import { memo, useCallback } from 'react';
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
 import { parseNativeResolution } from '@/app/services/training/native-resolution';
+import { hasCapability } from '@/app/services/training/provider-capabilities';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
@@ -94,7 +95,7 @@ const PerformanceSectionComponent = ({
   onFieldChange,
   onReset,
 }: PerformanceSectionProps) => {
-  const isKohya = provider === 'kohya';
+  const hasBucketControls = hasCapability(provider, 'bucketControls');
 
   // Hooks before the early return below.
   const handleNativeChange = useCallback(
@@ -344,7 +345,7 @@ const PerformanceSectionComponent = ({
                 <p className="mt-1 text-sm text-slate-400">
                   {nativeActive
                     ? 'Overridden by the Exact resolution below'
-                    : isKohya
+                    : hasBucketControls
                       ? 'Trains at the largest size; selecting several enables aspect-ratio bucketing across the range'
                       : 'Each selected size is trained; multiple sizes improve flexibility at different render resolutions'}
                 </p>

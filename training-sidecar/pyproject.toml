@@ -44,6 +44,16 @@ gpu = [
     "qwen-vl-utils>=0.0.10,<1",
 ]
 
+[dependency-groups]
+# Test-only tooling. Not part of the runtime install — run with
+#   uv run --group dev pytest tests/ -q
+dev = [
+    "pytest>=8,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.uv]
 package = false
 

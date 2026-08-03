@@ -11,6 +11,7 @@ import {
   XIcon,
 } from 'lucide-react';
 
+import { hasCapability } from '@/app/services/training/provider-capabilities';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
@@ -73,7 +74,7 @@ export function FolderRow({
   const isRoot = folderName === 'Root';
   // Kohya/sd-scripts has no vertical-flip augmentation (only `flip_aug`,
   // which is horizontal). ai-toolkit supports both (flip_x / flip_y).
-  const supportsVerticalFlip = selectedProvider !== 'kohya';
+  const supportsVerticalFlip = hasCapability(selectedProvider, 'verticalFlip');
   const showVerticalFlip = supportsVerticalFlip && augmentation.flipVAugment;
   // Simple mode hides LoRA weight, keep tokens and caption dropout, showing a
   // read-only value instead when one is set — same pattern as native

@@ -1,3 +1,4 @@
+import { hasCapability } from '@/app/services/training/provider-capabilities';
 import type {
   TrainingProgress,
   TrainingProvider,
@@ -221,9 +222,13 @@ export function splitPrunedCheckpoints({
     totalSteps > 0 &&
     currentStep >= totalSteps &&
     savedCheckpoints[savedCheckpoints.length - 1] >= totalSteps;
-  // ...and only sd-scripts leaves it alone at that step (see above). Unknown
-  // providers take the plain last-N reading rather than inventing an exemption.
-  const finalIsExempt = finalSaveWritten && provider === 'kohya';
+  // ...and only sd-scripts-lineage backends leave it alone at that step (see
+  // above). Unknown providers take the plain last-N reading rather than
+  // inventing an exemption.
+  const finalIsExempt =
+    finalSaveWritten &&
+    provider !== undefined &&
+    hasCapability(provider, 'finalSaveExempt');
 
   const windowed = finalIsExempt
     ? savedCheckpoints.slice(0, -1)

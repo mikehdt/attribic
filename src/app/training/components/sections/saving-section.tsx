@@ -31,6 +31,7 @@ type SavingSectionProps = {
   maxSavesToKeep: number;
   saveState: boolean;
   resumeState: string;
+  hasChanges: boolean;
   defaults: TrainingDefaults;
   visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
@@ -58,6 +59,7 @@ const SavingSectionComponent = ({
   maxSavesToKeep,
   saveState,
   resumeState,
+  hasChanges,
   defaults,
   visibleFields,
   hiddenChangesCount,
@@ -98,7 +100,7 @@ const SavingSectionComponent = ({
         <SectionHeaderExtra hiddenChangesCount={hiddenChangesCount} />
       }
       headerActions={(expanded) =>
-        saveEnabled && expanded ? (
+        hasChanges && expanded ? (
           <SectionResetButton onClick={() => onReset('saving')} />
         ) : undefined
       }

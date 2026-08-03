@@ -30,7 +30,10 @@ class MockProvider(TrainingProvider):
     def __init__(self, tick_count: int = 50, tick_interval: float = 0.2):
         self._tick_count = tick_count
         self._tick_interval = tick_interval
-        self._cancelled = False
+        # Ids cancel_training() has been asked to stop, keyed the same way the
+        # manager knows them — one entry per in-flight run, so cancelling one
+        # run can't stop another.
+        self._cancel_requested: set[str] = set()
 
     async def validate_environment(self) -> tuple[bool, Optional[str]]:
         return True, None
@@ -55,8 +58,20 @@ class MockProvider(TrainingProvider):
         job_id: Optional[str] = None,
     ) -> AsyncGenerator[JobProgress, None]:
         job_id = job_id or request.output_name  # Caller overrides with real ID
-        self._cancelled = False
+        # Drop the cancel request however the run ends, so a later run reusing
+        # the id (or just the set itself) doesn't carry it forward.
+        inner = self._run(request, job_id)
+        try:
+            async for progress in inner:
+                yield progress
+        finally:
+            await inner.aclose()
+            self._cancel_requested.discard(job_id)
 
+    async def _run(
+        self, request: StartJobRequest, job_id: str
+    ) -> AsyncGenerator[JobProgress, None]:
+        """The run itself — see `start_training`, which owns the cancel entry."""
         hp = request.hyperparameters
         total_steps = int(hp.get("steps", 500))
         total_epochs = int(hp.get("epochs", 20))
@@ -83,7 +98,7 @@ class MockProvider(TrainingProvider):
         ):
             prep_current = 0
             while prep_current < prep_total:
-                if self._cancelled:
+                if job_id in self._cancel_requested:
                     return
                 prep_current = min(prep_total, prep_current + 4)
                 prep_noise = (
@@ -111,7 +126,7 @@ class MockProvider(TrainingProvider):
         current = 0
 
         while current < total_steps:
-            if self._cancelled:
+            if job_id in self._cancel_requested:
                 return
 
             current = min(total_steps, current + step_increment)
@@ -164,8 +179,13 @@ class MockProvider(TrainingProvider):
             log_lines=["[mock] training complete"],
         )
 
-    async def cancel_training(self) -> None:
-        self._cancelled = True
+    async def cancel_training(self, job_id: str) -> None:
+        """Flag `job_id` so its loop returns at the next tick.
+
+        The flag is discarded when that run's generator finishes; an id with no
+        run behind it never fires.
+        """
+        self._cancel_requested.add(job_id)
 
     def get_supported_models(self) -> list[dict]:
         # Mock supports every architecture; the frontend expresses "mock" as

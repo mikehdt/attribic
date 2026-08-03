@@ -8,49 +8,40 @@ import path from 'path';
 
 import { getProjectsFolder } from '@/app/services/config/server-config';
 
+import { resolveSampleCadence, resolveSaveCadence } from './cadence';
 import {
   type CaptionEmission,
   captionPreferenceForModel,
 } from './caption-emission';
+import type {
+  DatasetSource,
+  ExtraFolder,
+  TrainingFormValues,
+} from './form-values';
 import {
   defaultSampleAspect,
   getSampleBase,
   resolveSampleSize,
-  type SampleAspect,
 } from './sample-sizes';
 import { getLoraOutputRoot } from './training-root';
+import type { TrainingProvider } from './types';
 
-type ClientFormConfig = Record<string, unknown>;
-
-type ClientFolderAugmentation = {
-  captionShuffling: boolean;
-  keepTokens: number;
-  captionDropoutRate: number;
-  flipAugment: boolean;
-  flipVAugment: boolean;
+/**
+ * The wire body POST /api/training/start receives: the whole form, plus the
+ * few keys `training-config-form.tsx`'s start handler adds or overrides
+ * (`provider` mirrors `selectedProvider` under the name the sidecar reads;
+ * `steps`/`epochs` are resolved from whichever duration mode is authoritative;
+ * `project`/`formSnapshot`/`clientConfig` are added by the `startTraining`
+ * thunk so the sidecar's record of the run is self-contained).
+ */
+export type TrainingStartBody = TrainingFormValues & {
+  provider: TrainingProvider;
+  project?: { id?: string; name: string; version: number };
+  /** Opaque persistence — stored verbatim, never read back by this builder. */
+  formSnapshot?: Record<string, unknown>;
+  /** Opaque persistence — stored verbatim, never read back by this builder. */
+  clientConfig?: Record<string, unknown>;
 };
-
-type ClientDatasetFolder = {
-  name: string;
-  detectedRepeats: number;
-  overrideRepeats: number | null;
-  loraWeight: number;
-  isRegularization: boolean;
-} & ClientFolderAugmentation;
-
-type ClientDatasetSource = {
-  folderName: string;
-  /** The user's pin, or null/absent to follow the model's preference. */
-  captionEmission?: CaptionEmission | null;
-  folders: ClientDatasetFolder[];
-};
-
-type ClientExtraFolder = {
-  path: string;
-  overrideRepeats: number | null;
-  loraWeight: number;
-  isRegularization: boolean;
-} & ClientFolderAugmentation;
 
 type SidecarDatasetEntry = {
   path: string;
@@ -75,8 +66,8 @@ type SidecarDatasetEntry = {
  * disagree with the file that is about to be read anyway.
  */
 function buildDatasets(
-  datasets: ClientDatasetSource[],
-  extraFolders: ClientExtraFolder[],
+  datasets: DatasetSource[],
+  extraFolders: ExtraFolder[],
   projectsFolder: string,
   modelId: string,
 ) {
@@ -137,7 +128,7 @@ function buildDatasets(
  * form config. Paths are resolved relative to the configured projects
  * folder so the sidecar receives absolute paths.
  */
-export function buildSidecarStartRequest(config: ClientFormConfig): {
+export function buildSidecarStartRequest(config: TrainingStartBody): {
   project_path: string;
   provider: string;
   base_model: string;
@@ -154,17 +145,17 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   const projectsFolder = getProjectsFolder();
 
   const datasets = buildDatasets(
-    (config.datasets as ClientDatasetSource[]) ?? [],
-    (config.extraFolders as ClientExtraFolder[]) ?? [],
+    config.datasets,
+    config.extraFolders,
     projectsFolder,
-    (config.modelId as string) ?? '',
+    config.modelId,
   );
 
-  const outputName = (config.outputName as string) || 'unnamed-lora';
+  const outputName = config.outputName || 'unnamed-lora';
   // Put outputs in a single shared `loras` folder off the configured training
   // folder, otherwise fall back inside the training root. Uses the shared
   // resolver so the UI's "Output folder" display matches what gets written.
-  const firstDataset = (config.datasets as ClientDatasetSource[])?.[0];
+  const firstDataset = config.datasets[0];
   const outputPath = getLoraOutputRoot();
 
   // Project path: best-effort — the first dataset's folder, else cwd.
@@ -175,45 +166,26 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
 
   // Translate the ai-toolkit-relevant hyperparameters from camelCase to
   // the snake_case names the provider reads from the hyperparameters dict.
-  const modelPaths = (config.modelPaths as Record<string, string>) ?? {};
+  const modelPaths = config.modelPaths;
   // The flat `model_path` is what ai-toolkit passes straight to `name_or_path`.
   // A `diffusers` component wins over `checkpoint` because a model offering
   // both (Anima) keeps a path in each — the single-file one belongs to kohya,
   // which reads `model_paths.checkpoint` directly and only falls back to this.
   const checkpointPath = modelPaths.diffusers || modelPaths.checkpoint;
 
-  const saveEnabled = (config.saveEnabled as boolean) ?? false;
-  const saveMode = (config.saveMode as string) ?? 'epochs';
-  const saveEveryEpochs = (config.saveEveryEpochs as number) ?? 1;
-  const saveEverySteps = (config.saveEverySteps as number) ?? 100;
   // The save cadence is expressed in exactly one unit. The sidecar reads
   // whichever field is non-zero (steps take precedence) and treats 0/0 as
-  // "saving disabled". Send the user's chosen unit as-is instead of collapsing
-  // a step interval into epochs, which silently dropped it.
-  const saveEveryNEpochs =
-    saveEnabled && saveMode === 'epochs' ? saveEveryEpochs : 0;
-  const saveEveryNSteps =
-    saveEnabled && saveMode === 'steps' ? saveEverySteps : 0;
-
-  // Sampling cadence mirrors the save-cadence dual field: the user picks one
-  // unit, and the sidecar reads whichever is non-zero. Kohya passes
-  // --sample_every_n_epochs natively; the ai-toolkit provider converts epochs
-  // to steps. The inactive unit is zeroed here so exactly one wins.
-  const samplingEnabled = (config.samplingEnabled as boolean) ?? false;
-  const sampleMode = (config.sampleMode as string) ?? 'steps';
-  const sampleEveryEpochs = (config.sampleEveryEpochs as number) ?? 1;
-  const sampleEverySteps = (config.sampleEverySteps as number) ?? 250;
-  const sampleEveryNEpochs =
-    samplingEnabled && sampleMode === 'epochs' ? sampleEveryEpochs : 0;
-  const sampleEveryNSteps =
-    samplingEnabled && sampleMode === 'steps' ? sampleEverySteps : 0;
+  // "saving disabled". Sampling mirrors the same dual-field rule; the ai-toolkit
+  // provider converts an epoch cadence to steps, Kohya reads epochs natively.
+  const saveCadence = resolveSaveCadence(config);
+  const sampleCadence = resolveSampleCadence(config);
 
   const hyperparameters: Record<string, unknown> = {
     // `steps` is authoritative in steps-mode; in epochs-mode it's a converted
     // estimate and `epochs` is authoritative. Providers that can count epochs
     // natively (Kohya) read duration_mode and drive off `epochs`; step-only
     // backends (ai-toolkit) use the converted `steps` regardless.
-    duration_mode: (config.durationMode as string) ?? 'steps',
+    duration_mode: config.durationMode,
     steps: config.steps,
     epochs: config.epochs,
     lr: config.learningRate,
@@ -256,10 +228,10 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     guidance_scale: config.guidanceScale,
     sample_steps: config.sampleSteps,
     sample_sampler: config.sampleSampler,
-    sample_every_n_epochs: sampleEveryNEpochs,
-    sample_every_n_steps: sampleEveryNSteps,
-    save_every_n_epochs: saveEveryNEpochs,
-    save_every_n_steps: saveEveryNSteps,
+    sample_every_n_epochs: sampleCadence.everyNEpochs,
+    sample_every_n_steps: sampleCadence.everyNSteps,
+    save_every_n_epochs: saveCadence.everyNEpochs,
+    save_every_n_steps: saveCadence.everyNSteps,
     save_format: config.saveFormat,
     max_saves_to_keep: config.maxSavesToKeep,
     save_state: config.saveState,
@@ -290,14 +262,9 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
   // only the client knows the run's resolution settings. Index-aligned with
   // sample_prompts; the sidecar turns each pair into `--w`/`--h` flags on the
   // prompt line, which both backends parse.
-  const samplePrompts = samplingEnabled
-    ? ((config.samplePrompts as string[]) ?? [])
-    : [];
-  const sampleBase = getSampleBase(
-    config.resolution as number[] | number | undefined,
-    config.nativeResolution as string | undefined,
-  );
-  const sampleAspects = (config.samplePromptSizes as SampleAspect[]) ?? [];
+  const samplePrompts = config.samplingEnabled ? config.samplePrompts : [];
+  const sampleBase = getSampleBase(config.resolution, config.nativeResolution);
+  const sampleAspects = config.samplePromptSizes;
   const fallbackAspect = defaultSampleAspect(sampleBase);
   const sampleSizes: [number, number][] = samplePrompts.map((_, i) =>
     resolveSampleSize(sampleAspects[i] ?? fallbackAspect, sampleBase),
@@ -305,8 +272,8 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
 
   return {
     project_path: projectPath,
-    provider: (config.provider as string) ?? 'ai-toolkit',
-    base_model: (config.modelId as string) ?? 'sdxl',
+    provider: config.provider,
+    base_model: config.modelId,
     output_path: outputPath,
     output_name: outputName,
     datasets,
@@ -321,9 +288,8 @@ export function buildSidecarStartRequest(config: ClientFormConfig): {
     // the project menu's run list, which filters on exactly that, silently
     // drops it — and with a config rebuilt lossily from the fields above.
     // None is consumed by any provider; the sidecar stores them verbatim.
-    project: config.project as
-      { id?: string; name: string; version: number } | undefined,
-    form_snapshot: config.formSnapshot as Record<string, unknown> | undefined,
-    client_config: config.clientConfig as Record<string, unknown> | undefined,
+    project: config.project,
+    form_snapshot: config.formSnapshot,
+    client_config: config.clientConfig,
   };
 }

@@ -10,6 +10,11 @@ from models import JobProgress, StartJobRequest
 class TrainingProvider(ABC):
     """Abstract interface for training backends (ai-toolkit, Kohya, etc.)."""
 
+    # How training-time markers are laid out on disk (see `training_time.py`):
+    # "per-state-dir" — a marker beside each <output>-NNNNNN-state dir (sd-scripts lineage)
+    # "single-root"   — one marker in the run's save_root (ai-toolkit)
+    time_marker_policy: str = "single-root"
+
     @abstractmethod
     async def validate_environment(self) -> tuple[bool, Optional[str]]:
         """Check that the backend tools are installed and accessible.
@@ -56,8 +61,8 @@ class TrainingProvider(ABC):
         ...
 
     @abstractmethod
-    async def cancel_training(self) -> None:
-        """Cancel the currently running training process."""
+    async def cancel_training(self, job_id: str) -> None:
+        """Cancel the run the manager knows as `job_id`. No-op if unknown."""
         ...
 
     @abstractmethod
@@ -67,3 +72,7 @@ class TrainingProvider(ABC):
         Each dict should contain at least: id, name, architecture.
         """
         ...
+
+    def validate_request(self, request: StartJobRequest) -> list[str]:
+        """Cheap semantic checks before enqueue. Default: no extra checks."""
+        return []

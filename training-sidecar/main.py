@@ -37,7 +37,16 @@ import safe_stdio
 from sample_archive import configure as configure_sample_archive
 from system_stats import collect as collect_system_stats
 from system_stats import prime as prime_system_stats
+from validation import RequestValidationError
 from ws_manager import WebSocketManager
+
+# Origins allowed to open WebSocket connections or issue mutating (POST/
+# DELETE) HTTP requests. Mirrors the CORS middleware's allow_origins below —
+# kept as a separate constant because Starlette's CORS middleware doesn't run
+# for WebSocket upgrades, and doesn't gate "simple" cross-origin POSTs either
+# (no preflight is triggered for those), so without an explicit check any web
+# page could fire requests at this listening localhost port.
+_ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
 
 # --- Globals initialised at startup ---
 ws_manager = WebSocketManager()
@@ -142,7 +151,9 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
     aitk_path = backends.get("ai-toolkit")
     if aitk_path:
         log_path = config.training_dir / "aitk-server.log"
-        aitk_server = AiToolkitServer(Path(aitk_path), log_path=log_path)
+        aitk_server = AiToolkitServer(
+            Path(aitk_path), port=config.aitk_port, log_path=log_path
+        )
         provider = AiToolkitUiProvider(aitk_path, aitk_server)
         jm.register_provider("ai-toolkit", provider)
         print(
@@ -254,7 +265,7 @@ app = FastAPI(title="Training Sidecar", version="0.1.0", lifespan=lifespan)
 # Allow connections from the Next.js dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=list(_ALLOWED_ORIGINS),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -262,8 +273,20 @@ app.add_middleware(
 
 @app.middleware("http")
 async def _stamp_activity(request, call_next):
-    """Any request counts as a client being present (keeps the sidecar alive)."""
+    """Any request counts as a client being present (keeps the sidecar alive).
+
+    Also rejects mutating (POST/DELETE) requests whose Origin header is
+    present but outside `_ALLOWED_ORIGINS` — CORS' preflight doesn't cover
+    "simple" cross-origin POSTs, so this is the only thing stopping an
+    arbitrary web page from hitting this localhost port. A request with no
+    Origin (curl, the sidecar's own tooling, tests) is left alone; GET is
+    left alone regardless of Origin since it's read-only.
+    """
     global _last_activity_at
+    if request.method in ("POST", "DELETE"):
+        origin = request.headers.get("origin")
+        if origin is not None and origin not in _ALLOWED_ORIGINS:
+            return JSONResponse({"error": "Origin not allowed"}, status_code=403)
     _last_activity_at = time.monotonic()
     return await call_next(request)
 
@@ -332,6 +355,10 @@ async def start_job(request: StartJobRequest):
     try:
         response = await job_manager.start_job(request)
         return response
+    except RequestValidationError as e:
+        return JSONResponse(
+            {"error": str(e), "errors": e.errors}, status_code=400
+        )
     except RuntimeError as e:
         return JSONResponse({"error": str(e)}, status_code=409)
 
@@ -404,6 +431,10 @@ async def delete_job(job_id: str):
 
 @app.websocket("/ws/progress")
 async def ws_progress(websocket: WebSocket):
+    origin = websocket.headers.get("origin")
+    if origin is not None and origin not in _ALLOWED_ORIGINS:
+        await websocket.close(code=4403)
+        return
     await ws_manager.connect(websocket)
     try:
         # Send current state immediately on connect
@@ -565,6 +596,10 @@ async def unload_caption_model():
 @app.websocket("/ws/caption")
 async def ws_caption(websocket: WebSocket):
     """WebSocket for streaming caption batch progress."""
+    origin = websocket.headers.get("origin")
+    if origin is not None and origin not in _ALLOWED_ORIGINS:
+        await websocket.close(code=4403)
+        return
     await caption_ws_manager.connect(websocket)
     try:
         while True:

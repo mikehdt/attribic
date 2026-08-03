@@ -961,9 +961,9 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
     });
 
   return {
-    // Model and backend selection are the run's identity, not settings that
-    // can drift from a baseline — there's no reset affordance to light up.
-    whatToTrain: false,
+    // No `whatToTrain` entry: model and backend selection are the run's
+    // identity, not settings that can drift from a baseline, and
+    // ModelSelectSection has no reset affordance to wire it to.
     dataset: anyFolderChanged,
     learning: sectionFieldsDiffer(form, ref, 'learning'),
     loraShape: sectionFieldsDiffer(form, ref, 'loraShape'),
@@ -1108,7 +1108,41 @@ function augmentEqual(a: FolderAugmentation, b: FolderAugmentation): boolean {
 function formsEqual(a: FormState, b: FormState): boolean {
   // Cheap pre-check: same reference = clean.
   if (a === b) return true;
-  // Deep equality via JSON serialisation. FormState contains no functions,
-  // dates, or circular refs, so this is safe and ~free for a form this size.
-  return JSON.stringify(a) === JSON.stringify(b);
+  return deepValueEqual(a, b);
+}
+
+/**
+ * Structural equality that doesn't care about key order (unlike a
+ * JSON.stringify comparison, which is key-order sensitive and would flag two
+ * otherwise-identical forms as different). Arrays compare by index, plain
+ * objects by key set, everything else by ===.
+ */
+function deepValueEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (
+    typeof a !== 'object' ||
+    typeof b !== 'object' ||
+    a === null ||
+    b === null
+  ) {
+    return false;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, i) => deepValueEqual(item, b[i]))
+    );
+  }
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRecord);
+  const bKeys = Object.keys(bRecord);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) =>
+      Object.hasOwn(bRecord, key) &&
+      deepValueEqual(aRecord[key], bRecord[key]),
+  );
 }

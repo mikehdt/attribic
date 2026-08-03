@@ -21,6 +21,8 @@ class SidecarConfig:
 
     port: int = 9733
     host: str = "127.0.0.1"
+    # Port for ai-toolkit's bundled UI/API server (see ai_toolkit_server.py).
+    aitk_port: int = 8675
     app_root: Path = field(default_factory=lambda: Path.cwd())
     # Everything the training system writes — jobs, saved projects, the PID
     # file, backend logs. Anchored to the configured projects folder; see
@@ -47,6 +49,7 @@ def load_config(app_root: Optional[Path] = None) -> SidecarConfig:
 
     config_path = app_root / "config.json"
     port = 9733
+    aitk_port = 8675
     backends: dict[str, str] = {}
     workers: list[WorkerConfig] = [WorkerConfig(gpu_id=0)]
     projects_folder: Optional[Path] = None
@@ -69,6 +72,7 @@ def load_config(app_root: Optional[Path] = None) -> SidecarConfig:
                     backends[key] = value
 
             port = data.get("sidecarPort", 9733)
+            aitk_port = data.get("aiToolkitPort", 8675)
 
             # Optional: per-worker GPU assignments. Shape in config.json:
             #   "sidecarWorkers": [{"gpuId": 0}, {"gpuId": 1}]
@@ -89,6 +93,7 @@ def load_config(app_root: Optional[Path] = None) -> SidecarConfig:
 
     return SidecarConfig(
         port=port,
+        aitk_port=aitk_port,
         app_root=app_root,
         training_dir=(projects_folder or app_root) / ".training",
         backends=backends,

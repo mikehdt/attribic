@@ -10,18 +10,19 @@ stop → resume, drops a small marker file next to the trainer's saved state.
 When a later run resumes from that state, the marker is read back to seed the
 accumulator instead of starting the training clock at zero.
 
-Marker placement is backend-specific because the two backends persist state
-differently:
+Marker placement follows a provider's `time_marker_policy` (see
+`providers/base.py`), because backends persist state differently:
 
-- **kohya / sd-scripts** writes a *fresh directory per checkpoint* —
-  `{output_name}-step{N:08d}-state/`, `{output_name}-{epoch:06d}-state/`, and a
-  final `{output_name}-state/`, all under `output_dir`
-  (library/checkpoint_io.py STEP_STATE_NAME / EPOCH_STATE_NAME /
-  LAST_STATE_NAME). Each is an independent snapshot, so we write the marker
-  once per new state dir, capturing the training time *as of that checkpoint* —
-  a run resumed from it then continues from exactly that figure.
+- **"per-state-dir"** (kohya / sd-scripts lineage) writes a *fresh directory
+  per checkpoint* — `{output_name}-step{N:08d}-state/`,
+  `{output_name}-{epoch:06d}-state/`, and a final `{output_name}-state/`, all
+  under `output_dir` (library/checkpoint_io.py STEP_STATE_NAME /
+  EPOCH_STATE_NAME / LAST_STATE_NAME). Each is an independent snapshot, so we
+  write the marker once per new state dir, capturing the training time *as of
+  that checkpoint* — a run resumed from it then continues from exactly that
+  figure.
 
-- **ai-toolkit** keeps a *single evolving* `optimizer.pt` in
+- **"single-root"** (ai-toolkit) keeps a *single evolving* `optimizer.pt` in
   `save_root = {output_path}/{output_name}/` (BaseSDTrainProcess), overwritten
   on every save and auto-loaded on the next same-folder run. There's only ever
   one state, so we overwrite one marker there with the latest training time.
@@ -36,6 +37,28 @@ from pathlib import Path
 from typing import Optional
 
 MARKER_NAME = "img-tagger-training-time.json"
+
+# Fallback map from a persisted provider name to its `time_marker_policy`,
+# for the lazy accumulator-reseed path (see job_manager._accumulate_progress)
+# where only the provider string — not the provider object — is at hand.
+# Anything absent here (including "ai-toolkit") defaults to "single-root",
+# same as `TrainingProvider.time_marker_policy`'s own default. Kept here
+# rather than on each provider class since this is the one place that needs
+# to map a *name* back to a policy.
+PROVIDER_MARKER_POLICY_FALLBACK: dict[str, str] = {
+    "kohya": "per-state-dir",
+    "musubi": "per-state-dir",
+}
+
+
+def marker_policy_for_provider_name(provider_name: str) -> str:
+    """The `time_marker_policy` for a persisted provider name.
+
+    Used only where a live provider object isn't available (the lazy
+    accumulator reseed); the eager path resolves the policy straight off the
+    provider instance instead.
+    """
+    return PROVIDER_MARKER_POLICY_FALLBACK.get(provider_name, "single-root")
 
 
 def _read_marker(path: Path) -> Optional[float]:
@@ -106,7 +129,7 @@ def read_carryforward_seconds(resume_state: Optional[str]) -> float:
 
 
 def record_time_markers(
-    provider: str,
+    policy: str,
     output_path: str,
     output_name: str,
     training_seconds: float,
@@ -117,18 +140,20 @@ def record_time_markers(
     """Drop/refresh training-time markers next to the trainer's saved state.
 
     Called when a checkpoint is confirmed written, and again at run end. The
-    write policy differs per backend (see the module docstring): kohya gets a
-    write-once snapshot per `*-state` dir; every other backend (ai-toolkit) gets
-    one overwrite-latest marker in its single `save_root`.
+    write policy is the caller's `time_marker_policy` (see the module
+    docstring and `providers/base.py`): "per-state-dir" gets a write-once
+    snapshot per `*-state` dir; "single-root" gets one overwrite-latest marker
+    in its single `save_root`.
 
     `seconds_by_step` maps a step to the training-seconds recorded when that
-    step's checkpoint was saved. A kohya `*-step{N}-state` dir isn't guaranteed
-    to be on disk at the instant we parse its save log line (sd-scripts writes
-    the safetensors first, then the state dir), so we may only find it on a
-    later scan — looking its value up by the step *encoded in the dir name*,
-    rather than using the current (by-then larger) total, keeps the marker
-    correct for the checkpoint it belongs to. Falls back to `training_seconds`
-    for dirs whose step isn't in the ledger (epoch/final states).
+    step's checkpoint was saved. A "per-state-dir" `*-step{N}-state` dir isn't
+    guaranteed to be on disk at the instant we parse its save log line
+    (sd-scripts writes the safetensors first, then the state dir), so we may
+    only find it on a later scan — looking its value up by the step *encoded
+    in the dir name*, rather than using the current (by-then larger) total,
+    keeps the marker correct for the checkpoint it belongs to. Falls back to
+    `training_seconds` for dirs whose step isn't in the ledger (epoch/final
+    states).
     """
     ledger = seconds_by_step or {}
     try:
@@ -136,7 +161,7 @@ def record_time_markers(
     except (TypeError, ValueError):
         return
 
-    if provider == "kohya":
+    if policy == "per-state-dir":
         # Snapshot into each state dir that doesn't yet carry a marker. Match by
         # plain string ops rather than a glob — `output_name` is user free text
         # and may contain glob metacharacters like `[v2]` (mirrors the reasoning
@@ -158,8 +183,9 @@ def record_time_markers(
                 value = ledger.get(dir_step, training_seconds)
                 _write_marker(d, value, dir_step or step, job_id)
     else:
-        # ai-toolkit (and any single-save_root backend): one evolving state at
-        # {output_path}/{output_name}; overwrite the marker with the latest.
+        # "single-root" (ai-toolkit, and anything else defaulting to it): one
+        # evolving state at {output_path}/{output_name}; overwrite the marker
+        # with the latest.
         root = out / output_name
         if root.is_dir():
             _write_marker(root, training_seconds, step, job_id)

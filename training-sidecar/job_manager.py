@@ -21,17 +21,17 @@ from models import (
     SpeedPoint,
     StartJobRequest,
     StartJobResponse,
+    _TERMINAL_TRAINING_STATUSES,
 )
 from providers.base import TrainingProvider
-from training_time import read_carryforward_seconds, record_time_markers
+from training_time import (
+    marker_policy_for_provider_name,
+    read_carryforward_seconds,
+    record_time_markers,
+)
+from validation import validate_start_request
 from ws_manager import WebSocketManager
 
-
-_TERMINAL_TRAINING_STATUSES = (
-    JobStatus.COMPLETED,
-    JobStatus.FAILED,
-    JobStatus.CANCELLED,
-)
 
 # Training status → registry lifecycle status, for re-registering jobs read back
 # from disk at startup. Only terminal states appear: anything in flight when the
@@ -198,7 +198,7 @@ def _new_accumulator(
     checkpoint_steps: list[int],
     sample_steps: list[int],
     training_seconds: float,
-    provider: str,
+    marker_policy: str,
     output_path: str,
     output_name: str,
     history: Optional[list] = None,
@@ -227,11 +227,12 @@ def _new_accumulator(
         # running total (seeded from any resume marker); `last_tick` is the
         # monotonic timestamp of the previous TRAINING update, or None
         # whenever we're not mid-training so a non-training stretch isn't
-        # counted. The output_* / provider fields let the terminal and
-        # per-save marker writes find the trainer's state dirs.
+        # counted. The output_* / marker_policy fields let the terminal and
+        # per-save marker writes find the trainer's state dirs and lay the
+        # marker out correctly (see training_time.py).
         "training_seconds": training_seconds,
         "last_tick": None,
-        "provider": provider,
+        "marker_policy": marker_policy,
         "output_path": output_path,
         "output_name": output_name,
         # step -> training_seconds at the moment that step's checkpoint was
@@ -360,13 +361,15 @@ class JobManager:
 
         The job starts in QUEUED lifecycle status; when a worker picks it up,
         it transitions to RUNNING and the provider's training loop begins.
+
+        Raises RequestValidationError for a malformed/inconsistent request
+        (bad provider/model, illegal output name, missing dataset/component
+        paths, etc.) — the caller should answer 400. A RuntimeError past this
+        point means something conflicted at enqueue time (e.g. a job id
+        collision), which the caller should answer 409.
         """
-        provider = self._providers.get(request.provider.value)
-        if provider is None:
-            raise RuntimeError(
-                f"Provider '{request.provider.value}' is not registered. "
-                f"Available: {list(self._providers.keys())}"
-            )
+        validate_start_request(request, self._providers, self._jobs.values())
+        provider = self._providers[request.provider.value]
 
         job_id = uuid.uuid4().hex[:12]
         now = datetime.now(timezone.utc).isoformat()
@@ -398,7 +401,7 @@ class JobManager:
             checkpoint_steps=checkpoint_steps,
             sample_steps=sample_steps,
             training_seconds=carryforward,
-            provider=request.provider.value,
+            marker_policy=provider.time_marker_policy,
             output_path=request.output_path,
             output_name=request.output_name,
         )
@@ -481,7 +484,7 @@ class JobManager:
         # will emit the CANCELLED progress update.
         provider = self._providers.get(job.provider.value)
         if provider:
-            await provider.cancel_training()
+            await provider.cancel_training(job_id)
 
         await self._update_progress(
             JobProgress(
@@ -506,6 +509,16 @@ class JobManager:
             config_dir = str(self._jobs_dir / job_id)
             Path(config_dir).mkdir(parents=True, exist_ok=True)
             config_path = await provider.generate_config(request, config_dir)
+
+            # A cancel that landed between the worker dequeuing this job and
+            # here (generate_config awaits) has already terminalised the record,
+            # but the provider knows nothing about the run yet, so its cancel
+            # was a no-op. There is no await between this check and the
+            # provider registering the run on first iteration, so a cancel can
+            # no longer slip between them.
+            job = self._jobs.get(job_id)
+            if job is not None and job.status in _TERMINAL_TRAINING_STATUSES:
+                return
 
             async for progress in provider.start_training(
                 request, config_path, gpu_id=gpu_id, job_id=job_id
@@ -555,7 +568,9 @@ class JobManager:
                 sample_steps=list(job.progress.sample_steps),
                 saved={int(s) for s in job.progress.saved_checkpoints},
                 training_seconds=float(job.progress.training_seconds or 0.0),
-                provider=cfg.get("provider") or job.provider.value,
+                marker_policy=marker_policy_for_provider_name(
+                    cfg.get("provider") or job.provider.value
+                ),
                 output_path=cfg.get("output_path", ""),
                 output_name=cfg.get("output_name", ""),
             )
@@ -692,6 +707,15 @@ class JobManager:
         if job is None:
             return
 
+        # A finished run never reopens. Cancelling emits the CANCELLED update
+        # here while the provider's generator is still alive, so its in-flight
+        # ticks (and the terminal one it may still yield) arrive after the job
+        # is already terminal — applying them would flip the job back to
+        # `training` and re-seed the accumulator we just dropped, leaving the
+        # record stuck until next-boot recovery marks it failed.
+        if job.status in _TERMINAL_TRAINING_STATUSES:
+            return
+
         # Capture the steps the provider reported as freshly saved *before*
         # accumulation rewrites saved_checkpoints to the full deduped set — a
         # checkpoint confirmation must always be persisted immediately, and each
@@ -720,7 +744,7 @@ class JobManager:
                         progress.training_seconds
                     )
                 record_time_markers(
-                    provider=acc["provider"],
+                    policy=acc["marker_policy"],
                     output_path=acc["output_path"],
                     output_name=acc["output_name"],
                     training_seconds=progress.training_seconds,
@@ -756,12 +780,18 @@ class JobManager:
             self._persist_state(job.job_id)
             self._last_persist_at[job.job_id] = now
 
-        await self._ws.broadcast(progress.model_dump())
+        self._ws.broadcast_nowait(progress.model_dump())
 
     def mark_failed(self, job_id: str, error: str):
         """Mark a specific job as failed with an error message."""
         job = self._jobs.get(job_id)
         if job is None:
+            return
+
+        # Same rule as `_update_progress`: a run that already reached a terminal
+        # state keeps it — a late failure can't overwrite a completed or
+        # cancelled record.
+        if job.status in _TERMINAL_TRAINING_STATUSES:
             return
 
         job.status = JobStatus.FAILED

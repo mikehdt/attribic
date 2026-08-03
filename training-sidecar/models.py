@@ -24,6 +24,18 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+# Statuses a training job never leaves once reached. Lives here (rather than
+# job_manager, its original home) so validation.py can import it without a
+# job_manager <-> validation import cycle — job_manager calls into validation
+# at the top of start_job, and validation needs this set to check output-name
+# uniqueness against in-flight jobs only.
+_TERMINAL_TRAINING_STATUSES = (
+    JobStatus.COMPLETED,
+    JobStatus.FAILED,
+    JobStatus.CANCELLED,
+)
+
+
 class LossPoint(BaseModel):
     """A single downsampled point on the training loss curve."""
 

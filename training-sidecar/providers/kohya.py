@@ -1,132 +1,36 @@
 """Kohya (sd-scripts) training provider.
 
-Currently scoped to Anima (the Cosmos-Predict2-based anime DiT), which is
-supported in mainline kohya-ss/sd-scripts via `anima_train_network.py` and the
-`networks.lora_anima` module. Anima needs three explicit model paths — the DiT,
-the Qwen3-0.6B text encoder, and the Qwen-Image VAE — unlike ai-toolkit which
-takes a single checkpoint and resolves the rest.
+Covers SDXL (plus its Illustrious/NoobAI finetunes) and Anima — the
+Cosmos-Predict2-based anime DiT supported in mainline kohya-ss/sd-scripts via
+`anima_train_network.py` and the `networks.lora_anima` module. Anima needs
+three explicit model paths — the DiT, the Qwen3-0.6B text encoder, and the
+Qwen-Image VAE — unlike ai-toolkit which takes a single checkpoint and resolves
+the rest.
 
 Training is launched with `accelerate launch <arch>_train_network.py ...` as a
-subprocess. Progress is scraped from sd-scripts' tqdm output (which, like
-ai-toolkit, goes to stderr), following the same stream-merge pattern as
-`providers/ai_toolkit_ui.py`.
+subprocess and progress is scraped from sd-scripts' tqdm output. All of that —
+the spawn, the log grammar, the training-loop state machine, cancellation — is
+shared with any other sd-scripts-lineage backend and lives in
+`providers/sd_scripts_base.py`. What stays here is the model catalogue, the
+dataset TOML, and the CLI-flag translation.
 """
 
-import asyncio
 import os
-import re
-import signal
-import sys
-import time
-from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Optional
 
-from models import (
-    JobProgress,
-    JobStatus,
-    SampleImage,
-    SampleProgress,
-    StartJobRequest,
+from models import StartJobRequest
+from providers.sd_scripts_base import (
+    _OPTIMIZER_MAP,
+    _SAVE_PRECISION_MAP,
+    SdScriptsProvider,
+    _find_python,
+    _num,
+    _parse_kv_args,
+    _parse_native_resolution,
+    _toml_bool,
+    _toml_str,
 )
-from providers.base import TrainingProvider
-from sample_archive import collect_new_samples
-
-# sd-scripts' main training bar looks like:
-#   steps:   5%|▌         | 150/3000 [00:30<09:30,  2.30it/s, avr_loss=0.0912]
-# The step count / elapsed<remaining / postfix are shared with ai-toolkit, but
-# the loss key is `avr_loss=` rather than `loss:` and there's no lr in the bar.
-TQDM_PATTERN = re.compile(
-    r"(\d+)/(\d+)\s+"  # current/total steps
-    r"\[([^\]]+)\]\s*"  # elapsed<remaining
-    r"(.*)"  # postfix (avr_loss, it/s, etc.)
-)
-LOSS_PATTERN = re.compile(r"avr_loss[=:]\s*([\d.eE+-]+)")
-ETA_PATTERN = re.compile(r"<(\d+):(\d+):?(\d*)")
-# tqdm's iteration rate, e.g. "2.30it/s" or "23.01s/it" (slow steps invert it).
-RATE_PATTERN = re.compile(r"([\d.]+)\s*(it/s|s/it)")
-# sd-scripts prints "epoch 1/10" between epochs.
-EPOCH_PATTERN = re.compile(r"epoch\s+(\d+)\s*/\s*(\d+)")
-
-# Activity label for the sampling pause. The UI matches it (isSamplingPhase) to
-# rename the in-flight samples row and freeze its countdowns, so it's set from
-# one place — both where sampling is detected and where a frozen training-bar
-# redraw has to preserve it.
-SAMPLING_PHASE = "Generating samples"
-
-# The line that opens a sampling pause, carrying the step it fired at:
-#   "generating sample images at step / サンプル画像生成 ステップ: 250"  (sd-scripts)
-#   "Generating sample images at step 250"                              (Anima)
-# `\D*` spans the Japanese half of the localised variant.
-SAMPLE_ANNOUNCE_PATTERN = re.compile(
-    r"generating sample images at step\D*(\d+)", re.IGNORECASE
-)
-
-# How often the sampler's own tqdm bar may trigger a sample scan during a
-# pause. A backstop only — each image is claimed by the scan on the following
-# `prompt:` line, which lands the moment sd-scripts has finished writing it — so
-# this just bounds the cost of the bar's ~10/s redraws to one directory listing
-# a second, for the cases that line never comes (the event's last image).
-SAMPLE_SCAN_INTERVAL_S = 1.0
-
-# sd-scripts writes samples as
-#   {output_name}_{num_suffix}_{promptIdx:02d}_{timestamp}{_seed}.png
-# where num_suffix is `e%06d` (epoch cadence) or `%06d` (step cadence). We strip
-# the exact `{output_name}_` prefix first (output_name may itself contain
-# underscores), then match the remainder from the start: an optional `e` marks
-# an epoch-cadence run, the six digits are the epoch or step, and the two-digit
-# group is the prompt index.
-SAMPLE_NAME_RE = re.compile(r"^(?:e(\d{6})|(\d{6}))_(\d{2})_")
-
-# Leading "2026-07-13 21:20:00 " on sd-scripts' rich-formatted log lines. Only
-# stripped for repeat comparison — the line itself keeps its timestamp.
-# We pass --console_log_simple so sd-scripts' own logger no longer emits these,
-# but accelerate and other libraries configure their own handlers, so keep it.
-LOG_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+")
-
-# CSI escapes (colour, cursor moves) from tqdm and any library that still
-# writes styled output. Stripped at read time so they never reach the UI, which
-# renders lines as plain text, and never defeat repeat comparison.
-ANSI_PATTERN = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]")
-
-# Longest run of lines treated as one repeatable block by `_append_log_line`.
-MAX_REPEAT_BLOCK = 4
-
-
-def _log_key(line: str) -> str:
-    """Comparison key for repeat detection: the line minus timestamp/padding."""
-    return LOG_TIMESTAMP_PATTERN.sub("", line).strip()
-
-
-def _append_log_line(log_lines: list[str], line: str) -> None:
-    """Append `line`, collapsing an immediately-repeated run of lines.
-
-    sd-scripts emits some output once per DataLoader worker, and it isn't
-    always a single line — an epoch rollover arrives as a two-line block:
-
-        ... INFO  epoch is incremented.   dataset.py:464
-        current_epoch: 76, epoch: 77
-        ... INFO  epoch is incremented.   dataset.py:464
-        current_epoch: 76, epoch: 77
-
-    The lines alternate, so a "same as the previous line" check never fires.
-    Instead, once a line lands, drop it (with its preceding k-1 lines) if the
-    trailing k lines just repeat the k before them. Comparison ignores the
-    timestamp so a repeat straddling a second boundary still collapses.
-    """
-    if log_lines and _log_key(log_lines[-1]) == _log_key(line):
-        return
-
-    log_lines.append(line)
-
-    for k in range(2, MAX_REPEAT_BLOCK + 1):
-        if len(log_lines) < 2 * k:
-            break
-        tail = [_log_key(entry) for entry in log_lines[-k:]]
-        if tail == [_log_key(entry) for entry in log_lines[-2 * k : -k]]:
-            del log_lines[-k:]
-            return
-
 
 # --- Model definitions ---
 #
@@ -281,19 +185,10 @@ SUPPORTED_MODELS = [
     },
 ]
 
-
-# sd-scripts optimizer names differ in casing/spelling from the app's values.
-_OPTIMIZER_MAP = {
-    "adamw8bit": "AdamW8bit",
-    "adamw": "AdamW",
-    "adafactor": "Adafactor",
-    "prodigy": "Prodigy",
-    "lion": "Lion",
-    "dadaptation": "DAdaptAdam",
-}
-
-# App save_format -> sd-scripts --save_precision.
-_SAVE_PRECISION_MAP = {"fp16": "fp16", "bf16": "bf16", "fp32": "float"}
+# Smallest bucket edge offered when the run has a single training resolution.
+# sd-scripts' own default; wide enough to hold the short edge of an extreme
+# aspect ratio without upscaling it to the training size.
+DEFAULT_MIN_BUCKET_RESO = 256
 
 
 def _find_model(model_id: str) -> Optional[dict]:
@@ -303,114 +198,16 @@ def _find_model(model_id: str) -> Optional[dict]:
     return None
 
 
-def _parse_eta_seconds(eta_str: str) -> Optional[int]:
-    """Parse a tqdm ETA string like '15:30' or '1:15:30' into seconds."""
-    match = ETA_PATTERN.search(eta_str)
-    if not match:
-        return None
-    parts = [int(p) for p in match.groups() if p]
-    if len(parts) == 2:
-        return parts[0] * 60 + parts[1]
-    if len(parts) == 3:
-        return parts[0] * 3600 + parts[1] * 60 + parts[2]
-    return None
+def _resolution_list(hp: dict, defaults: dict) -> list[int]:
+    """The run's training resolutions, always as a list of ints."""
+    resolution = hp.get("resolution", defaults.get("resolution", [1024]))
+    if not isinstance(resolution, list):
+        resolution = [int(resolution)]
+    return resolution
 
 
-def _sampling_phase(index: int, total: int) -> str:
-    """The sampling activity label, carrying the image count when we have one.
-
-    sd-scripts never says how many images an event will produce — but we wrote
-    the prompt file, so the total is simply how many prompts we sent, and the
-    index comes from counting the per-image `prompt:` blocks it echoes. Shaped
-    like ai-toolkit's "Generating images - 3/4" so the client reads both
-    backends through the one label formatter.
-    """
-    if index > 0 and total > 0:
-        return f"{SAMPLING_PHASE} - {min(index, total)}/{total}"
-    return SAMPLING_PHASE
-
-
-def _scan_sample_files(output_path: str, output_name: str) -> set[str]:
-    """Return the sample PNGs written for this run so far.
-
-    sd-scripts writes samples to `<output_dir>/sample/`, and since we pass
-    `--output_dir=<output_path>` (the shared loras root) that folder is shared
-    across every Kohya run — so we filter to this run's `{output_name}_`
-    prefix. Iterated non-recursively; matched with plain string ops rather than
-    a glob because `output_name` is user-controlled free text that can contain
-    glob metacharacters.
-    """
-    sample_dir = Path(output_path) / "sample"
-    if not sample_dir.exists():
-        return set()
-    prefix = f"{output_name}_"
-    try:
-        return {
-            str(p)
-            for p in sample_dir.iterdir()
-            if p.is_file()
-            and p.name.startswith(prefix)
-            and p.suffix.lower() == ".png"
-        }
-    except OSError:
-        return set()
-
-
-def _parse_sample(path: str, output_name: str) -> Optional[SampleImage]:
-    """Parse step/epoch/prompt-index out of a Kohya sample filename.
-
-    Returns a SampleImage with a `sample/<file>` POSIX path relative to
-    output_path, or None for a name that doesn't fit the grammar.
-    """
-    name = Path(path).name
-    prefix = f"{output_name}_"
-    if not name.startswith(prefix):
-        return None
-    match = SAMPLE_NAME_RE.match(name[len(prefix):])
-    if not match:
-        return None
-    epoch = int(match.group(1)) if match.group(1) else None
-    # Epoch-cadence runs encode the epoch, not the step, so the step is unknown.
-    step = int(match.group(2)) if match.group(2) else 0
-    prompt_index = int(match.group(3))
-    return SampleImage(
-        path=f"sample/{name}",
-        step=step,
-        epoch=epoch,
-        prompt_index=prompt_index,
-    )
-
-
-def _collect_new_samples(
-    output_path: str,
-    output_name: str,
-    seen: set[str],
-    samples: list[SampleImage],
-    job_id: Optional[str] = None,
-    require_settled: bool = True,
-) -> None:
-    """Claim freshly-written Kohya samples. See `sample_archive`."""
-    collect_new_samples(
-        scan=_scan_sample_files,
-        parse=_parse_sample,
-        output_path=output_path,
-        output_name=output_name,
-        seen=seen,
-        samples=samples,
-        job_id=job_id,
-        require_settled=require_settled,
-    )
-
-
-class KohyaProvider(TrainingProvider):
+class KohyaProvider(SdScriptsProvider):
     """Training provider backed by kohya-ss/sd-scripts."""
-
-    def __init__(self, scripts_path: str):
-        self._scripts_path = Path(scripts_path)
-        self._process: Optional[asyncio.subprocess.Process] = None
-        # Set by cancel_training() so the run loop can distinguish a
-        # user-initiated stop from a genuine non-zero exit and stay quiet.
-        self._cancelled = False
 
     async def validate_environment(self) -> tuple[bool, Optional[str]]:
         if not self._scripts_path.exists():
@@ -437,7 +234,7 @@ class KohyaProvider(TrainingProvider):
 
         sd-scripts takes datasets via a TOML file (`--dataset_config`) rather
         than CLI flags. The training-loop flags themselves are assembled in
-        `start_training`.
+        `_build_cli_args`.
         """
         model_def = _find_model(request.base_model)
         if model_def is None:
@@ -446,20 +243,30 @@ class KohyaProvider(TrainingProvider):
         hp = request.hyperparameters
         defaults = model_def["train_defaults"]
 
-        resolution = hp.get("resolution", defaults.get("resolution", [1024]))
-        if not isinstance(resolution, list):
-            resolution = [int(resolution)]
+        resolution = _resolution_list(hp, defaults)
         max_res = max(resolution) if resolution else 1024
         min_res = min(resolution) if resolution else max_res
-        # Only bucket across resolutions when the user picked more than one;
-        # a single resolution trains at that fixed size.
-        enable_bucket = len(resolution) > 1
 
         # An exact WxH size overrides the resolution list outright: bucketing
         # off, no resize, no crop. Images already at WxH reach the VAE byte-for-
         # byte, which is the only way to train pixel art without a resample
         # smearing the pixel grid.
         native = _parse_native_resolution(hp.get("native_resolution"))
+
+        # Bucket unless the user pinned an exact size. A single training
+        # resolution used to disable bucketing, which made sd-scripts resize-
+        # and-centre-crop every non-square image — silently cropping subjects
+        # out of frame, and diverging from ai-toolkit (which always buckets).
+        # Aspect-ratio bucketing at one resolution is the normal way to train.
+        enable_bucket = not native
+        # Multi-resolution runs bucket between the smallest and largest chosen
+        # size; a single-resolution run buckets from the standard floor up to
+        # that size (clamped, in case someone trains below the floor).
+        min_bucket_reso = (
+            min_res
+            if len(resolution) > 1
+            else min(DEFAULT_MIN_BUCKET_RESO, max_res)
+        )
 
         lines: list[str] = []
         lines.append("[general]")
@@ -471,13 +278,13 @@ class KohyaProvider(TrainingProvider):
         else:
             lines.append(f"resolution = {max_res}")
         lines.append(f"batch_size = {int(hp.get('batch_size', 1))}")
-        lines.append(f"enable_bucket = {_toml_bool(enable_bucket and not native)}")
-        if enable_bucket and not native:
+        lines.append(f"enable_bucket = {_toml_bool(enable_bucket)}")
+        if enable_bucket:
             bucket_no_upscale = bool(hp.get("bucket_no_upscale", False))
             bucket_reso_steps = int(hp.get("bucket_reso_steps", 64) or 64)
             lines.append(f"bucket_no_upscale = {_toml_bool(bucket_no_upscale)}")
             lines.append(f"bucket_reso_steps = {bucket_reso_steps}")
-            lines.append(f"min_bucket_reso = {min_res}")
+            lines.append(f"min_bucket_reso = {min_bucket_reso}")
             lines.append(f"max_bucket_reso = {max_res}")
         lines.append("")
 
@@ -756,53 +563,7 @@ class KohyaProvider(TrainingProvider):
 
         # Sample generation during training.
         if request.sample_prompts:
-            resolution = hp.get("resolution", defaults.get("resolution", [1024]))
-            if not isinstance(resolution, list):
-                resolution = [int(resolution)]
-            sample_res = max(resolution) if resolution else 1024
-            # Samples default to the training size, so an exact WxH run samples
-            # at WxH rather than a square crop of it.
-            native = _parse_native_resolution(hp.get("native_resolution"))
-            sample_w, sample_h = native if native else (sample_res, sample_res)
-            sample_steps = int(
-                hp.get("sample_steps", defaults.get("sample_steps", 20))
-            )
-            sample_guidance = _num(
-                hp.get("guidance_scale", defaults.get("guidance_scale", 7))
-            )
-
-            # Per-prompt sizes override the run default where the UI supplied
-            # them; a short/absent list leaves the older behaviour intact.
-            prompt_lines = []
-            for i, prompt in enumerate(request.sample_prompts):
-                width, height = request.sample_size_at(i, sample_w, sample_h)
-                prompt_lines.append(
-                    _add_missing_sample_flags(
-                        prompt, width, height, sample_steps, sample_guidance
-                    )
-                )
-
-            prompt_file = os.path.join(
-                config_dir, f"{request.output_name}.sample-prompts.txt"
-            )
-            with open(prompt_file, "w", encoding="utf-8") as f:
-                f.write("\n".join(prompt_lines))
-            args.append(f"--sample_prompts={prompt_file}")
-            # Sampling cadence in exactly one unit — mirrors the save-cadence
-            # dual field above. sd-scripts supports --sample_every_n_epochs
-            # natively, so pass whichever unit the user chose (the Node side
-            # zeroes the other). Epoch cadence wins when set.
-            sample_every_steps = int(hp.get("sample_every_n_steps", 0) or 0)
-            sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
-            if sample_every_epochs > 0:
-                args.append(f"--sample_every_n_epochs={sample_every_epochs}")
-            else:
-                args.append(
-                    f"--sample_every_n_steps={sample_every_steps or 250}"
-                )
-            args.append(
-                f"--sample_sampler={hp.get('sample_sampler', 'euler_a')}"
-            )
+            args.extend(self._sample_args(request, config_dir, model_def))
 
         # Resume from a saved training state directory.
         if hp.get("resume_state"):
@@ -812,535 +573,111 @@ class KohyaProvider(TrainingProvider):
 
         return args
 
-    async def start_training(
-        self,
-        request: StartJobRequest,
-        config_path: str,
-        gpu_id: int = 0,
-        job_id: Optional[str] = None,
-    ) -> AsyncGenerator[JobProgress, None]:
-        # The manager passes its real id (and overwrites the one we set on each
-        # yielded progress anyway); output_name is the standalone fallback.
-        job_id = job_id or request.output_name
+    def _sample_args(
+        self, request: StartJobRequest, config_dir: str, model_def: dict
+    ) -> list[str]:
+        """Write the sample-prompt file and return the sampling CLI flags."""
+        hp = request.hyperparameters
+        defaults = model_def["train_defaults"]
 
+        resolution = _resolution_list(hp, defaults)
+        sample_res = max(resolution) if resolution else 1024
+        # Samples default to the training size, so an exact WxH run samples
+        # at WxH rather than a square crop of it.
+        native = _parse_native_resolution(hp.get("native_resolution"))
+        sample_w, sample_h = native if native else (sample_res, sample_res)
+        sample_steps = int(hp.get("sample_steps", defaults.get("sample_steps", 20)))
+        sample_guidance = _num(
+            hp.get("guidance_scale", defaults.get("guidance_scale", 7))
+        )
+
+        # Per-prompt sizes override the run default where the UI supplied
+        # them; a short/absent list leaves the older behaviour intact.
+        prompt_lines = []
+        for i, prompt in enumerate(request.sample_prompts):
+            width, height = request.sample_size_at(i, sample_w, sample_h)
+            prompt_lines.append(
+                self._add_missing_sample_flags(
+                    prompt, width, height, sample_steps, sample_guidance
+                )
+            )
+
+        prompt_file = os.path.join(
+            config_dir, f"{request.output_name}.sample-prompts.txt"
+        )
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(prompt_lines))
+
+        args = [f"--sample_prompts={prompt_file}"]
+        # Sampling cadence in exactly one unit — mirrors the save-cadence
+        # dual field above. sd-scripts supports --sample_every_n_epochs
+        # natively, so pass whichever unit the user chose (the Node side
+        # zeroes the other). Epoch cadence wins when set.
+        sample_every_steps = int(hp.get("sample_every_n_steps", 0) or 0)
+        sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
+        if sample_every_epochs > 0:
+            args.append(f"--sample_every_n_epochs={sample_every_epochs}")
+        else:
+            args.append(f"--sample_every_n_steps={sample_every_steps or 250}")
+        args.append(f"--sample_sampler={hp.get('sample_sampler', 'euler_a')}")
+        return args
+
+    def _train_command(
+        self, request: StartJobRequest, config_path: str
+    ) -> tuple[str, str, list[str], str]:
+        """The accelerate launch pieces for this run."""
         model_def = _find_model(request.base_model)
         if model_def is None:
             raise ValueError(f"Unknown model: {request.base_model}")
 
-        self._cancelled = False
         python_exe = _find_python(self._scripts_path)
         script = str(self._scripts_path / model_def["train_script"])
         config_dir = os.path.dirname(config_path)
         cli_args = self._build_cli_args(request, config_path, config_dir)
-        mixed_precision = request.hyperparameters.get("mixed_precision", "bf16")
-
-        # Launch via accelerate. We pass explicit launch flags rather than rely
-        # on a machine-level `accelerate config`, so a single-GPU run is
-        # deterministic regardless of the user's global accelerate defaults.
-        self._process = await asyncio.create_subprocess_exec(
-            python_exe,
-            "-u",
-            "-m",
-            "accelerate.commands.launch",
-            "--num_processes=1",
-            "--num_machines=1",
-            f"--mixed_precision={mixed_precision}",
-            "--dynamo_backend=no",
-            "--num_cpu_threads_per_process=1",
-            script,
-            *cli_args,
-            cwd=str(self._scripts_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={
-                **os.environ,
-                "PYTHONUNBUFFERED": "1",
-                # sd-scripts prints Japanese log strings. When stdout/stderr are
-                # pipes (as here), Windows Python defaults to cp1252 and crashes
-                # with UnicodeEncodeError before training starts. Force UTF-8 so
-                # the child can emit those characters.
-                "PYTHONUTF8": "1",
-                "PYTHONIOENCODING": "utf-8",
-                "CUDA_VISIBLE_DEVICES": str(gpu_id),
-            },
-        )
-        # Hold a local handle: cancel_training() nulls self._process, and the
-        # tail of this loop must still be able to await the exit code.
-        proc = self._process
-
-        yield JobProgress(job_id=job_id, status=JobStatus.PREPARING)
-
-        log_lines: list[str] = []
-        stderr_lines: list[str] = []
-        # Sample collection: scan-diff `<output_path>/sample/` (shared across
-        # runs) against a seen-set seeded now, so pre-existing files from
-        # earlier runs are never claimed. sd-scripts never prints per-file
-        # sample paths, so the directory is the only source.
-        samples: list[SampleImage] = []
-        seen_samples: set[str] = _scan_sample_files(
-            request.output_path, request.output_name
-        )
-        current_epoch = 0
-        total_epochs = 0
-        # Epoch number logged during a sampling pause, applied once the pause
-        # ends — see the EPOCH_PATTERN branch in the run loop.
-        pending_epoch: Optional[int] = None
-
-        async def read_stream(stream: asyncio.StreamReader):
-            """Read lines, splitting on tqdm's \\r as well as \\n.
-
-            Cuts at whichever terminator comes FIRST. Preferring \\n would
-            swallow every \\r-separated redraw sitting ahead of it in the same
-            chunk: a bar that repaints faster than we drain the pipe (a fast
-            sampler, or tqdm's closing double-repaint) then arrives as one
-            merged line and only its first count is ever parsed — which is how
-            a whole sampling event's progress disappears at once.
-            """
-            buffer = ""
-            while True:
-                chunk = await stream.read(256)
-                if not chunk:
-                    break
-                buffer += chunk.decode("utf-8", errors="replace")
-                while True:
-                    cuts = [
-                        i for i in (buffer.find("\r"), buffer.find("\n")) if i >= 0
-                    ]
-                    if not cuts:
-                        break
-                    cut = min(cuts)
-                    line, buffer = buffer[:cut], buffer[cut + 1 :]
-                    line = ANSI_PATTERN.sub("", line).strip()
-                    if line:
-                        yield line
-
-        # sd-scripts (via accelerate/tqdm) writes progress to stderr, so we
-        # merge both streams — see the equivalent note in ai_toolkit_ui.py.
-        line_queue: asyncio.Queue = asyncio.Queue()
-        EOF = object()
-
-        async def drain(stream, is_stderr: bool):
-            async for line in read_stream(stream):
-                await line_queue.put((line, is_stderr))
-            await line_queue.put((EOF, is_stderr))
-
-        stdout_task = asyncio.create_task(drain(self._process.stdout, False))
-        stderr_task = asyncio.create_task(drain(self._process.stderr, True))
-
-        training_started = False
-        # True while sd-scripts is generating sample images. The sampler runs
-        # its own tqdm bars (e.g. 20 diffusion steps per image) which would
-        # otherwise be latched as the training bar via `training_started` and
-        # briefly rewrite current/total steps to 20/20 — collapsing the UI's
-        # charts. While set, only a bar that proves itself (avr_loss or the
-        # "steps" desc prefix) is accepted, which also clears the flag.
-        sampling_active = False
-        # Step the current sampling pause was announced at. train_network.py does
-        # `progress_bar.update(1); global_step += 1` and then samples immediately,
-        # but tqdm only repaints every 0.1s — so the bar line for that step
-        # usually arrives *during* the pause, and `unpause()` forces another
-        # repaint on the way out. Anchoring on the announced step means those
-        # catch-up repaints read as what they are; only a bar beyond it is
-        # training actually resuming.
-        sampling_step = 0
-        # Last (current, total) read off the sampler's own diffusion bar, e.g.
-        #   Sampling:  67%|██████▋   | 16/24 [00:13<00:07,  1.14it/s]
-        # Kept so the ~10/s tqdm redraws only produce an event when the count
-        # actually moves. Reset at the start of each sampling pause.
-        last_sample_bar: Optional[tuple[int, int]] = None
-        # Which image of the current sampling event is rendering, 1-based, and
-        # how many the event will produce. sd-scripts reports neither — but the
-        # total is just the prompt list we handed it, and the index is a count
-        # of the `prompt:` blocks it echoes, one per image. Reset at the start
-        # of each pause so every event counts from one.
-        sample_image_index = 0
-        sample_image_total = len(request.sample_prompts)
-        # When the sampler's bar last triggered a sample scan. Bounds the cost
-        # of scanning from inside the pause (see the sampler-bar branch below)
-        # to roughly once per settle window rather than once per diffusion step.
-        last_sample_scan = 0.0
-        # Last training step counts seen, so the terminal COMPLETED event can
-        # report the bar as full (N/N) rather than dropping back to 0/0.
-        current_step = 0
-        total_steps = 0
-        # Last loss seen, so activity events between steps (saving/sampling)
-        # keep showing it rather than blanking the value mid-save.
-        last_loss: Optional[float] = None
-        # Human-readable label for the current setup phase. Latched from the
-        # INFO/loader lines sd-scripts prints just before each tqdm bar, so it
-        # survives the rapid bar redraws that would otherwise scroll the header
-        # out of any fixed-size log window.
-        preparing_phase: Optional[str] = None
-        eofs_seen = 0
-        while eofs_seen < 2:
-            item, is_stderr = await line_queue.get()
-            if item is EOF:
-                eofs_seen += 1
-                continue
-            line = item
-
-            if is_stderr:
-                stderr_lines.append(line)
-
-            # Track which setup phase we're in so the caching/loading tqdm bars
-            # can be labelled and shown with a determinate progress bar.
-            lower_line = line.lower()
-            if "caching latents" in lower_line:
-                preparing_phase = "Caching latents"
-            elif "caching text encoder" in lower_line:
-                preparing_phase = "Caching text-encoder outputs"
-            elif "loading" in lower_line and "safetensors" in lower_line:
-                preparing_phase = "Loading model"
-
-            epoch_match = EPOCH_PATTERN.search(line)
-            if epoch_match:
-                total_epochs = int(epoch_match.group(2))
-                if sampling_active:
-                    # sd-scripts samples at the end of an epoch and the loop
-                    # logs the *next* epoch immediately after — while the
-                    # trainer is still finishing the pause. Hold the new number
-                    # back so the reported epoch keeps naming the event being
-                    # sampled (which is what its sample filenames encode, and
-                    # what the UI matches the in-flight row against); every
-                    # other counter is frozen through the pause anyway.
-                    pending_epoch = int(epoch_match.group(1))
-                else:
-                    current_epoch = int(epoch_match.group(1))
-
-            match = TQDM_PATTERN.search(line)
-            # avr_loss and the it/s rate both sit *inside* the tqdm bracket, so
-            # search the whole line rather than the post-bracket remainder.
-            loss_match = LOSS_PATTERN.search(line) if match else None
-            rate_match = RATE_PATTERN.search(line) if match else None
-
-            # sd-scripts shows several tqdm bars (caching latents, caching TE
-            # outputs, then the training loop). Only the training bar is
-            # prefixed with "steps" and/or carries avr_loss — latch on that so
-            # setup bars stay under the Preparing label. An anonymous bar
-            # (no prefix, no loss) is only trusted mid-run when its total
-            # matches the established step count: the sampler's own diffusion
-            # bars (e.g. 13/20) would otherwise briefly rewrite current/total
-            # steps and collapse the charts, even if the "generating sample"
-            # log line that sets `sampling_active` was missed.
-            bar_total = int(match.group(2)) if match else 0
-            is_training_bar = bool(
-                match
-                and (
-                    loss_match
-                    or line.lower().startswith("steps")
-                    or (
-                        training_started
-                        and not sampling_active
-                        and (total_steps <= 0 or bar_total == total_steps)
-                    )
-                )
-            )
-
-            if match and is_training_bar:
-                training_started = True
-                new_step = int(match.group(1))
-                # sd-scripts reprints the training bar throughout the sampling
-                # pause — sometimes catching up to the step sampling was
-                # announced at. Only a bar past that step is training resuming;
-                # without this every repaint flipped the UI back to Training.
-                still_sampling = sampling_active and new_step <= sampling_step
-                sampling_active = still_sampling
-                if not still_sampling and pending_epoch is not None:
-                    # Pause over — adopt the epoch the loop logged during it.
-                    current_epoch = pending_epoch
-                    pending_epoch = None
-                current_step = new_step
-                total_steps = int(match.group(2))
-                eta = _parse_eta_seconds(match.group(3))
-
-                speed = (
-                    f"{rate_match.group(1)} {rate_match.group(2)}"
-                    if rate_match
-                    else None
-                )
-                if loss_match:
-                    last_loss = float(loss_match.group(1))
-
-                _collect_new_samples(
-                    request.output_path,
-                    request.output_name,
-                    seen_samples,
-                    samples,
-                    job_id,
-                )
-
-                yield JobProgress(
-                    job_id=job_id,
-                    status=JobStatus.TRAINING,
-                    current_step=current_step,
-                    total_steps=total_steps,
-                    current_epoch=current_epoch,
-                    total_epochs=total_epochs,
-                    loss=last_loss,
-                    eta_seconds=eta,
-                    speed=speed,
-                    samples=samples,
-                    log_lines=log_lines[-50:],
-                    # An advancing step means we're actively training — clear
-                    # any transient activity label (e.g. a prior "Saving").
-                    # A bar frozen mid-sample keeps the sampling label instead.
-                    phase=(
-                        _sampling_phase(sample_image_index, sample_image_total)
-                        if still_sampling
-                        else None
-                    ),
-                )
-            else:
-                # Collapse repeats — sd-scripts prints some output once per
-                # DataLoader worker, which would otherwise flood the log panel.
-                _append_log_line(log_lines, line)
-
-                lower = line.lower()
-                if training_started:
-                    # A tqdm bar during a sampling pause is the sampler's own
-                    # diffusion bar for the image being rendered right now
-                    # ("Sampling: 67%|…| 16/24 …") — the training bar was
-                    # claimed above, so anything left here belongs to the
-                    # sampler. Forward it so the UI can draw a determinate bar
-                    # in the cell that image is destined for. Emitted only when
-                    # the count moves, since tqdm redraws far faster than the
-                    # UI needs.
-                    if match and sampling_active:
-                        bar = (int(match.group(1)), int(match.group(2)))
-                        if bar != last_sample_bar:
-                            last_sample_bar = bar
-                            # Claim whatever the previous image left on disk.
-                            # The announce lines are otherwise the only scan
-                            # points inside a pause, so without this an image
-                            # stayed unclaimed for as long as the one after it
-                            # took to render — its cell dashed while the next
-                            # image's bar drew beside it. Throttled, since the
-                            # `prompt:` line that opens each image already scans
-                            # right after the previous one was written.
-                            now = time.monotonic()
-                            if now - last_sample_scan >= SAMPLE_SCAN_INTERVAL_S:
-                                last_sample_scan = now
-                                _collect_new_samples(
-                                    request.output_path,
-                                    request.output_name,
-                                    seen_samples,
-                                    samples,
-                                    job_id,
-                                )
-                            yield JobProgress(
-                                job_id=job_id,
-                                status=JobStatus.TRAINING,
-                                current_step=current_step,
-                                total_steps=total_steps,
-                                current_epoch=current_epoch,
-                                total_epochs=total_epochs,
-                                loss=last_loss,
-                                phase=_sampling_phase(
-                                    sample_image_index, sample_image_total
-                                ),
-                                samples=samples,
-                                log_lines=log_lines[-50:],
-                                sample_progress=SampleProgress(
-                                    current=bar[0], total=bar[1]
-                                ),
-                            )
-                        continue
-
-                    # Between steps sd-scripts pauses to save checkpoints or
-                    # generate samples — the step bar freezes during that, so
-                    # surface what it's doing as a one-line activity label.
-                    activity = None
-                    # Record saves at the step the bar is frozen on. sd-scripts
-                    # prints "saving checkpoint: <file>" for every intermediate
-                    # epoch/step save (train_network.py, immediately before the
-                    # write) but "model saved." only once, for the final model —
-                    # so the intermediate line is the save signal, with "model
-                    # saved" catching the run-end save. The manager dedupes by
-                    # step, which also collapses the final-epoch save and the
-                    # end-of-run save landing on the same step.
-                    saved: list[int] = []
-                    if "saving checkpoint" in lower or "saving model" in lower:
-                        activity = "Saving checkpoint"
-                        saved = [current_step]
-                    elif (
-                        "generating sample" in lower
-                        or ("sample" in lower and "generat" in lower)
-                        # Each image in the batch echoes its own "prompt:" block
-                        # (height/width/scale/seed follow). Re-asserting on those
-                        # keeps a multi-prompt event unbroken even if the opening
-                        # "generating sample images" line was missed or scrolled
-                        # past — "negative_prompt:" deliberately doesn't match.
-                        or lower.startswith("prompt:")
-                    ):
-                        announce = SAMPLE_ANNOUNCE_PATTERN.search(lower)
-                        if announce:
-                            sampling_step = int(announce.group(1))
-                        elif not sampling_active:
-                            # Re-armed off a "prompt:" line without the opening
-                            # announcement (missed, or the sampler logged out of
-                            # order) — the frozen bar is the best anchor we have.
-                            sampling_step = current_step
-                        # The sampler's bar restarts per image, so drop the last
-                        # reading rather than letting a finished image's count
-                        # suppress the first tick of the next one.
-                        if not sampling_active:
-                            last_sample_bar = None
-                            # A new event: restart the image count, whether this
-                            # is the announcement or a "prompt:" line we re-armed
-                            # off. The increment below then makes the latter the
-                            # event's first image, same as if we'd seen both.
-                            sample_image_index = 0
-                        # Latch the pause so the sampler's own tqdm bars are read
-                        # as sample progress (branch above) rather than training
-                        # steps, until the real training bar ("steps" / avr_loss)
-                        # moves past that step.
-                        sampling_active = True
-                        # One "prompt:" block precedes each image, so counting
-                        # them tracks which one is on the GPU. The announcement
-                        # itself isn't one — it opens the event at 0, and the
-                        # first image's block takes it to 1.
-                        if lower.startswith("prompt:"):
-                            sample_image_index += 1
-                        activity = _sampling_phase(
-                            sample_image_index, sample_image_total
-                        )
-                    elif "model saved" in lower:
-                        activity = "Checkpoint saved"
-                        saved = [current_step]
-                    if activity is not None:
-                        _collect_new_samples(
-                            request.output_path,
-                            request.output_name,
-                            seen_samples,
-                            samples,
-                            job_id,
-                        )
-                        yield JobProgress(
-                            job_id=job_id,
-                            status=JobStatus.TRAINING,
-                            current_step=current_step,
-                            total_steps=total_steps,
-                            current_epoch=current_epoch,
-                            total_epochs=total_epochs,
-                            loss=last_loss,
-                            phase=activity,
-                            saved_checkpoints=saved,
-                            samples=samples,
-                            log_lines=log_lines[-50:],
-                        )
-                else:
-                    # A tqdm bar here is a setup phase (caching latents / TE
-                    # outputs / loading the DiT) — surface its count so the UI
-                    # can show a determinate bar under the phase label, plus the
-                    # bar's own it/s rate and ETA (which sit in the bracket, same
-                    # as the training bar) so a slow cache doesn't look stalled.
-                    prep_current = 0
-                    prep_total = 0
-                    prep_eta = None
-                    prep_speed = None
-                    if match:
-                        prep_current = int(match.group(1))
-                        prep_total = int(match.group(2))
-                        prep_eta = _parse_eta_seconds(match.group(3))
-                        prep_speed = (
-                            f"{rate_match.group(1)} {rate_match.group(2)}"
-                            if rate_match
-                            else None
-                        )
-                    yield JobProgress(
-                        job_id=job_id,
-                        status=JobStatus.PREPARING,
-                        current_step=prep_current,
-                        total_steps=prep_total,
-                        eta_seconds=prep_eta,
-                        speed=prep_speed,
-                        phase=preparing_phase,
-                        log_lines=log_lines[-50:],
-                    )
-
-        await stdout_task
-        await stderr_task
-        return_code = await proc.wait()
-        self._process = None
-
-        # User asked to stop: cancel_job() emits the CANCELLED update, so the
-        # non-zero exit from the kill is expected — don't report it as a failure.
-        if self._cancelled:
-            return
-
-        # A run that ended inside a sampling pause never got the training bar
-        # that would have adopted the held epoch — the terminal event should
-        # still report the last one the trainer logged.
-        if pending_epoch is not None:
-            current_epoch = pending_epoch
-
-        # Final scan — samples generated at the last save/end land after the
-        # last training-bar update, so catch any stragglers here. Runs on the
-        # failure path too: progress updates replace client state wholesale, so
-        # a terminal yield without `samples` would wipe everything collected.
-        # sd-scripts has exited by now, so nothing can be mid-write and this is
-        # the last chance to claim anything: skip the settle gate.
-        _collect_new_samples(
-            request.output_path,
-            request.output_name,
-            seen_samples,
-            samples,
-            job_id,
-            require_settled=False,
-        )
-
-        if return_code == 0:
-            yield JobProgress(
-                job_id=job_id,
-                status=JobStatus.COMPLETED,
-                # Report the bar as full so the UI settles at 100% instead of
-                # snapping the completed bar back to empty.
-                current_step=total_steps,
-                total_steps=total_steps,
-                current_epoch=current_epoch,
-                total_epochs=total_epochs,
-                log_lines=log_lines[-50:],
-                samples=samples,
-            )
-        else:
-            tail = stderr_lines[-10:] if stderr_lines else log_lines[-10:]
-            detail = "\n".join(tail).strip()
-            error_msg = f"Training process exited with code {return_code}"
-            if detail:
-                error_msg = f"{error_msg}\n{detail}"
-            merged_logs = (log_lines + stderr_lines)[-50:]
-            yield JobProgress(
-                job_id=job_id,
-                status=JobStatus.FAILED,
-                error=error_msg,
-                log_lines=merged_logs,
-                samples=samples,
-            )
-
-    async def cancel_training(self) -> None:
-        self._cancelled = True
-        proc = self._process
-        if proc is None:
-            return
-
-        if sys.platform == "win32":
-            # accelerate spawns child worker processes; kill the whole tree.
-            os.system(f"taskkill /F /T /PID {proc.pid}")
-        else:
-            proc.send_signal(signal.SIGTERM)
-
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=10)
-        except asyncio.TimeoutError:
-            proc.kill()
-
-        self._process = None
+        return python_exe, script, cli_args, str(self._scripts_path)
 
     def get_supported_models(self) -> list[dict]:
         return [
             {"id": m["id"], "name": m["name"], "architecture": m["architecture"]}
             for m in SUPPORTED_MODELS
         ]
+
+    def validate_request(self, request: StartJobRequest) -> list[str]:
+        """Cheap semantic checks: native resolution shape, component paths.
+
+        Unknown-model is deliberately not reported here — validation.py
+        already checks base_model membership against get_supported_models(),
+        so a None here just means there's nothing arch-specific left to check.
+        """
+        errors: list[str] = []
+        hp = request.hyperparameters
+
+        native = hp.get("native_resolution")
+        if native:
+            try:
+                _parse_native_resolution(native)
+            except ValueError as e:
+                errors.append(str(e))
+
+        model_def = _find_model(request.base_model)
+        if model_def is None:
+            return errors
+
+        model_paths = hp.get("model_paths") or {}
+        for comp in model_def["components"]:
+            path = model_paths.get(comp["key"])
+            if comp["key"] == "checkpoint" and not path:
+                path = hp.get("model_path")
+            if not path:
+                if comp["required"]:
+                    errors.append(
+                        f"{model_def['name']} training needs: {comp['label']}"
+                    )
+                continue
+            if not Path(path).exists():
+                errors.append(f"{comp['label']} path does not exist: {path}")
+
+        return errors
 
 
 # --- Helpers ---
@@ -1363,142 +700,3 @@ def _te_cache_safe(datasets) -> bool:
         if float(ds.caption_dropout_rate or 0) > 0:
             return False
     return True
-
-
-def _prompt_line_has_flag(line: str, flag: str) -> bool:
-    r"""Whether `line` already sets `--{flag}` in sd-scripts prompt-line syntax.
-
-    Mirrors library/sampling.py's line_to_prompt_dict: a prompt line is split
-    on " --" and each resulting segment matched against e.g. `r"w (\d+)"` at
-    its start — so we replicate that same split/prefix check rather than a
-    naive substring search (which would e.g. mistake "--ss euler_a" for a "-s"
-    steps flag).
-    """
-    for segment in line.split(" --")[1:]:
-        m = re.match(r"^(\w+)\s", segment)
-        if m and m.group(1).lower() == flag:
-            return True
-    return False
-
-
-def _add_missing_sample_flags(
-    line: str, width: int, height: int, steps: int, guidance: str
-) -> str:
-    """Append `--w`/`--h`/`--s`/`--l` to a sample prompt line, unless the user
-    already set that flag on the line themselves (their explicit choice wins).
-    """
-    extras: list[str] = []
-    if not _prompt_line_has_flag(line, "w"):
-        extras.append(f"--w {width}")
-    if not _prompt_line_has_flag(line, "h"):
-        extras.append(f"--h {height}")
-    if not _prompt_line_has_flag(line, "s"):
-        extras.append(f"--s {steps}")
-    if not _prompt_line_has_flag(line, "l"):
-        extras.append(f"--l {guidance}")
-    if not extras:
-        return line
-    return line + " " + " ".join(extras)
-
-
-def _parse_kv_args(raw) -> list[str]:
-    """Parse a freeform "key=value key2=value2" string into a list of chunks.
-
-    Splits on whitespace and keeps only chunks that contain '=' (a bare key
-    with no value, or stray tokens, are silently dropped — the UI surfaces a
-    non-blocking hint for malformed input). Used for the expert-tier
-    --network_args / --optimizer_args editors.
-    """
-    if not raw:
-        return []
-    return [chunk for chunk in str(raw).split() if "=" in chunk]
-
-
-_NATIVE_RESO_RE = re.compile(r"^(\d+)\s*[x×,]\s*(\d+)$", re.IGNORECASE)
-
-
-def _parse_native_resolution(raw) -> Optional[tuple[int, int]]:
-    """Parse an exact `WxH` training size (e.g. "1280x768"). Empty/None = off.
-
-    sd-scripts' dataset `resolution` accepts a scalar or a [W, H] pair, but a
-    scalar means a *square* WxW — it resizes to fit and centre-crops. Emitting
-    the pair is the only way to train at a non-square size without resampling,
-    which is what pixel-art datasets need (any non-integer rescale destroys the
-    pixel grid before the VAE ever sees it).
-
-    Both dimensions must be divisible by 8: the VAE downsamples by 8x, and
-    sd-scripts silently rounds off-grid sizes, which would defeat the point of
-    asking for an exact size in the first place.
-    """
-    if not raw:
-        return None
-    match = _NATIVE_RESO_RE.match(str(raw).strip())
-    if not match:
-        raise ValueError(
-            f"Invalid native resolution {raw!r} — expected WxH, e.g. 1280x768"
-        )
-    width, height = int(match.group(1)), int(match.group(2))
-    if width <= 0 or height <= 0:
-        raise ValueError(f"Native resolution {raw!r} must be positive")
-    if width % 8 or height % 8:
-        raise ValueError(
-            f"Native resolution {width}x{height} must be divisible by 8 "
-            "(the VAE downsamples by 8x)"
-        )
-    return width, height
-
-
-def _toml_bool(value: bool) -> str:
-    return "true" if value else "false"
-
-
-def _toml_str(value: str) -> str:
-    """Emit a TOML basic string with backslashes/quotes escaped.
-
-    Windows dataset paths are full of backslashes, which TOML treats as escape
-    sequences — escaping them keeps the generated config valid.
-    """
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
-
-
-def _num(value) -> str:
-    """Format a number for a CLI flag without trailing float noise.
-
-    Integers stay integers; floats keep their repr (e.g. 1e-4 -> '0.0001').
-    """
-    if isinstance(value, bool):
-        return "1" if value else "0"
-    if isinstance(value, int):
-        return str(value)
-    f = float(value)
-    if f.is_integer():
-        return str(int(f))
-    return repr(f)
-
-
-def _find_python(scripts_path: Path) -> str:
-    """Find the Python executable for the sd-scripts environment.
-
-    Mirrors ai_toolkit._find_python: prefer a `venv`/`.venv` inside the
-    checkout, then a sibling `python_embeded`, then fall back to the sidecar's
-    own interpreter (which will fail loudly rather than hang).
-    """
-    if sys.platform == "win32":
-        candidates = [
-            scripts_path / "venv" / "Scripts" / "python.exe",
-            scripts_path / ".venv" / "Scripts" / "python.exe",
-            scripts_path.parent / "python_embeded" / "python.exe",
-        ]
-    else:
-        candidates = [
-            scripts_path / "venv" / "bin" / "python",
-            scripts_path / ".venv" / "bin" / "python",
-            scripts_path.parent / "python_embeded" / "bin" / "python",
-        ]
-
-    for candidate in candidates:
-        if candidate.exists():
-            return str(candidate)
-
-    return sys.executable

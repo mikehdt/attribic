@@ -6,6 +6,8 @@
 
 import type { TrainingDefaults } from './models';
 import { getModelById } from './models';
+import type { ProviderCapability } from './provider-capabilities';
+import { hasCapability } from './provider-capabilities';
 import type { TrainingProvider } from './types';
 
 export type ExpertiseTier = 'simple' | 'intermediate' | 'advanced' | 'expert';
@@ -30,11 +32,11 @@ type FieldMeta = {
   /** Key on TrainingDefaults to compare against (null for fields with no model default) */
   defaultKey: keyof TrainingDefaults | null;
   /**
-   * Providers that actually consume this field. Absent means the field is
-   * shared by all providers. `mock` always sees every field regardless of
-   * this list, since it's a fake backend used for UI testing.
+   * The capability this field requires. Absent means the field is shared by
+   * every provider. `mock`'s capability set is total, so it always sees every
+   * field regardless of this.
    */
-  providers?: TrainingProvider[];
+  capability?: ProviderCapability;
 };
 
 /**
@@ -92,25 +94,25 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'simple',
     group: 'learning',
     defaultKey: 'scheduler',
-    providers: ['kohya'],
+    capability: 'lrSchedulerControls',
   },
   warmupSteps: {
     tier: 'intermediate',
     group: 'learning',
     defaultKey: 'warmupSteps',
-    providers: ['kohya'],
+    capability: 'lrSchedulerControls',
   },
   numRestarts: {
     tier: 'intermediate',
     group: 'learning',
     defaultKey: 'numRestarts',
-    providers: ['kohya'],
+    capability: 'lrSchedulerControls',
   },
   weightDecay: {
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'weightDecay',
-    providers: ['kohya'],
+    capability: 'optimizerExtraArgs',
   },
   maxGradNorm: {
     tier: 'advanced',
@@ -126,7 +128,7 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'backboneLR',
-    providers: ['ai-toolkit'],
+    capability: 'backboneLr',
   },
   textEncoderLR: {
     tier: 'advanced',
@@ -137,13 +139,13 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'ema',
-    providers: ['ai-toolkit'],
+    capability: 'ema',
   },
   lossType: {
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'lossType',
-    providers: ['ai-toolkit'],
+    capability: 'lossType',
   },
   timestepType: {
     tier: 'advanced',
@@ -154,62 +156,62 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'timestepBias',
-    providers: ['ai-toolkit'],
+    capability: 'timestepBias',
   },
   discreteFlowShift: {
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'discreteFlowShift',
-    providers: ['kohya'],
+    capability: 'discreteFlowShift',
   },
   minSnrGamma: {
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'minSnrGamma',
-    providers: ['kohya'],
+    capability: 'ddpmNoiseControls',
   },
   noiseOffset: {
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'noiseOffset',
-    providers: ['kohya'],
+    capability: 'ddpmNoiseControls',
   },
   emaDecay: {
     tier: 'advanced',
     group: 'learning',
     defaultKey: 'emaDecay',
-    providers: ['ai-toolkit'],
+    capability: 'ema',
   },
   // Expert
   optimizerArgs: {
     tier: 'expert',
     group: 'learning',
     defaultKey: 'optimizerArgs',
-    providers: ['kohya'],
+    capability: 'optimizerExtraArgs',
   },
   contentOrStyle: {
     tier: 'expert',
     group: 'learning',
     defaultKey: 'contentOrStyle',
-    providers: ['ai-toolkit'],
+    capability: 'contentOrStyle',
   },
   diffOutputPreservation: {
     tier: 'expert',
     group: 'learning',
     defaultKey: 'diffOutputPreservation',
-    providers: ['ai-toolkit'],
+    capability: 'dop',
   },
   diffOutputPreservationMultiplier: {
     tier: 'expert',
     group: 'learning',
     defaultKey: 'diffOutputPreservationMultiplier',
-    providers: ['ai-toolkit'],
+    capability: 'dop',
   },
   diffOutputPreservationClass: {
     tier: 'expert',
     group: 'learning',
     defaultKey: 'diffOutputPreservationClass',
-    providers: ['ai-toolkit'],
+    capability: 'dop',
   },
 
   // LoRA Shape
@@ -234,7 +236,7 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'intermediate',
     group: 'loraShape',
     defaultKey: null,
-    providers: ['ai-toolkit'],
+    capability: 'networkTypeSelect',
   },
   networkDropout: {
     tier: 'advanced',
@@ -245,26 +247,26 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'advanced',
     group: 'loraShape',
     defaultKey: 'scaleWeightNorms',
-    providers: ['kohya'],
+    capability: 'scaleWeightNorms',
   },
   // Expert
   networkArgs: {
     tier: 'expert',
     group: 'loraShape',
     defaultKey: 'networkArgs',
-    providers: ['kohya'],
+    capability: 'networkExtraArgs',
   },
   lokrFactor: {
     tier: 'expert',
     group: 'loraShape',
     defaultKey: 'lokrFactor',
-    providers: ['ai-toolkit'],
+    capability: 'lokr',
   },
   layerTargeting: {
     tier: 'expert',
     group: 'loraShape',
     defaultKey: 'layerTargeting',
-    providers: ['ai-toolkit'],
+    capability: 'layerTargeting',
   },
 
   // Performance
@@ -282,31 +284,31 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'intermediate',
     group: 'performance',
     defaultKey: 'transformerQuantization',
-    providers: ['ai-toolkit'],
+    capability: 'quantization',
   },
   textEncoderQuantization: {
     tier: 'intermediate',
     group: 'performance',
     defaultKey: 'textEncoderQuantization',
-    providers: ['ai-toolkit'],
+    capability: 'quantization',
   },
   cacheTextEmbeddings: {
     tier: 'intermediate',
     group: 'performance',
     defaultKey: 'cacheTextEmbeddings',
-    providers: ['ai-toolkit'],
+    capability: 'teCacheToggle',
   },
   unloadTextEncoder: {
     tier: 'advanced',
     group: 'performance',
     defaultKey: 'unloadTextEncoder',
-    providers: ['ai-toolkit'],
+    capability: 'unloadTextEncoder',
   },
   cacheLatents: {
     tier: 'advanced',
     group: 'performance',
     defaultKey: 'cacheLatents',
-    providers: ['kohya'],
+    capability: 'latentCacheToggle',
   },
   resolution: {
     tier: 'simple',
@@ -321,7 +323,7 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'simple',
     group: 'performance',
     defaultKey: 'nativeResolution',
-    providers: ['kohya'],
+    capability: 'nativeResolution',
   },
   gradientAccumulationSteps: {
     tier: 'advanced',
@@ -332,32 +334,32 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'advanced',
     group: 'performance',
     defaultKey: 'gradientCheckpointing',
-    providers: ['kohya'],
+    capability: 'gradientCheckpointingToggle',
   },
   bucketResoSteps: {
     tier: 'advanced',
     group: 'performance',
     defaultKey: 'bucketResoSteps',
-    providers: ['kohya'],
+    capability: 'bucketControls',
   },
   bucketNoUpscale: {
     tier: 'advanced',
     group: 'performance',
     defaultKey: 'bucketNoUpscale',
-    providers: ['kohya'],
+    capability: 'bucketControls',
   },
   // Expert
   blocksToSwap: {
     tier: 'expert',
     group: 'performance',
     defaultKey: 'blocksToSwap',
-    providers: ['kohya'],
+    capability: 'blockSwap',
   },
   lowVram: {
     tier: 'expert',
     group: 'performance',
     defaultKey: 'lowVram',
-    providers: ['ai-toolkit'],
+    capability: 'lowVram',
   },
   // Per-folder augmentation (captionShuffling, captionDropoutRate,
   // keepTokens, flipAugment, flipVAugment) lives on DatasetFolder itself,
@@ -411,7 +413,7 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'intermediate',
     group: 'saving',
     defaultKey: 'saveFormat',
-    providers: ['kohya'],
+    capability: 'saveFormat',
   },
   saveEnabled: { tier: 'simple', group: 'saving', defaultKey: null },
   saveMode: { tier: 'simple', group: 'saving', defaultKey: null },
@@ -476,16 +478,8 @@ export function getVisibleFields(
   const visible = new Set<TrainingFieldName>();
   for (const [field, meta] of Object.entries(FIELD_REGISTRY)) {
     if (!isTierAtLeast(tier, meta.tier)) continue;
-    if (meta.defaultKey && hiddenByModel.has(meta.defaultKey)) continue;
-    // Mock is a fake backend for UI testing, so it shows every field
-    // regardless of which real provider(s) support it.
-    if (
-      provider !== 'mock' &&
-      meta.providers &&
-      !meta.providers.includes(provider)
-    ) {
-      continue;
-    }
+    if (hiddenByModel.has(field as TrainingFieldName)) continue;
+    if (meta.capability && !hasCapability(provider, meta.capability)) continue;
     visible.add(field as TrainingFieldName);
   }
   return visible;

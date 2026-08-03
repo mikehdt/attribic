@@ -69,6 +69,7 @@ type SamplingSectionProps = {
   /** Resolved run length, for working out how many samples the run produces. */
   calculatedSteps: number;
   calculatedEpochs: number;
+  hasChanges: boolean;
   defaults: TrainingDefaults;
   visibleFields: Set<TrainingFieldName>;
   hiddenChangesCount?: number;
@@ -98,6 +99,7 @@ const SamplingSectionComponent = ({
   sampleSampler,
   calculatedSteps,
   calculatedEpochs,
+  hasChanges,
   defaults,
   visibleFields,
   hiddenChangesCount,
@@ -231,7 +233,7 @@ const SamplingSectionComponent = ({
         <SectionHeaderExtra hiddenChangesCount={hiddenChangesCount} />
       }
       headerActions={(expanded) =>
-        samplingEnabled && expanded ? (
+        hasChanges && expanded ? (
           <SectionResetButton onClick={() => onReset('sampling')} />
         ) : undefined
       }

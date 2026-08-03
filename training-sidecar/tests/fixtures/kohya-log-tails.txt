@@ -1,0 +1,102 @@
+=== 92f7c13add0a (cancelled) ===
+override steps. steps for 70 epochs is / 指定エポックまでのステップ数: 2800
+running training / 学習開始
+num train images * repeats / 学習画像の数×繰り返し回数: 80
+num validation images * repeats / 学習画像の数×繰り返し回数: 0
+num reg images / 正則化画像の数: 0
+num batches per epoch / 1epochのバッチ数: 40
+num epochs / epoch数: 70
+batch size per device / バッチサイズ: 2
+gradient accumulation steps / 勾配を合計するステップ数 = 1
+total optimization steps / 学習ステップ数: 2800
+text_encoder is not needed for training. deleting to save memory.
+unet dtype: torch.bfloat16, device: cuda:0
+epoch 1/70
+W0731 10:42:53.297000 7828 venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+W0731 10:42:59.322000 20320 venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+W0731 10:43:05.326000 20912 venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+W0731 10:43:11.076000 5828 venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+W0731 10:43:16.956000 19048 venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+W0731 10:43:23.246000 1288 venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+W0731 10:43:29.114000 5480 venv\Lib\site-packages\torch\utils\flop_counter.py:29] triton not found; flop counting will not work for triton kernels
+2026-07-31 10:43:302026-07-31 10:43:30 INFO     epoch is incremented.                dataset.py:464INFO
+epoch is incremented.                       current_epoch: 0, epoch:  1
+dataset.py:4642026-07-31 10:43:30 INFO     epoch is incremented.               dataset.py:464
+current_epoch: 0         , epoch: current_epoch: 1                        0
+, epoch: 1
+2026-07-31 10:43:30 INFO     epoch is incremented.               dataset.py:464
+current_epoch: 0, epoch: 1
+epoch 2/70
+2026-07-31 10:45:532026-07-31 10:45:53                      INFO     INFO              epoch is incremented.               current_epoch: dataset.py:epoch is incremented.              1, epoch: 2           464              dataset.py
+:
+464
+current_epoch: current_epoch: 1, epoch: 12         , epoch:
+2
+2026-07-31 10:45:53 INFO     epoch is incremented.               dataset.py:464
+current_epoch: 1, epoch: 2
+2026-07-31 10:45:53 2026-07-31 10:45:53INFO     INFO      epoch is incremented.               epoch is incremented.               dataset.py:dataset.py464
+:                             current_epoch: 4641, epoch:
+2                                       current_epoch:               1
+, epoch: 2
+2026-07-31 10:45:53 INFO     epoch is incremented.               dataset.py:464
+current_epoch: 1, epoch: 2
+epoch 3/70
+current_epoch: 2, epoch: 3
+2026-07-31 10:48:15 INFO     epoch is incremented.               dataset.py:464
+current_epoch: 2, epoch: 3
+2026-07-31 10:48:15 2026-07-31 10:48:15INFO     epoch is incremented.                dataset.py:2026-07-31 10:48:15464
+INFO             INFO    current_epoch:  epoch is incremented.                dataset.pyepoch is incremented.               :dataset.py2:464464
+, epoch:          current_epoch:
+2, epoch: 3                    3                             current_epoch:                             2, epoch:
+3
+=== cc3871eeca8a (completed) ===
+Sampling:  25%|██▌       | 5/20 [00:04<00:14,  1.03it/s]
+Sampling:  30%|███       | 6/20 [00:05<00:13,  1.02it/s]
+Sampling:  35%|███▌      | 7/20 [00:06<00:12,  1.02it/s]
+Sampling:  40%|████      | 8/20 [00:07<00:11,  1.02it/s]
+Sampling:  45%|████▌     | 9/20 [00:08<00:10,  1.02it/s]
+Sampling:  50%|█████     | 10/20 [00:09<00:09,  1.01it/s]
+Sampling:  55%|█████▌    | 11/20 [00:10<00:08,  1.01it/s]
+Sampling:  60%|██████    | 12/20 [00:11<00:07,  1.01it/s]
+Sampling:  65%|██████▌   | 13/20 [00:12<00:06,  1.01it/s]
+Sampling:  70%|███████   | 14/20 [00:13<00:05,  1.01it/s]
+Sampling:  75%|███████▌  | 15/20 [00:14<00:04,  1.01it/s]
+Sampling:  80%|████████  | 16/20 [00:15<00:03,  1.01it/s]
+Sampling:  85%|████████▌ | 17/20 [00:16<00:03,  1.01s/it]
+Sampling:  90%|█████████ | 18/20 [00:17<00:02,  1.02s/it]
+Sampling:  95%|█████████▌| 19/20 [00:18<00:01,  1.01s/it]
+Sampling: 100%|██████████| 20/20 [00:19<00:00,  1.00s/it]
+Sampling: 100%|██████████| 20/20 [00:19<00:00,  1.01it/s]
+prompt: ega graphics, flat colors, restricted palette, pixel art. a girl with blonde hair., size: 1280x768, steps: 20, scale: 4.0, flow_shift: 3.0, seed: None
+Sampling:   0%|          | 0/20 [00:00<?, ?it/s]
+Sampling:   5%|▌         | 1/20 [00:00<00:16,  1.12it/s]
+Sampling:  10%|█         | 2/20 [00:01<00:16,  1.06it/s]
+Sampling:  15%|█▌        | 3/20 [00:02<00:16,  1.04it/s]
+Sampling:  20%|██        | 4/20 [00:03<00:15,  1.03it/s]
+Sampling:  25%|██▌       | 5/20 [00:04<00:14,  1.03it/s]
+Sampling:  30%|███       | 6/20 [00:05<00:13,  1.03it/s]
+Sampling:  35%|███▌      | 7/20 [00:06<00:12,  1.02it/s]
+Sampling:  40%|████      | 8/20 [00:07<00:11,  1.02it/s]
+Sampling:  45%|████▌     | 9/20 [00:08<00:10,  1.01it/s]
+Sampling:  50%|█████     | 10/20 [00:09<00:09,  1.01it/s]
+Sampling:  55%|█████▌    | 11/20 [00:10<00:08,  1.02it/s]
+Sampling:  60%|██████    | 12/20 [00:11<00:07,  1.02it/s]
+Sampling:  65%|██████▌   | 13/20 [00:12<00:06,  1.02it/s]
+Sampling:  70%|███████   | 14/20 [00:13<00:05,  1.02it/s]
+Sampling:  75%|███████▌  | 15/20 [00:14<00:04,  1.02it/s]
+Sampling:  80%|████████  | 16/20 [00:15<00:03,  1.02it/s]
+Sampling:  85%|████████▌ | 17/20 [00:16<00:02,  1.02it/s]
+Sampling:  90%|█████████ | 18/20 [00:17<00:01,  1.02it/s]
+Sampling:  95%|█████████▌| 19/20 [00:18<00:00,  1.02it/s]
+Sampling: 100%|██████████| 20/20 [00:19<00:00,  1.02it/s]
+epoch 70/70
+current_epoch: 69, epoch: 70:
+4642026-07-31 13:38:41
+INFO     epoch is incremented.               dataset.py                    :         current_epoch: 2026-07-31 13:38:41464 INFO
+69 , epoch:                     70
+epoch is incremented.              current_epoch:  69, epoch: dataset.py:70464
+current_epoch: 69, epoch: 70
+2026-07-31 13:38:41 INFO     epoch is incremented.               dataset.py:464
+current_epoch: 69, epoch: 70
+saving checkpoint: F:\Training\loras\ega-graphics-an.safetensors
+model saved.
