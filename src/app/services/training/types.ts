@@ -10,11 +10,11 @@ export const TRAINING_PROVIDER_LABELS: Record<TrainingProvider, string> = {
   mock: 'Mock (fake GPU, UI testing)',
 };
 
-/** Compact backend names for tight UI (badges, list rows). */
+/** Compact backend names for tight UI (badges, list rows, group titles). */
 export const TRAINING_PROVIDER_SHORT_LABELS: Record<TrainingProvider, string> =
   {
     'ai-toolkit': 'AI Toolkit',
-    kohya: 'Kohya',
+    kohya: 'SD Scripts',
     mock: 'Mock',
   };
 

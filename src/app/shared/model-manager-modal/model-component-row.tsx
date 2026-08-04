@@ -3,15 +3,8 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import { getTrainingDownloadable } from '@/app/services/model-manager/registries/training-models';
-import {
-  getComponentProviders,
-  resolveInstalledPath,
-} from '@/app/services/training/model-configured';
-import type {
-  ModelComponent,
-  ModelDefinition,
-} from '@/app/services/training/models';
-import { TRAINING_PROVIDER_LABELS } from '@/app/services/training/types';
+import { resolveInstalledPath } from '@/app/services/training/model-configured';
+import type { ModelComponent } from '@/app/services/training/models';
 import { ModelPathField } from '@/app/shared/model-path-field/model-path-field';
 import { useAppSelector } from '@/app/store/hooks';
 import { selectDownloadJobByModelId } from '@/app/store/jobs';
@@ -27,7 +20,6 @@ import { GatedLicenseNotice } from './gated-license-notice';
 import { getModelStatus } from './use-model-manager';
 
 type ModelComponentRowProps = {
-  model: ModelDefinition;
   component: ModelComponent;
   /** The draft default path for this component (may be empty). */
   value: string;
@@ -40,7 +32,6 @@ type ModelComponentRowProps = {
  * whole story of "where do this component's weights come from" in one place.
  */
 export function ModelComponentRow({
-  model,
   component,
   value,
   onChange,
@@ -102,15 +93,6 @@ export function ModelComponentRow({
     [];
   const totalSize = activeFiles.reduce((sum, f) => sum + f.size, 0);
 
-  // Flag components only some backends use (e.g. Anima's pipeline folder is
-  // ai-toolkit only) so it's clear skipping them can still leave a model ready.
-  const providerNote = useMemo(() => {
-    const users = getComponentProviders(model, component.type);
-    const all = model.providers.filter((p) => p !== 'mock');
-    if (users.length === 0 || users.length === all.length) return null;
-    return `${users.map((p) => TRAINING_PROVIDER_LABELS[p]).join(', ')} only`;
-  }, [model, component.type]);
-
   const handleDownload = useCallback(() => {
     if (!downloadable) return;
     const variant = downloadable.variants?.find(
@@ -142,11 +124,6 @@ export function ModelComponentRow({
             {!component.required && (
               <span className="text-sm font-normal text-slate-400">
                 (optional)
-              </span>
-            )}
-            {providerNote && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-                {providerNote}
               </span>
             )}
             {downloadable?.sharedId && (

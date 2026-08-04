@@ -5,7 +5,10 @@
  */
 
 import type { TrainingFieldName } from './field-registry';
-import type { TrainingProvider } from './types';
+import {
+  TRAINING_PROVIDER_SHORT_LABELS,
+  type TrainingProvider,
+} from './types';
 
 export type ModelArchitecture =
   'flux' | 'sdxl' | 'zimage' | 'anima' | 'wan' | 'ltx';
@@ -863,6 +866,48 @@ export function getAllModelComponents(
     if (!byType.has(component.type)) byType.set(component.type, component);
   }
   return [...byType.values()];
+}
+
+export type BackendComponentGroup = {
+  /** The real (non-mock) backends that load these components. */
+  providers: TrainingProvider[];
+  label: string;
+  components: ModelComponent[];
+};
+
+/**
+ * A model's components grouped by the backends that load them, deduplicated —
+ * a component every backend shares appears once under a joint title (e.g.
+ * "SD Scripts & AI Toolkit"), while backend-specific shapes (Anima's
+ * pipeline folder) get their own group.
+ */
+export function getComponentsByBackend(
+  model: ModelDefinition,
+): BackendComponentGroup[] {
+  const real = model.providers.filter((p) => p !== 'mock');
+  const groups = new Map<string, BackendComponentGroup>();
+  for (const component of getAllModelComponents(model)) {
+    let users = real.filter((provider) =>
+      getModelComponents(model, provider).some(
+        (c) => c.type === component.type,
+      ),
+    );
+    if (users.length === 0) users = real;
+    const key = users.join('+');
+    const existing = groups.get(key);
+    if (existing) {
+      existing.components.push(component);
+    } else {
+      groups.set(key, {
+        providers: users,
+        label: users
+          .map((p) => TRAINING_PROVIDER_SHORT_LABELS[p])
+          .join(' & '),
+        components: [component],
+      });
+    }
+  }
+  return [...groups.values()];
 }
 
 /** Optimiser choices the given backend can actually run. */

@@ -20,6 +20,7 @@ import {
   type ModelComponentType,
   type ModelDefinition,
 } from '@/app/services/training/models';
+import type { TrainingProvider } from '@/app/services/training/types';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   selectAllModelStatuses,
@@ -38,6 +39,40 @@ export function useTrainingTab() {
 
   const groups = useMemo(() => getModelsByArchitecture(), []);
   const firstModelId = groups[0]?.models[0]?.id;
+
+  // Which backends have a location saved in config.json `trainingBackends`.
+  // Null until the config loads so the component groups don't flash
+  // "not set up" notes for backends that turn out to be configured.
+  const [backendPaths, setBackendPaths] = useState<Record<
+    string,
+    string
+  > | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then((data: { trainingBackends?: Record<string, string> }) => {
+        if (!cancelled) setBackendPaths(data.trainingBackends ?? {});
+      })
+      .catch(() => {
+        // Leave null — every backend renders as configured rather than
+        // wrongly steering the user to Settings.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const configuredBackends = useMemo(() => {
+    const real: TrainingProvider[] = ['kohya', 'ai-toolkit'];
+    const map: Record<string, boolean> = {};
+    for (const provider of real) {
+      map[provider] =
+        backendPaths === null || Boolean(backendPaths[provider]?.trim());
+    }
+    return map;
+  }, [backendPaths]);
 
   // Selected model, re-derived when the modal is reopened deep-linked to a
   // specific model (same sync-on-change pattern as the modal's tab state).
@@ -150,6 +185,7 @@ export function useTrainingTab() {
 
   return {
     groups,
+    configuredBackends,
     selectedModel,
     selectModel: setUserModelId,
     draft,

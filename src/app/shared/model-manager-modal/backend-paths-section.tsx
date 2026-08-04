@@ -1,9 +1,11 @@
 'use client';
 
+import { FolderOpenIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '../button';
 import { Input } from '../input/input';
+import { InputTray } from '../input-tray/input-tray';
 
 // Keys match what the sidecar reads from config.json `trainingBackends`
 // (training-sidecar/config.py). Musubi Tuner joins this list when supported.
@@ -11,13 +13,13 @@ const BACKENDS = [
   {
     key: 'ai-toolkit',
     label: 'AI Toolkit',
-    placeholder: 'F:\\AI-Toolkit',
+    placeholder: 'Folder for AI-Toolkit',
     hint: 'Root of the ai-toolkit checkout',
   },
   {
     key: 'kohya',
     label: 'Kohya sd-scripts',
-    placeholder: 'F:\\sd-scripts',
+    placeholder: 'Folder for SD Scripts',
     hint: 'Root of the sd-scripts checkout',
   },
 ] as const;
@@ -47,6 +49,20 @@ export function BackendPathsSection({
   const dirty = BACKENDS.some(
     ({ key }) => (drafts[key] ?? '').trim() !== (saved[key] ?? '').trim(),
   );
+
+  const handleBrowse = useCallback(async (key: string, label: string) => {
+    try {
+      const params = new URLSearchParams({
+        title: `Select ${label} folder`,
+        mode: 'folder',
+      });
+      const res = await fetch(`/api/filesystem/browse?${params}`);
+      const data = await res.json();
+      if (data.path) setDrafts((prev) => ({ ...prev, [key]: data.path }));
+    } catch {
+      // Dialog failed — the path can still be typed manually
+    }
+  }, []);
 
   const handleSave = useCallback(async () => {
     // Send only the changed backends so an untouched path that has since
@@ -98,19 +114,31 @@ export function BackendPathsSection({
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
               {label}
             </span>
-            <Input
-              size="md"
-              placeholder={placeholder}
-              value={drafts[key] ?? ''}
-              onChange={(e) =>
-                setDrafts((prev) => ({ ...prev, [key]: e.target.value }))
-              }
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSave();
-              }}
-              className="font-mono"
-              disabled={saving}
-            />
+            <InputTray size="md" width="full">
+              <Input
+                size="md"
+                placeholder={placeholder}
+                value={drafts[key] ?? ''}
+                onChange={(e) =>
+                  setDrafts((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSave();
+                }}
+                className="min-w-0 flex-1 font-mono"
+                disabled={saving}
+              />
+              <Button
+                onClick={() => handleBrowse(key, label)}
+                variant="ghost"
+                size="md"
+                width="md"
+                title="Browse…"
+                disabled={saving}
+              >
+                <FolderOpenIcon />
+              </Button>
+            </InputTray>
             <span className="text-sm text-slate-400 dark:text-slate-500">
               {hint}
             </span>

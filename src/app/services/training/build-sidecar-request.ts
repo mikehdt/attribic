@@ -83,7 +83,7 @@ function buildDatasets(
       // "Root" is a display-only sentinel from getProjectFolders meaning
       // "images live directly in the project folder, no subdir" — strip it
       // so the absolute path points at the project folder itself, not a
-      // nonexistent F:\...\project\Root directory.
+      // nonexistent X:\...\project\Root directory.
       const subfolder = folder.name === 'Root' ? '' : folder.name;
       const folderPath = projectsFolder
         ? path.join(projectsFolder, ds.folderName, subfolder)

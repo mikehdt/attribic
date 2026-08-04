@@ -12,10 +12,9 @@ import type { ModelStatus } from '@/app/services/model-manager/types';
 import {
   getModelComponents,
   type ModelComponent,
-  type ModelComponentType,
   type ModelDefinition,
 } from './models';
-import type { ModelPaths, TrainingProvider } from './types';
+import type { ModelPaths } from './types';
 
 /** Structural subset of the model-manager store's ModelEntry. */
 export type ComponentStatusMap = Record<
@@ -116,20 +115,4 @@ export function isModelConfigured(
   statuses: ComponentStatusMap,
 ): boolean {
   return getModelReadiness(model, savedPaths, statuses).configured;
-}
-
-/**
- * The (non-mock) backends that actually use a component type. Returns all
- * of the model's backends when the component is universal; a shorter list
- * marks a backend-specific component (e.g. Anima's diffusers directory).
- */
-export function getComponentProviders(
-  model: ModelDefinition,
-  type: ModelComponentType,
-): TrainingProvider[] {
-  return model.providers.filter(
-    (p) =>
-      p !== 'mock' &&
-      getModelComponents(model, p).some((c) => c.type === type),
-  );
 }

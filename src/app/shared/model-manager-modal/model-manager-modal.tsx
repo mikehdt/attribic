@@ -28,7 +28,7 @@ export function ModelManagerModal() {
         {/* Tabs */}
         <SegmentedControl
           options={[
-            { value: 'auto-tagger' as const, label: 'Image Tagging' },
+            { value: 'auto-tagger' as const, label: 'Tagging Models' },
             { value: 'training' as const, label: 'Training Models' },
             { value: 'settings' as const, label: 'Settings' },
           ]}
@@ -40,7 +40,9 @@ export function ModelManagerModal() {
         {/* Tab content */}
         <div className="max-h-[60vh] overflow-y-auto">
           {activeTab === 'auto-tagger' && <AutoTaggerTab />}
-          {activeTab === 'training' && <TrainingTab />}
+          {activeTab === 'training' && (
+            <TrainingTab onOpenSettings={() => setActiveTab('settings')} />
+          )}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </div>

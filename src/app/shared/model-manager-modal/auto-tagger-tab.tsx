@@ -44,11 +44,11 @@ export function AutoTaggerTab() {
         if (providerModels.length === 0) return null;
         return (
           <div key={provider.id}>
-            <div className="mb-2 rounded-md bg-slate-200 p-3 dark:bg-slate-900">
-              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            <div className="mb-2">
+              <h3 className="border-b border-slate-200 px-1 pb-1 text-xs font-medium tracking-wide text-slate-400 uppercase dark:border-slate-700">
                 {provider.name}
               </h3>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 px-1 text-sm text-slate-500">
                 {provider.description}
               </p>
             </div>
