@@ -109,10 +109,10 @@ export function ModelComponentRow({
 
   return (
     <div
-      className={`rounded-md border p-3 transition-colors ${
+      className={`rounded-md border bg-white p-3 transition-colors dark:bg-slate-800 ${
         isReady || hasPath
-          ? 'border-teal-200 bg-teal-50/50 dark:border-teal-800 dark:bg-teal-950/30'
-          : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+          ? 'border-teal-200 dark:border-teal-800'
+          : 'border-slate-200 dark:border-slate-700'
       }`}
     >
       <div className="flex items-start justify-between gap-3">

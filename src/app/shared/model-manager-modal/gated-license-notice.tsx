@@ -16,7 +16,7 @@ export function GatedLicenseNotice({
   needsToken,
 }: GatedLicenseNoticeProps) {
   return (
-    <div className="mt-1 flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-800 dark:border-amber-600 dark:bg-amber-900 dark:text-amber-300">
+    <div className="mt-2 flex flex-col gap-2 rounded-md border border-amber-300 p-1.5 dark:border-amber-600">
       {needsToken && (
         <div className="flex gap-1.5">
           <InfoIcon className="h-3.5 w-3.5" />
