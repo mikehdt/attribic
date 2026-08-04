@@ -1,5 +1,7 @@
 import { KeyboardEvent, MutableRefObject, RefObject, useCallback } from 'react';
 
+import { KeyboardSelectEvent } from './types';
+
 export const useKeyboardNavigation = (
   listLength: number,
   selectedIndex: number,
@@ -7,6 +9,7 @@ export const useKeyboardNavigation = (
   onClose: () => void,
   inputRef: RefObject<HTMLInputElement | null>,
   keyboardIndexRef: MutableRefObject<number>,
+  dispatchKeyboardSelect: (event: KeyboardSelectEvent) => void,
 ) => {
   // Handle keyboard navigation
   const handleKeyDown = useCallback(
@@ -23,14 +26,10 @@ export const useKeyboardNavigation = (
         keyboardIndexRef.current = next;
         setSelectedIndex(next);
       } else if (e.key === 'Enter' && selectedIndex >= 0) {
-        // Inform listeners that an item was selected with keyboard
+        // Inform registered lists that an item was selected with keyboard
         e.preventDefault();
         keyboardIndexRef.current = selectedIndex;
-        document.dispatchEvent(
-          new CustomEvent('filterlist:keyboardselect', {
-            detail: { index: selectedIndex, shiftKey: e.shiftKey },
-          }),
-        );
+        dispatchKeyboardSelect({ index: selectedIndex, shiftKey: e.shiftKey });
         // We'll maintain the selected index and just focus back on the input
         if (inputRef.current) {
           inputRef.current.focus();
@@ -53,6 +52,7 @@ export const useKeyboardNavigation = (
       onClose,
       inputRef,
       keyboardIndexRef,
+      dispatchKeyboardSelect,
     ],
   );
 

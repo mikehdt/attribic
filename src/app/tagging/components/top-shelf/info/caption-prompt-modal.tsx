@@ -129,7 +129,7 @@ export const CaptionPromptModal = ({
             type="button"
             size="md"
             width="lg"
-            color="teal"
+            color="sky"
             onClick={handleSave}
             disabled={!hasChanges}
             neutralDisabled

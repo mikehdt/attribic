@@ -185,7 +185,7 @@ export const AddTagsModal = ({
               type="submit"
               disabled={isFormInvalid}
               neutralDisabled
-              color="amber"
+              color="sky"
               size="md"
               width="lg"
             >

@@ -56,8 +56,14 @@ export const useRangeToggle = <T>({
   indexOffset = 0,
 }: RangeToggleConfig<T>) => {
   const dispatch = useAppDispatch();
-  const { rangeAnchor, setRangeAnchor, inputRef, selectedIndex, isShiftHeld } =
-    useFilterContext();
+  const {
+    rangeAnchor,
+    setRangeAnchor,
+    inputRef,
+    selectedIndex,
+    isShiftHeld,
+    registerKeyboardSelectHandler,
+  } = useFilterContext();
 
   const handleItemAction = useCallback(
     (localIndex: number, shiftKey: boolean) => {
@@ -126,22 +132,17 @@ export const useRangeToggle = <T>({
   // ignore it when it falls outside (e.g. an extension index reaching the
   // subfolder list in the file view).
   useEffect(() => {
-    const onKeyboardSelect = (e: Event) => {
-      const detail = (e as CustomEvent).detail as
-        { index?: number; shiftKey?: boolean } | undefined;
-      if (detail?.index == null) return;
-      const localIndex = detail.index - indexOffset;
+    return registerKeyboardSelectHandler(({ index, shiftKey }) => {
+      const localIndex = index - indexOffset;
       if (localIndex < 0 || localIndex >= items.length) return;
-      handleItemAction(localIndex, Boolean(detail.shiftKey));
-    };
-
-    document.addEventListener('filterlist:keyboardselect', onKeyboardSelect);
-    return () =>
-      document.removeEventListener(
-        'filterlist:keyboardselect',
-        onKeyboardSelect,
-      );
-  }, [items.length, indexOffset, handleItemAction]);
+      handleItemAction(localIndex, shiftKey);
+    });
+  }, [
+    items.length,
+    indexOffset,
+    handleItemAction,
+    registerKeyboardSelectHandler,
+  ]);
 
   // Pending-range hover preview: while Shift is held with an anchor set, the
   // values between the anchor and the hovered row (inclusive) that would change

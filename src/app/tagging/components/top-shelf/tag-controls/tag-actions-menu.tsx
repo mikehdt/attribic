@@ -18,7 +18,7 @@ import {
 import { AutoTaggerModal } from '@/app/tagging/components/auto-tagger/auto-tagger-modal';
 import { useAutoTaggerLaunch } from '@/app/tagging/components/auto-tagger/use-auto-tagger-launch';
 
-import { CopyTagsModal } from './copy-tags-modal';
+import { CopyTagsModal } from './copy-tags-modal/copy-tags-modal';
 
 export const TagActionsMenu = () => {
   const dispatch = useAppDispatch();

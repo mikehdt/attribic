@@ -217,7 +217,7 @@ export const EditTagsModal = ({
                 scopedFilterTags.length === 0
               }
               neutralDisabled
-              color="indigo"
+              color="sky"
               size="md"
               width="lg"
             >

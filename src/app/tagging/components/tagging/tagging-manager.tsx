@@ -33,7 +33,7 @@ import {
   TagSortType,
 } from '@/app/store/project';
 
-import { TagList } from './tag-list';
+import { TagList } from './tag-list/tag-list';
 
 type TaggingManagerProps = {
   assetId: string;

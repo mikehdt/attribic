@@ -41,7 +41,7 @@ import {
 import { updateProject } from '@/app/utils/project-actions';
 import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
-import { BucketCropModal } from '../asset-controls/bucket-crop-modal';
+import { BucketCropModal } from '../asset-controls/bucket-crop-modal/bucket-crop-modal';
 import { TriggerPhrasesModal } from '../tag-controls/trigger-phrases-modal';
 import { CaptionPromptModal } from './caption-prompt-modal';
 import { MenuCaptionModeSwitcher } from './menu-caption-mode-switcher';

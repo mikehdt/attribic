@@ -185,7 +185,7 @@ export function AutoTaggerSettings({
         </Button>
         <Button
           onClick={onStartTagging}
-          color="indigo"
+          color="sky"
           size="md"
           disabled={!selectedModelId || selectedAssetsCount === 0}
         >

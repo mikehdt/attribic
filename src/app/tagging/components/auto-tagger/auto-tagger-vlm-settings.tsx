@@ -292,7 +292,7 @@ export function AutoTaggerVlmSettings({
         </Button>
         <Button
           onClick={onStartTagging}
-          color="indigo"
+          color="sky"
           size="md"
           disabled={!selectedModelId || selectedAssetsCount === 0}
         >

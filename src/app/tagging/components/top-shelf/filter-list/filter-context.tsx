@@ -16,12 +16,17 @@ import { selectCaptionMode } from '@/app/store/project';
 import {
   FilterView,
   getSortOptions,
+  KeyboardSelectEvent,
   SizeSubViewType,
   SORT_CYCLES,
   SortDirection,
   SortType,
 } from './types';
 import { useKeyboardNavigation } from './use-keyboard-navigation';
+
+/** Handler registered by a mounted list (e.g. useRangeToggle) to receive
+ *  keyboard-select events; see registerKeyboardSelectHandler. */
+export type KeyboardSelectHandler = (event: KeyboardSelectEvent) => void;
 
 // Get the default sort direction for a given sort type
 const getDefaultDirection = (type: SortType): SortDirection => {
@@ -97,6 +102,12 @@ interface FilterContextType {
   handleItemMouseMove: (index: number) => void;
   resetKeyboardIndex: () => void;
   handleListMouseLeave: () => void;
+  /**
+   * Registers a handler to receive keyboard-select events (Enter/Shift+Enter
+   * on the highlighted row), replacing the old document CustomEvent contract.
+   * Multiple lists may register at once; returns an unregister function.
+   */
+  registerKeyboardSelectHandler: (handler: KeyboardSelectHandler) => () => void;
 
   // Shift-click range selection anchor
   rangeAnchor: FilterRangeAnchor | null;
@@ -261,6 +272,26 @@ export const FilterProvider = ({
   // Tracks the last keyboard-driven index (-1 = no KB position)
   const keyboardIndexRef = useRef(-1);
 
+  // Handlers registered by mounted lists (tags/size/buckets/file — the file
+  // view registers two, one per section) to receive keyboard-select events.
+  const keyboardSelectHandlersRef = useRef<Set<KeyboardSelectHandler>>(
+    new Set(),
+  );
+
+  const registerKeyboardSelectHandler = useCallback(
+    (handler: KeyboardSelectHandler) => {
+      keyboardSelectHandlersRef.current.add(handler);
+      return () => {
+        keyboardSelectHandlersRef.current.delete(handler);
+      };
+    },
+    [],
+  );
+
+  const dispatchKeyboardSelect = useCallback((event: KeyboardSelectEvent) => {
+    keyboardSelectHandlersRef.current.forEach((handler) => handler(event));
+  }, []);
+
   // Keyboard navigation
   const { handleKeyDown } = useKeyboardNavigation(
     listLength,
@@ -269,6 +300,7 @@ export const FilterProvider = ({
     onClose,
     inputRef,
     keyboardIndexRef,
+    dispatchKeyboardSelect,
   );
 
   // Mouse hover sets selectedIndex (only when moving to a different item)
@@ -334,6 +366,7 @@ export const FilterProvider = ({
       handleItemMouseMove,
       resetKeyboardIndex,
       handleListMouseLeave,
+      registerKeyboardSelectHandler,
       rangeAnchor,
       setRangeAnchor,
       isShiftHeld,
@@ -358,6 +391,7 @@ export const FilterProvider = ({
       handleItemMouseMove,
       resetKeyboardIndex,
       handleListMouseLeave,
+      registerKeyboardSelectHandler,
       rangeAnchor,
       isShiftHeld,
       getSortOptionsForView,

@@ -11,6 +11,13 @@ export type SortDirection = 'asc' | 'desc';
 // Define view types
 export type FilterView = 'tag' | 'size' | 'filetype';
 
+/** Emitted by useKeyboardNavigation on Enter; index is global (list-relative,
+ *  offset by indexOffset for consumers like the file view's extension list). */
+export interface KeyboardSelectEvent {
+  index: number;
+  shiftKey: boolean;
+}
+
 // Define sub-view types for size view
 export type SizeSubViewType = 'dimensions' | 'buckets';
 
