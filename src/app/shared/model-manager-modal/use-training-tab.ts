@@ -65,7 +65,7 @@ export function useTrainingTab() {
   }, []);
 
   const configuredBackends = useMemo(() => {
-    const real: TrainingProvider[] = ['kohya', 'ai-toolkit'];
+    const real: TrainingProvider[] = ['kohya', 'ai-toolkit', 'musubi'];
     const map: Record<string, boolean> = {};
     for (const provider of real) {
       map[provider] =

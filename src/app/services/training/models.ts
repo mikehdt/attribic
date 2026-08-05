@@ -587,6 +587,72 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     },
   },
   {
+    id: 'zimage',
+    name: 'Z-Image Base',
+    architecture: 'zimage',
+    description:
+      'Undistilled Z-Image base — the variant meant for LoRA training',
+    providers: ['musubi', 'mock'],
+    components: [
+      {
+        type: 'checkpoint',
+        label: 'Z-Image DiT (bf16)',
+        required: true,
+        downloadId: 'dl-zimage-base-dit',
+        hint: 'bf16 single-file weights — Musubi rejects pre-quantised fp8 repacks',
+      },
+      {
+        type: 'vae',
+        label: 'Z-Image VAE',
+        required: true,
+        downloadId: 'shared-zimage-vae',
+      },
+      {
+        type: 'qwen',
+        label: 'Qwen3 4B Text Encoder',
+        required: true,
+        downloadId: 'shared-zimage-qwen3',
+      },
+    ],
+    tips: [
+      'Musubi recommends training on Base over Turbo — the LoRA still applies to Turbo at inference',
+      'Latents and text-encoder outputs are pre-cached before each run; a re-run with unchanged settings skips both in seconds',
+      'fp8 quantisation plus block swap keeps the 6B DiT comfortable on 16 GB cards',
+    ],
+    availableResolutions: [512, 768, 1024, 1536],
+    hiddenFields: [
+      // Musubi trains the network only — there is no --text_encoder_lr or
+      // TE-unfreeze path in its parser.
+      'trainTextEncoder',
+      'textEncoderLR',
+      'timestepBias',
+      // Flow-matching arch: the DDPM-only mechanisms don't exist here (also
+      // capability-gated off for musubi, but hidden per-model so the mock
+      // backend doesn't offer them for this model either).
+      'minSnrGamma',
+      'noiseOffset',
+      // Caching is mandatory and runs as separate pre-phases.
+      'cacheLatents',
+      // Musubi's dataset config has bucket_no_upscale but no bucket_reso_steps.
+      'bucketResoSteps',
+      // Each musubi arch uses its own fixed sampler — no --sample_sampler.
+      'sampleSampler',
+    ],
+    defaults: {
+      ...BASE_DEFAULTS,
+      steps: 2500,
+      epochs: 25,
+      resolution: [1024],
+      // Musubi's own --save_precision default is fp32 — the provider always
+      // passes this instead.
+      saveFormat: 'bf16',
+      // docs/zimage.md's recommended flow-matching baseline.
+      timestepType: 'shift',
+      discreteFlowShift: 2.0,
+      sampleEvery: 250,
+    },
+  },
+  {
     id: 'anima',
     name: 'Anima',
     architecture: 'anima',
@@ -783,9 +849,13 @@ export const OPTIMIZER_OPTIONS: { group: string; items: OptimizerOption[] }[] =
       group: 'Self-tuning',
       items: [
         {
+          // musubi-tuner's factory falls through to `torch.optim` for names it
+          // doesn't special-case, so prodigy (a separate package) can't run
+          // there.
           value: 'prodigy',
           label: 'Prodigy',
           hint: 'Finds its own learning rate; start at 1.0',
+          providers: ['kohya', 'ai-toolkit'],
         },
         {
           // ai-toolkit's own adaptive optimiser. Unlike Prodigy it treats the LR

@@ -61,6 +61,8 @@ const EMA_ALPHA: Record<TrainingProvider, number> = {
   'ai-toolkit': 0.07,
   mock: 0.07,
   kohya: 0.22,
+  // Same lineage as kohya: the tqdm bar reports the pre-averaged `avr_loss`.
+  musubi: 0.22,
 };
 const DEFAULT_EMA_ALPHA = 0.07;
 

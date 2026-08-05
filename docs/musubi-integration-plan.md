@@ -1,7 +1,12 @@
 # Musubi Tuner backend — integration plan
 
-Status: **designed, not implemented** (Mike, 2026-08-03). Implementation is paused until
-musubi-tuner is installed alongside the other backends. Everything below is written against
+Status: **implemented** (2026-08-05) — provider, TS surface, downloads, tests, and the
+`MusubiTuner` venv (py3.11, torch 2.13.0+cu130) all landed; §5's mock/real training runs
+are still owed. Deviations from the plan noted inline below were: caption-augmentation
+keys are dropped entirely (musubi's TOML schema has none of them), prodigy/lion are
+blocked for musubi (its optimizer factory can't construct them), the download entries use
+Comfy-Org/z_image single-file bf16 weights (no multi-shard resolution needed), and the
+convert_lora.py completion note + automatic convert phase remain follow-ups. Everything below is written against
 the post-refactor training stack (branch `training-review-2026-08`): the `SdScriptsProvider`
 base class, the provider capability model, and pre-flight validation all exist specifically
 so this backend is a thin addition rather than a third copy of the Kohya provider.
@@ -31,7 +36,7 @@ tqdm `steps:` bar on stderr with `avr_loss=`, `epoch N/M` lines, `accelerate lau
 4. **Flow-matching args** — `--timestep_sampling shift`, `--weighting_scheme none`,
    `--discrete_flow_shift N` replace the noise-scheduler args.
 5. **Memory flags** — `--fp8_base --fp8_scaled` (runtime quantisation of bf16 weights;
-   pre-quantised fp8 repacks are rejected — the downloader must fetch bf16), 
+   pre-quantised fp8 repacks are rejected — the downloader must fetch bf16),
    `--blocks_to_swap N` (Z-Image max 28), `--sdpa` attention.
 6. **`--save_precision` defaults to fp32** (unlike sd-scripts) — always pass `bf16`/`fp16`.
 7. **Sample prompt flags** — guidance is `--g` (not Kohya's `--l`); `--f` is frame count
@@ -43,11 +48,12 @@ tqdm `steps:` bar on stderr with `avr_loss=`, `epoch N/M` lines, `accelerate lau
 ## 2. Install prerequisites (user-side, like AITK / sd-scripts)
 
 ```
-git clone https://github.com/kohya-ss/musubi-tuner F:\MusubiTuner   # any location
-cd F:\MusubiTuner
+git clone https://github.com/kohya-ss/musubi-tuner MusubiTuner   # any location
+cd MusubiTuner
 python -m venv venv          # python 3.10-3.12
 venv\Scripts\activate
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# cu124 caps at torch 2.6.0 — use the cu126/cu130 index for current torch
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 pip install -e .
 pip install tensorboard      # optional, for --logging_dir
 ```
@@ -55,7 +61,7 @@ pip install tensorboard      # optional, for --logging_dir
 Then in the app's `config.json`:
 
 ```json
-"trainingBackends": { ..., "musubi": "F:\\MusubiTuner" }
+"trainingBackends": { ..., "musubi": "C:\\path\\to\\MusubiTuner" }
 ```
 
 `config.py` reads `trainingBackends` generically — no sidecar config change needed. The
@@ -120,7 +126,7 @@ Hook implementations:
   bucket_no_upscale = false
 
   [[datasets]]
-  image_directory = "F:\\Training\\proj\\subject"
+  image_directory = "C:\\datasets\\proj\\subject"
   cache_directory = "<training>/musubi-cache/zimage/<fingerprint>"
   num_repeats = 5
   batch_size = 1
@@ -129,47 +135,48 @@ Hook implementations:
   Per-dataset augmentation keys: musubi's TOML parser is strict — verify which of
   shuffle/keep-tokens/dropout it accepts at impl time and drop unsupported keys with a log
   line rather than writing unknown keys.
+
 - **`_pre_train`** — the two cache phases, each via `_run_phase_subprocess` (which already
   handles tqdm→PREPARING ticks, `run.cancelled`, and stderr-tail errors):
   1. `python zimage_cache_latents.py --dataset_config <toml> --vae <vae>` — phase label
      "Caching latents".
   2. `python zimage_cache_text_encoder_outputs.py --dataset_config <toml>
-     --text_encoder <te> [--fp8_llm]` — phase label "Caching text-encoder outputs";
+--text_encoder <te> [--fp8_llm]` — phase label "Caching text-encoder outputs";
      `--fp8_llm` when the form's TE quantisation is float8.
-  Both phases run every launch — the scripts skip up-to-date items, so warm runs complete in
-  seconds. Cache dirs: `<training>/musubi-cache/<arch>/<fingerprint>/` per dataset folder,
-  `fingerprint = sha1({dataset path, resolution/native, bucket flags, vae path, te path,
-  arch})[:16]` — settings changes get a fresh dir; content changes are handled by the
-  scripts' own up-to-date checks. Write a small `cache-manifest.json` per dir for
-  debuggability. Stale dirs are inert; a cleanup sweep can come later.
+     Both phases run every launch — the scripts skip up-to-date items, so warm runs complete in
+     seconds. Cache dirs: `<training>/musubi-cache/<arch>/<fingerprint>/` per dataset folder,
+     `fingerprint = sha1({dataset path, resolution/native, bucket flags, vae path, te path,
+arch})[:16]` — settings changes get a fresh dir; content changes are handled by the
+     scripts' own up-to-date checks. Write a small `cache-manifest.json` per dir for
+     debuggability. Stale dirs are inert; a cleanup sweep can come later.
 - **`_train_command`** — `(venv_python, <checkout>/src/musubi_tuner/zimage_train_network.py,
-  cli_args, <checkout>)`.
+cli_args, <checkout>)`.
 
 CLI translation (Z-Image; form field → flag):
 
-| Form (snake_case hyperparameters) | musubi flag |
-|---|---|
-| model_paths checkpoint / vae / qwen | `--dit` / `--vae` / `--text_encoder` |
-| (generated TOML) | `--dataset_config <path>` |
-| duration | `--max_train_steps` / `--max_train_epochs` (same rule as Kohya) |
-| lr / optimizer / optimizer_args / weight_decay | `--learning_rate` / `--optimizer_type` (shared `_OPTIMIZER_MAP`) / `--optimizer_args` |
-| scheduler / warmup_steps / num_restarts | `--lr_scheduler` / `--lr_warmup_steps` / `--lr_scheduler_num_cycles` |
-| network dim/alpha/dropout/args | `--network_dim/alpha/dropout/args` + `--network_module networks.lora_zimage` |
-| batch_size | TOML `batch_size` (not a CLI flag) |
-| gradient_accumulation_steps / gradient_checkpointing | same flags |
-| mixed_precision | both on `accelerate launch` and the script (base spawn covers the launcher) |
-| save_format | `--save_precision` — **default bf16** (musubi's own default is fp32) |
-| max_grad_norm / scale_weight_norms / seed | same flags |
-| timestep_type (default `shift`) | `--timestep_sampling` + always `--weighting_scheme none` |
-| discrete_flow_shift | same flag |
-| transformer_quantization float8 | `--fp8_base --fp8_scaled` |
-| text_encoder_quantization float8 | `--fp8_llm` (on the TE **cache** phase) |
-| blocks_to_swap (≤28) | `--blocks_to_swap` |
-| (always) | `--sdpa --persistent_data_loader_workers --max_data_loader_n_workers 2 --output_dir --output_name` |
-| save cadence + retention | `--save_every_n_steps/epochs` + `--save_last_n_steps/epochs` (verify `--save_last_n_*` support at impl) |
-| sampling | prompt file with `--w/--h/--s/--g` per line (base `_add_missing_sample_flags` with `sample_guidance_flag="g"`; no `--f` for image archs), `--sample_prompts`, `--sample_every_n_steps/epochs` |
-| save_state / resume_state | `--save_state` / `--resume` |
-| min_snr_gamma / noise_offset / cache_latents | **not emitted** (flow-matching; caching is external) |
+| Form (snake_case hyperparameters)                    | musubi flag                                                                                                                                                                                   |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| model_paths checkpoint / vae / qwen                  | `--dit` / `--vae` / `--text_encoder`                                                                                                                                                          |
+| (generated TOML)                                     | `--dataset_config <path>`                                                                                                                                                                     |
+| duration                                             | `--max_train_steps` / `--max_train_epochs` (same rule as Kohya)                                                                                                                               |
+| lr / optimizer / optimizer_args / weight_decay       | `--learning_rate` / `--optimizer_type` (shared `_OPTIMIZER_MAP`) / `--optimizer_args`                                                                                                         |
+| scheduler / warmup_steps / num_restarts              | `--lr_scheduler` / `--lr_warmup_steps` / `--lr_scheduler_num_cycles`                                                                                                                          |
+| network dim/alpha/dropout/args                       | `--network_dim/alpha/dropout/args` + `--network_module networks.lora_zimage`                                                                                                                  |
+| batch_size                                           | TOML `batch_size` (not a CLI flag)                                                                                                                                                            |
+| gradient_accumulation_steps / gradient_checkpointing | same flags                                                                                                                                                                                    |
+| mixed_precision                                      | both on `accelerate launch` and the script (base spawn covers the launcher)                                                                                                                   |
+| save_format                                          | `--save_precision` — **default bf16** (musubi's own default is fp32)                                                                                                                          |
+| max_grad_norm / scale_weight_norms / seed            | same flags                                                                                                                                                                                    |
+| timestep_type (default `shift`)                      | `--timestep_sampling` + always `--weighting_scheme none`                                                                                                                                      |
+| discrete_flow_shift                                  | same flag                                                                                                                                                                                     |
+| transformer_quantization float8                      | `--fp8_base --fp8_scaled`                                                                                                                                                                     |
+| text_encoder_quantization float8                     | `--fp8_llm` (on the TE **cache** phase)                                                                                                                                                       |
+| blocks_to_swap (≤28)                                 | `--blocks_to_swap`                                                                                                                                                                            |
+| (always)                                             | `--sdpa --persistent_data_loader_workers --max_data_loader_n_workers 2 --output_dir --output_name`                                                                                            |
+| save cadence + retention                             | `--save_every_n_steps/epochs` + `--save_last_n_steps/epochs` (verify `--save_last_n_*` support at impl)                                                                                       |
+| sampling                                             | prompt file with `--w/--h/--s/--g` per line (base `_add_missing_sample_flags` with `sample_guidance_flag="g"`; no `--f` for image archs), `--sample_prompts`, `--sample_every_n_steps/epochs` |
+| save_state / resume_state                            | `--save_state` / `--resume`                                                                                                                                                                   |
+| min_snr_gamma / noise_offset / cache_latents         | **not emitted** (flow-matching; caching is external)                                                                                                                                          |
 
 Registration: `models.py` `ProviderType.MUSUBI = "musubi"`; `main.py` `_register_providers`
 gains a musubi block mirroring kohya's (`backends.get("musubi")` → `MusubiProvider(path)`).
@@ -196,7 +203,7 @@ an automatic convert phase is a cheap follow-up once the flow is proven.
 4. `services/model-manager/registries/training-models.ts` — three download entries. Sources:
    DiT/VAE/Qwen3-TE from `Tongyi-MAI/Z-Image` or `Comfy-Org/z_image`. The text encoder is
    **multi-shard**: all shards go in `files[]`, and the component path must resolve to the
-   *first* shard (`...00001-of-000NN.safetensors`) — verify the resolver handles multi-file
+   _first_ shard (`...00001-of-000NN.safetensors`) — verify the resolver handles multi-file
    components. Fetch **bf16** weights only (fp8 repacks are rejected by musubi).
 5. `services/training/build-sidecar-request.ts` — no new fields expected (`blocks_to_swap`,
    quantisation, `model_paths` already flow); confirm against the typed builder.

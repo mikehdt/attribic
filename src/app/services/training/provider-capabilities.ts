@@ -110,6 +110,11 @@ export const PROVIDER_CAPABILITIES: Record<
     'latentCacheToggle',
     'blockSwap',
   ]),
+  // Musubi shares the sd-scripts family set, plus block swap and runtime fp8
+  // quantisation. Deliberately absent: ddpmNoiseControls (every musubi arch is
+  // flow-matching), latentCacheToggle (caching is mandatory and external),
+  // verticalFlip (no such augmentation).
+  musubi: new Set([...SD_SCRIPTS_FAMILY, 'blockSwap', 'quantization']),
   'ai-toolkit': new Set([
     'ema',
     'lossType',

@@ -8,7 +8,7 @@ import { Input } from '../input/input';
 import { InputTray } from '../input-tray/input-tray';
 
 // Keys match what the sidecar reads from config.json `trainingBackends`
-// (training-sidecar/config.py). Musubi Tuner joins this list when supported.
+// (training-sidecar/config.py).
 const BACKENDS = [
   {
     key: 'ai-toolkit',
@@ -21,6 +21,12 @@ const BACKENDS = [
     label: 'Kohya sd-scripts',
     placeholder: 'Folder for SD Scripts',
     hint: 'Root of the sd-scripts checkout',
+  },
+  {
+    key: 'musubi',
+    label: 'Musubi Tuner',
+    placeholder: 'Folder for Musubi Tuner',
+    hint: 'Root of the musubi-tuner checkout',
   },
 ] as const;
 

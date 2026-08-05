@@ -67,7 +67,7 @@ Sampling:  90%|█████████ | 18/20 [00:17<00:02,  1.02s/it]
 Sampling:  95%|█████████▌| 19/20 [00:18<00:01,  1.01s/it]
 Sampling: 100%|██████████| 20/20 [00:19<00:00,  1.00s/it]
 Sampling: 100%|██████████| 20/20 [00:19<00:00,  1.01it/s]
-prompt: ega graphics, flat colors, restricted palette, pixel art. a girl with blonde hair., size: 1280x768, steps: 20, scale: 4.0, flow_shift: 3.0, seed: None
+prompt: demo style, flat colors, restricted palette, pixel art. a girl with blonde hair., size: 1280x768, steps: 20, scale: 4.0, flow_shift: 3.0, seed: None
 Sampling:   0%|          | 0/20 [00:00<?, ?it/s]
 Sampling:   5%|▌         | 1/20 [00:00<00:16,  1.12it/s]
 Sampling:  10%|█         | 2/20 [00:01<00:16,  1.06it/s]
@@ -98,5 +98,5 @@ epoch is incremented.              current_epoch:  69, epoch: dataset.py:70464
 current_epoch: 69, epoch: 70
 2026-07-31 13:38:41 INFO     epoch is incremented.               dataset.py:464
 current_epoch: 69, epoch: 70
-saving checkpoint: F:\Training\loras\ega-graphics-an.safetensors
+saving checkpoint: C:\train\loras\demo-lora.safetensors
 model saved.

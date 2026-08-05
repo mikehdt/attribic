@@ -33,6 +33,7 @@ from ai_toolkit_server import AiToolkitServer
 from providers.ai_toolkit_ui import AiToolkitUiProvider
 from providers.kohya import KohyaProvider
 from providers.mock import MockProvider
+from providers.musubi import MusubiProvider
 import safe_stdio
 from sample_archive import configure as configure_sample_archive
 from system_stats import collect as collect_system_stats
@@ -169,6 +170,16 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
         provider = KohyaProvider(kohya_path)
         jm.register_provider("kohya", provider)
         print(f"[sidecar] Registered kohya provider at {kohya_path}")
+
+    # Musubi Tuner — sd-scripts lineage, so it shares the Kohya provider's
+    # subprocess/log machinery, but pre-caches latents and TE outputs in
+    # separate phases before the training spawn. Supports Z-Image Base; add
+    # more architectures to MusubiProvider.SUPPORTED_MODELS.
+    musubi_path = backends.get("musubi")
+    if musubi_path:
+        provider = MusubiProvider(musubi_path)
+        jm.register_provider("musubi", provider)
+        print(f"[sidecar] Registered musubi provider at {musubi_path}")
 
     # Mock provider is always registered — it needs no external tooling and
     # lets the UI be exercised end-to-end (including GPU-busy blocking)

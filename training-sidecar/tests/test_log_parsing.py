@@ -236,7 +236,7 @@ def test_fixture_terminal_save_lines_are_recognised(provider):
     announces = [line for line in lines if provider._is_save_announce(line)]
     dones = [line for line in lines if provider._is_save_done(line)]
     assert announces == [
-        "saving checkpoint: F:\\Training\\loras\\ega-graphics-an.safetensors"
+        "saving checkpoint: C:\\train\\loras\\demo-lora.safetensors"
     ]
     assert dones == ["model saved."]
 
@@ -495,11 +495,11 @@ HAPPY_PATH = [
     "epoch 1/2",
     "steps:  25%|██▌       | 1/4 [00:01<00:03,  1.00it/s, avr_loss=0.15]",
     "steps:  50%|█████     | 2/4 [00:02<00:02,  1.00it/s, avr_loss=0.14]",
-    "saving checkpoint: F:\\Training\\loras\\demo-step00000002.safetensors",
+    "saving checkpoint: C:\\train\\loras\\demo-step00000002.safetensors",
     "epoch 2/2",
     "steps:  75%|███████▌  | 3/4 [00:03<00:01,  1.00it/s, avr_loss=0.13]",
     "steps: 100%|██████████| 4/4 [00:04<00:00,  1.00it/s, avr_loss=0.12]",
-    "saving checkpoint: F:\\Training\\loras\\demo.safetensors",
+    "saving checkpoint: C:\\train\\loras\\demo.safetensors",
     "model saved.",
 ]
 
@@ -545,7 +545,7 @@ def test_saving_state_is_recognised_as_a_save_phase(provider, tmp_path):
         make_request(tmp_path),
         [
             "steps:  25%|██▌       | 1/4 [00:01<00:03,  1.00it/s, avr_loss=0.15]",
-            "saving checkpoint: F:\\Training\\loras\\demo.safetensors",
+            "saving checkpoint: C:\\train\\loras\\demo.safetensors",
             "saving state at epoch 1",
         ],
     )

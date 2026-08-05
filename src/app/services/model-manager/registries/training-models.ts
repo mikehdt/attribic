@@ -125,6 +125,39 @@ const SHARED_COMPONENTS: DownloadableModel[] = [
     description: 'Autoencoder for Flux.2 models (~336 MB)',
   },
 
+  // --- Z-Image Base components (musubi-tuner) ---
+  // Musubi loads the DiT, VAE and text encoder as three separate single-file
+  // paths, so unlike the Turbo diffusers pipeline these are split components.
+  // Sourced from Comfy-Org's repackage of Tongyi-MAI/Z-Image because it ships
+  // each part as ONE .safetensors file — the official repo shards the DiT and
+  // TE. bf16 only: musubi quantises to fp8 at runtime (--fp8_base/--fp8_llm)
+  // and rejects pre-quantised fp8 repacks outright.
+  {
+    id: 'shared-zimage-vae',
+    name: 'Z-Image VAE',
+    repoId: 'Comfy-Org/z_image',
+    files: [{ name: 'split_files/vae/ae.safetensors', size: 335_304_388 }],
+    feature: 'training',
+    componentType: 'vae',
+    sharedId: 'zimage-vae',
+    description: 'Autoencoder shared by Z-Image Base and Turbo (~320 MB)',
+  },
+  {
+    id: 'shared-zimage-qwen3',
+    name: 'Qwen3 4B Text Encoder (Z-Image)',
+    repoId: 'Comfy-Org/z_image',
+    files: [
+      {
+        name: 'split_files/text_encoders/qwen_3_4b.safetensors',
+        size: 8_044_982_048,
+      },
+    ],
+    feature: 'training',
+    componentType: 'qwen',
+    sharedId: 'zimage-qwen3',
+    description: 'Qwen3 4B text encoder for Z-Image (~7.5 GB, bf16)',
+  },
+
   // --- SDXL VAE ---
   {
     id: 'shared-sdxl-vae',
@@ -385,6 +418,28 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
       { name: 't5_tokenizer/tokenizer.json', size: 2_424_069 },
       { name: 't5_tokenizer/tokenizer_config.json', size: 2_439 },
     ],
+  },
+
+  // --- Z-Image Base DiT (musubi-tuner) ---
+  // Lands in models/zimage/ beside the Turbo pipeline and adapter — its
+  // split_files/ subpath is disjoint from theirs, and the download engine only
+  // ever deletes files from its own manifest, so all three coexist.
+  {
+    id: 'dl-zimage-base-dit',
+    name: 'Z-Image Base DiT',
+    repoId: 'Comfy-Org/z_image',
+    files: [
+      {
+        name: 'split_files/diffusion_models/z_image_bf16.safetensors',
+        size: 12_309_866_400,
+      },
+    ],
+    feature: 'training',
+    architecture: 'zimage',
+    componentType: 'checkpoint',
+    dependencies: ['zimage-vae', 'zimage-qwen3'],
+    description:
+      'Undistilled Z-Image base for LoRA training (~11.5 GB, bf16 only)',
   },
 
   // --- Z-Image ---

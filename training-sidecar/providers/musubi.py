@@ -1,0 +1,631 @@
+"""Musubi Tuner training provider.
+
+kohya-ss/musubi-tuner — same author and lineage as sd-scripts, so the whole
+log grammar, spawn, training-loop state machine and cancellation come from
+`SdScriptsProvider` unchanged (its save/sample log lines were verified against
+the checkout to match the base patterns verbatim). What differs, and lives
+here:
+
+- **Mandatory two-phase pre-cache.** Latents and text-encoder outputs are
+  cached by dedicated scripts before training; the training run reads only the
+  caches. Both scripts skip up-to-date items, so re-runs cost seconds.
+- **Split model files** — `--dit` / `--vae` / `--text_encoder` instead of one
+  checkpoint.
+- **Dataset TOML shape** — flat `[[datasets]]` blocks with `image_directory`
+  and a per-dataset `cache_directory`; no `[[datasets.subsets]]`, and no
+  caption-augmentation keys (shuffle/keep-tokens/dropout are sd-scripts-only —
+  musubi's strict TOML schema rejects unknown keys, so they are dropped here).
+- **Flow-matching args** (`--timestep_sampling` / `--weighting_scheme none` /
+  `--discrete_flow_shift`) replace the DDPM noise controls, and
+  `--save_precision` defaults to fp32 upstream so it is always passed.
+
+First supported architecture: Z-Image Base (musubi's docs recommend Base over
+Turbo for training; the ai-toolkit `zimage-turbo` flow is separate).
+"""
+
+import hashlib
+import json
+import os
+from collections.abc import AsyncGenerator
+from pathlib import Path
+from typing import Optional
+
+from config import load_config
+from models import JobProgress, StartJobRequest
+from providers.sd_scripts_base import (
+    _SAVE_PRECISION_MAP,
+    SdScriptsProvider,
+    SubprocessRun,
+    _find_python,
+    _num,
+    _parse_kv_args,
+    _parse_native_resolution,
+    _toml_bool,
+    _toml_str,
+)
+
+# --- Model definitions ---
+#
+# Musubi-side catalogue, same shape philosophy as the Kohya one: each entry
+# carries the per-architecture scripts and component→flag mapping so the CLI
+# builder stays generic. Musubi architectures additionally name their two
+# cache scripts, since pre-caching is per-model-family.
+
+SUPPORTED_MODELS = [
+    {
+        "id": "zimage",
+        "name": "Z-Image Base",
+        "architecture": "zimage",
+        "train_script": "src/musubi_tuner/zimage_train_network.py",
+        "latent_cache_script": "src/musubi_tuner/zimage_cache_latents.py",
+        "te_cache_script": "src/musubi_tuner/zimage_cache_text_encoder_outputs.py",
+        "network_module": "networks.lora_zimage",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "dit",
+                "label": "Z-Image DiT",
+                "required": True,
+            },
+            {"key": "vae", "flag": "vae", "label": "Z-Image VAE", "required": True},
+            {
+                "key": "qwen",
+                "flag": "text_encoder",
+                "label": "Qwen3 text encoder",
+                "required": True,
+            },
+        ],
+        # docs/zimage.md: "The maximum number of blocks that can be offloaded
+        # is 28."
+        "max_blocks_to_swap": 28,
+        "train_defaults": {
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2500,
+            # docs/zimage.md's recommended baseline for Z-Image training.
+            "timestep_sampling": "shift",
+            "discrete_flow_shift": 2.0,
+        },
+    },
+]
+
+# Optimizers musubi-tuner can construct. AdamW/AdamW8bit/Adafactor are handled
+# by its factory directly (bitsandbytes is a declared dependency); anything
+# else falls through to `getattr(torch.optim, name)`, so lion/prodigy — extra
+# packages neither declared nor importable by bare name — die at optimizer
+# construction. Checked in validate_request so a saved config carrying one
+# fails before enqueue rather than seconds into the run.
+_SUPPORTED_OPTIMIZERS = {"adamw", "adamw8bit", "adafactor"}
+
+
+def _find_model(model_id: str) -> Optional[dict]:
+    for m in SUPPORTED_MODELS:
+        if m["id"] == model_id:
+            return m
+    return None
+
+
+class MusubiProvider(SdScriptsProvider):
+    """Training provider backed by kohya-ss/musubi-tuner."""
+
+    # Musubi prompt files carry CFG scale as `--g` (sd-scripts uses `--l`).
+    sample_guidance_flag = "g"
+
+    def __init__(self, scripts_path: str):
+        super().__init__(scripts_path)
+        # Latent/TE caches are keyed by dataset+settings, not by job, so they
+        # live outside the per-job config dirs and survive across runs.
+        # Resolved lazily so constructing a provider doesn't touch the
+        # filesystem (load_config creates the training dirs as a side effect).
+        self._cache_root: Optional[Path] = None
+
+    @property
+    def cache_root(self) -> Path:
+        if self._cache_root is None:
+            self._cache_root = load_config().training_dir / "musubi-cache"
+        return self._cache_root
+
+    # --- Environment / request validation ---
+
+    async def validate_environment(self) -> tuple[bool, Optional[str]]:
+        if not self._scripts_path.exists():
+            return (
+                False,
+                f"musubi-tuner path does not exist: {self._scripts_path}",
+            )
+
+        for model in SUPPORTED_MODELS:
+            for key in ("train_script", "latent_cache_script", "te_cache_script"):
+                script = self._scripts_path / model[key]
+                if not script.exists():
+                    return (
+                        False,
+                        f"musubi-tuner checkout at {self._scripts_path} is "
+                        f"missing {model[key]} — needed to train "
+                        f"{model['name']}. Update to a checkout that includes "
+                        "it.",
+                    )
+
+        return True, None
+
+    def validate_request(self, request: StartJobRequest) -> list[str]:
+        """Cheap semantic checks; unknown-model is validation.py's job."""
+        errors: list[str] = []
+        hp = request.hyperparameters
+
+        native = hp.get("native_resolution")
+        if native:
+            try:
+                _parse_native_resolution(native)
+            except ValueError as e:
+                errors.append(str(e))
+
+        optimizer = str(hp.get("optimizer", "adamw8bit")).lower()
+        if optimizer not in _SUPPORTED_OPTIMIZERS:
+            errors.append(
+                f"Musubi Tuner cannot run the '{optimizer}' optimizer — "
+                "supported: " + ", ".join(sorted(_SUPPORTED_OPTIMIZERS))
+            )
+
+        model_def = _find_model(request.base_model)
+        if model_def is None:
+            return errors
+
+        blocks_to_swap = int(hp.get("blocks_to_swap", 0) or 0)
+        max_swap = model_def.get("max_blocks_to_swap", 0)
+        if blocks_to_swap > max_swap:
+            errors.append(
+                f"{model_def['name']} supports at most {max_swap} swapped "
+                f"blocks (got {blocks_to_swap})"
+            )
+
+        model_paths = hp.get("model_paths") or {}
+        for comp in model_def["components"]:
+            path = model_paths.get(comp["key"])
+            if comp["key"] == "checkpoint" and not path:
+                path = hp.get("model_path")
+            if not path:
+                if comp["required"]:
+                    errors.append(
+                        f"{model_def['name']} training needs: {comp['label']}"
+                    )
+                continue
+            if not Path(path).exists():
+                errors.append(f"{comp['label']} path does not exist: {path}")
+
+        return errors
+
+    # --- Dataset config ---
+
+    async def generate_config(
+        self, request: StartJobRequest, config_dir: str
+    ) -> str:
+        """Write the musubi dataset TOML and return its path.
+
+        Musubi's TOML parser (voluptuous, strict) accepts only its own keys:
+        `[general]` + flat `[[datasets]]` with image_directory /
+        cache_directory / num_repeats / batch_size / resolution / bucket
+        flags. The sd-scripts caption-augmentation keys do not exist here, so
+        any the client set are dropped (with a console note) rather than
+        written as unknown keys the parser would reject.
+        """
+        model_def = _find_model(request.base_model)
+        if model_def is None:
+            raise ValueError(f"Unknown model: {request.base_model}")
+
+        hp = request.hyperparameters
+        defaults = model_def["train_defaults"]
+
+        resolution = hp.get("resolution", defaults.get("resolution", [1024]))
+        if not isinstance(resolution, list):
+            resolution = [int(resolution)]
+        max_res = max(resolution) if resolution else 1024
+
+        # Exact WxH pins the size outright: bucketing off, no resize. Same
+        # contract as the Kohya provider (see _parse_native_resolution).
+        native = _parse_native_resolution(hp.get("native_resolution"))
+        enable_bucket = not native
+
+        dropped = [
+            ds.path
+            for ds in request.datasets
+            if ds.caption_shuffling
+            or int(ds.keep_tokens)
+            or float(ds.caption_dropout_rate or 0) > 0
+            or ds.flip_augment
+            or ds.is_regularization
+        ]
+        if dropped:
+            print(
+                "[musubi] Ignoring caption shuffle/keep-tokens/dropout/flip/"
+                "regularisation settings — musubi-tuner's dataset config has "
+                f"no such keys. Affected: {', '.join(dropped)}"
+            )
+
+        lines: list[str] = []
+        lines.append("[general]")
+        lines.append('caption_extension = ".txt"')
+        if native:
+            lines.append(f"resolution = [{native[0]}, {native[1]}]")
+        else:
+            lines.append(f"resolution = {max_res}")
+        lines.append(f"batch_size = {int(hp.get('batch_size', 1))}")
+        lines.append(f"enable_bucket = {_toml_bool(enable_bucket)}")
+        if enable_bucket:
+            bucket_no_upscale = bool(hp.get("bucket_no_upscale", False))
+            lines.append(f"bucket_no_upscale = {_toml_bool(bucket_no_upscale)}")
+        lines.append("")
+
+        model_paths = self._component_paths(request, model_def)
+        for ds in request.datasets:
+            cache_dir = self._cache_dir(
+                request, model_def, ds.path, native, enable_bucket, model_paths
+            )
+            lines.append("[[datasets]]")
+            lines.append(f"image_directory = {_toml_str(ds.path)}")
+            lines.append(f"cache_directory = {_toml_str(str(cache_dir))}")
+            lines.append(f"num_repeats = {int(ds.num_repeats)}")
+            lines.append("")
+
+        config_path = os.path.join(config_dir, f"{request.output_name}.toml")
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+        return config_path
+
+    def _cache_dir(
+        self,
+        request: StartJobRequest,
+        model_def: dict,
+        dataset_path: str,
+        native: Optional[tuple[int, int]],
+        enable_bucket: bool,
+        model_paths: dict,
+    ) -> Path:
+        """Resolve (and create) the shared cache dir for one dataset folder.
+
+        Fingerprinted on everything that changes what the cache scripts would
+        write — dataset path, effective resolution, bucketing, the VAE and TE
+        files, the architecture — so a settings change gets a fresh dir while
+        image-content changes are left to the scripts' own up-to-date checks.
+        Stale dirs are inert (a cleanup sweep can come later).
+        """
+        hp = request.hyperparameters
+        resolution = native or hp.get("resolution", [1024])
+        fingerprint_src = json.dumps(
+            {
+                "dataset": str(dataset_path),
+                "resolution": list(resolution)
+                if isinstance(resolution, (list, tuple))
+                else [resolution],
+                "bucket": enable_bucket,
+                "bucket_no_upscale": bool(hp.get("bucket_no_upscale", False)),
+                "vae": model_paths.get("vae"),
+                "text_encoder": model_paths.get("qwen"),
+                "arch": model_def["architecture"],
+            },
+            sort_keys=True,
+        )
+        fingerprint = hashlib.sha1(fingerprint_src.encode("utf-8")).hexdigest()[
+            :16
+        ]
+        cache_dir = self.cache_root / model_def["architecture"] / fingerprint
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        # Human-readable record of what the opaque fingerprint stands for.
+        manifest = cache_dir / "cache-manifest.json"
+        if not manifest.exists():
+            manifest.write_text(fingerprint_src, encoding="utf-8")
+        return cache_dir
+
+    # --- Components ---
+
+    def _component_paths(
+        self, request: StartJobRequest, model_def: dict
+    ) -> dict[str, str]:
+        """Resolve each declared component to a path; raise listing gaps."""
+        hp = request.hyperparameters
+        model_paths = hp.get("model_paths") or {}
+        resolved: dict[str, str] = {}
+        missing: list[str] = []
+        for comp in model_def["components"]:
+            path = model_paths.get(comp["key"])
+            if comp["key"] == "checkpoint" and not path:
+                path = hp.get("model_path")
+            if path:
+                resolved[comp["key"]] = path
+            elif comp["required"]:
+                missing.append(comp["label"])
+        if missing:
+            raise ValueError(
+                f"{model_def['name']} training needs: " + ", ".join(missing)
+            )
+        return resolved
+
+    # --- Pre-training cache phases ---
+
+    async def _pre_train(
+        self,
+        job_id: str,
+        request: StartJobRequest,
+        config_path: str,
+        gpu_id: int,
+        run: SubprocessRun,
+    ) -> AsyncGenerator[JobProgress, None]:
+        """Latent + text-encoder-output caching, each as its own subprocess.
+
+        Both run every launch: the scripts skip up-to-date items, so a warm
+        start costs seconds. `_run_phase_subprocess` handles the tqdm →
+        PREPARING ticks, cancellation, and non-zero-exit → RuntimeError (which
+        the job manager turns into a FAILED job).
+        """
+        model_def = _find_model(request.base_model)
+        if model_def is None:
+            raise ValueError(f"Unknown model: {request.base_model}")
+
+        paths = self._component_paths(request, model_def)
+        hp = request.hyperparameters
+        python_exe = _find_python(self._scripts_path)
+        cwd = str(self._scripts_path)
+        env = self._subprocess_env(gpu_id)
+
+        latent_argv = [
+            python_exe,
+            "-u",
+            str(self._scripts_path / model_def["latent_cache_script"]),
+            f"--dataset_config={config_path}",
+            f"--vae={paths['vae']}",
+        ]
+        async for tick in self._run_phase_subprocess(
+            job_id, run, latent_argv, cwd, env, "Caching latents"
+        ):
+            yield tick
+        if run.cancelled:
+            return
+
+        te_argv = [
+            python_exe,
+            "-u",
+            str(self._scripts_path / model_def["te_cache_script"]),
+            f"--dataset_config={config_path}",
+            f"--text_encoder={paths['qwen']}",
+        ]
+        if hp.get("text_encoder_quantization") == "float8":
+            te_argv.append("--fp8_llm")
+        async for tick in self._run_phase_subprocess(
+            job_id, run, te_argv, cwd, env, "Caching text-encoder outputs"
+        ):
+            yield tick
+
+    # --- CLI translation ---
+
+    def _build_cli_args(
+        self, request: StartJobRequest, dataset_config: str, config_dir: str
+    ) -> list[str]:
+        """Translate the generic request into musubi-tuner CLI flags.
+
+        Flags verified against the checkout's parser (hv_train_network +
+        training/parser_common + utils/train_utils + zimage_setup_parser).
+        Deliberately absent vs the Kohya builder: `--train_batch_size` (batch
+        size is a dataset-TOML key), `--console_log_simple`,
+        `--sample_sampler`, `--save_model_as`, `--cache_latents*`,
+        `--text_encoder_lr` / TE-training wiring, and the DDPM-only
+        `--min_snr_gamma` / `--noise_offset` (every musubi arch is
+        flow-matching).
+        """
+        model_def = _find_model(request.base_model)
+        assert model_def is not None  # validated in generate_config
+        hp = request.hyperparameters
+        defaults = model_def["train_defaults"]
+
+        paths = self._component_paths(request, model_def)
+        component_args = [
+            f"--{comp['flag']}={paths[comp['key']]}"
+            for comp in model_def["components"]
+            if comp["key"] in paths
+        ]
+
+        # Musubi's optimizer factory lowercases the name itself, so the app's
+        # values pass through as-is (validate_request already restricted them
+        # to the ones its environment can construct).
+        optimizer = str(hp.get("optimizer", "adamw8bit")).lower()
+
+        # Same duration rule as Kohya: epochs-mode lets the trainer derive the
+        # true step total from its own bucket layout.
+        epochs = int(hp.get("epochs", 0) or 0)
+        if str(hp.get("duration_mode", "steps")) == "epochs" and epochs > 0:
+            duration_arg = f"--max_train_epochs={epochs}"
+        else:
+            duration_arg = (
+                f"--max_train_steps={int(hp.get('steps', defaults.get('steps', 2000)))}"
+            )
+
+        args: list[str] = [
+            *component_args,
+            f"--dataset_config={dataset_config}",
+            f"--output_dir={request.output_path}",
+            f"--output_name={request.output_name}",
+            f"--network_module={model_def['network_module']}",
+            f"--network_dim={int(hp.get('network_dim', 16))}",
+            f"--network_alpha={_num(hp.get('network_alpha', 16))}",
+            f"--learning_rate={_num(hp.get('lr', defaults.get('lr', 1e-4)))}",
+            f"--optimizer_type={optimizer}",
+            f"--lr_scheduler={hp.get('scheduler', 'constant')}",
+            duration_arg,
+            f"--gradient_accumulation_steps={int(hp.get('gradient_accumulation_steps', 1))}",
+            f"--mixed_precision={hp.get('mixed_precision', defaults.get('dtype', 'bf16'))}",
+            # Musubi's own default is fp32 — always pass the app's choice
+            # (default bf16) so checkpoints aren't silently double-sized.
+            f"--save_precision={_SAVE_PRECISION_MAP.get(hp.get('save_format', 'bf16'), 'bf16')}",
+            f"--max_grad_norm={_num(hp.get('max_grad_norm', 1.0))}",
+            # sdpa is musubi's recommended attention on Windows (no extra
+            # packages); the data-loader flags mirror its documented examples.
+            "--sdpa",
+            "--max_data_loader_n_workers=2",
+            "--persistent_data_loader_workers",
+        ]
+
+        # Flow-matching controls. `--weighting_scheme none` is the documented
+        # baseline for every currently-supported arch.
+        args.append(
+            f"--timestep_sampling={hp.get('timestep_type', defaults.get('timestep_sampling', 'shift'))}"
+        )
+        args.append("--weighting_scheme=none")
+        args.append(
+            f"--discrete_flow_shift={_num(hp.get('discrete_flow_shift', defaults.get('discrete_flow_shift', 2.0)))}"
+        )
+
+        # Runtime fp8 quantisation of the bf16 weights (the docs say to pass
+        # both together). Pre-quantised fp8 checkpoint files are rejected by
+        # musubi — the downloader only offers bf16 weights for its models.
+        if hp.get("transformer_quantization") == "float8":
+            args.append("--fp8_base")
+            args.append("--fp8_scaled")
+        # The train script reloads the TE briefly at startup to cache the
+        # sample prompts' embeddings, so its quantisation choice applies here
+        # too, not just in the cache phase.
+        if hp.get("text_encoder_quantization") == "float8":
+            args.append("--fp8_llm")
+
+        blocks_to_swap = int(hp.get("blocks_to_swap", 0) or 0)
+        if blocks_to_swap > 0:
+            args.append(f"--blocks_to_swap={blocks_to_swap}")
+
+        # Optimizer args: our weight_decay emission merged with the user's
+        # freeform pairs, theirs winning on key collision (same policy as the
+        # Kohya builder).
+        optimizer_args: list[str] = []
+        if float(hp.get("weight_decay", 0) or 0) > 0 and optimizer in (
+            "adamw",
+            "adamw8bit",
+        ):
+            optimizer_args.append(f'weight_decay={_num(hp["weight_decay"])}')
+        user_optimizer_args = _parse_kv_args(hp.get("optimizer_args", ""))
+        user_keys = {a.split("=", 1)[0] for a in user_optimizer_args}
+        optimizer_args = [
+            a for a in optimizer_args if a.split("=", 1)[0] not in user_keys
+        ]
+        optimizer_args.extend(user_optimizer_args)
+        if optimizer_args:
+            args.append("--optimizer_args")
+            args.extend(optimizer_args)
+
+        seed = int(hp.get("seed", -1))
+        if seed >= 0:
+            args.append(f"--seed={seed}")
+
+        warmup = int(hp.get("warmup_steps", 0) or 0)
+        if warmup > 0:
+            args.append(f"--lr_warmup_steps={warmup}")
+
+        if hp.get("scheduler") == "cosine_with_restarts":
+            args.append(
+                f"--lr_scheduler_num_cycles={int(hp.get('num_restarts', 1))}"
+            )
+
+        if float(hp.get("network_dropout", 0) or 0) > 0:
+            args.append(f"--network_dropout={_num(hp['network_dropout'])}")
+
+        if float(hp.get("scale_weight_norms", 0) or 0) > 0:
+            args.append(f"--scale_weight_norms={_num(hp['scale_weight_norms'])}")
+
+        user_network_args = _parse_kv_args(hp.get("network_args", ""))
+        if user_network_args:
+            args.append("--network_args")
+            args.extend(user_network_args)
+
+        if hp.get("gradient_checkpointing", True):
+            args.append("--gradient_checkpointing")
+
+        # Save cadence + rolling retention — same unit semantics as sd-scripts
+        # (the step window is interval × count; the epoch window is a count).
+        save_every_steps = int(hp.get("save_every_n_steps", 0) or 0)
+        save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
+        max_keep = int(hp.get("max_saves_to_keep", 0) or 0)
+        if save_every_steps > 0:
+            args.append(f"--save_every_n_steps={save_every_steps}")
+            if max_keep > 0:
+                args.append(f"--save_last_n_steps={save_every_steps * max_keep}")
+        elif save_every_epochs > 0:
+            args.append(f"--save_every_n_epochs={save_every_epochs}")
+            if max_keep > 0:
+                args.append(f"--save_last_n_epochs={max_keep}")
+
+        if request.sample_prompts:
+            args.extend(self._sample_args(request, config_dir, model_def))
+
+        if hp.get("resume_state"):
+            args.append(f"--resume={hp['resume_state']}")
+        if hp.get("save_state", False):
+            args.append("--save_state")
+
+        return args
+
+    def _sample_args(
+        self, request: StartJobRequest, config_dir: str, model_def: dict
+    ) -> list[str]:
+        """Write the sample-prompt file and return the sampling CLI flags.
+
+        Musubi prompt lines take `--w/--h/--s/--g` (guidance is `--g`, not
+        sd-scripts' `--l` — hence `sample_guidance_flag` above). `--f` (frame
+        count) is deliberately never emitted for image architectures. There is
+        no `--sample_sampler`; each arch uses its own fixed sampler.
+        """
+        hp = request.hyperparameters
+        defaults = model_def["train_defaults"]
+
+        resolution = hp.get("resolution", defaults.get("resolution", [1024]))
+        if not isinstance(resolution, list):
+            resolution = [int(resolution)]
+        sample_res = max(resolution) if resolution else 1024
+        native = _parse_native_resolution(hp.get("native_resolution"))
+        sample_w, sample_h = native if native else (sample_res, sample_res)
+        sample_steps = int(hp.get("sample_steps", defaults.get("sample_steps", 20)))
+        sample_guidance = _num(
+            hp.get("guidance_scale", defaults.get("guidance_scale", 4))
+        )
+
+        prompt_lines = []
+        for i, prompt in enumerate(request.sample_prompts):
+            width, height = request.sample_size_at(i, sample_w, sample_h)
+            prompt_lines.append(
+                self._add_missing_sample_flags(
+                    prompt, width, height, sample_steps, sample_guidance
+                )
+            )
+
+        prompt_file = os.path.join(
+            config_dir, f"{request.output_name}.sample-prompts.txt"
+        )
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(prompt_lines))
+
+        args = [f"--sample_prompts={prompt_file}"]
+        sample_every_steps = int(hp.get("sample_every_n_steps", 0) or 0)
+        sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
+        if sample_every_epochs > 0:
+            args.append(f"--sample_every_n_epochs={sample_every_epochs}")
+        else:
+            args.append(f"--sample_every_n_steps={sample_every_steps or 250}")
+        return args
+
+    def _train_command(
+        self, request: StartJobRequest, config_path: str
+    ) -> tuple[str, str, list[str], str]:
+        """The accelerate launch pieces for this run."""
+        model_def = _find_model(request.base_model)
+        if model_def is None:
+            raise ValueError(f"Unknown model: {request.base_model}")
+
+        python_exe = _find_python(self._scripts_path)
+        script = str(self._scripts_path / model_def["train_script"])
+        config_dir = os.path.dirname(config_path)
+        cli_args = self._build_cli_args(request, config_path, config_dir)
+        return python_exe, script, cli_args, str(self._scripts_path)
+
+    def get_supported_models(self) -> list[dict]:
+        return [
+            {"id": m["id"], "name": m["name"], "architecture": m["architecture"]}
+            for m in SUPPORTED_MODELS
+        ]

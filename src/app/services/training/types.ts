@@ -2,11 +2,12 @@ import type { ModelComponentType } from './models';
 
 // --- Provider & Backend ---
 
-export type TrainingProvider = 'ai-toolkit' | 'kohya' | 'mock';
+export type TrainingProvider = 'ai-toolkit' | 'kohya' | 'musubi' | 'mock';
 
 export const TRAINING_PROVIDER_LABELS: Record<TrainingProvider, string> = {
   'ai-toolkit': 'AI Toolkit (Ostris)',
   kohya: 'SD Scripts (Kohya)',
+  musubi: 'Musubi Tuner (Kohya)',
   mock: 'Mock (fake GPU, UI testing)',
 };
 
@@ -15,6 +16,7 @@ export const TRAINING_PROVIDER_SHORT_LABELS: Record<TrainingProvider, string> =
   {
     'ai-toolkit': 'AI Toolkit',
     kohya: 'SD Scripts',
+    musubi: 'Musubi',
     mock: 'Mock',
   };
 
