@@ -89,8 +89,7 @@ const ModelSelectSectionComponent = ({
           // rule in getSelectableProviders) so a loaded config renders its
           // own selection.
           .filter(
-            (m) =>
-              !filterActive || configuredIds.has(m.id) || m.id === modelId,
+            (m) => !filterActive || configuredIds.has(m.id) || m.id === modelId,
           )
           .map(
             (m) =>
@@ -102,7 +101,7 @@ const ModelSelectSectionComponent = ({
                       {m.name}
                       {m.experimental && <ExperimentalBadge />}
                       {hasLoadedStatuses && !configuredIds.has(m.id) && (
-                        <span className="text-xs text-slate-400">
+                        <span className="ml-auto text-xs text-slate-400">
                           Not set up
                         </span>
                       )}
@@ -120,9 +119,7 @@ const ModelSelectSectionComponent = ({
   const hasHiddenModels = useMemo(() => {
     if (!hasLoadedStatuses) return false;
     return getModelsByArchitecture().some((group) =>
-      group.models.some(
-        (m) => !configuredIds.has(m.id) && m.id !== modelId,
-      ),
+      group.models.some((m) => !configuredIds.has(m.id) && m.id !== modelId),
     );
   }, [hasLoadedStatuses, configuredIds, modelId]);
 
@@ -147,12 +144,9 @@ const ModelSelectSectionComponent = ({
         // `diffusers` is the whole model for the backends that use it, so it
         // gets the same always-visible treatment as `checkpoint`.
         if (c.type === 'checkpoint' || c.type === 'diffusers') return true;
-        if (!c.required) return isTierAtLeast(viewMode, 'intermediate');
+        if (!c.required) return isTierAtLeast(viewMode, 'advanced');
         const hasAppDefault = !!modelDefaults?.[c.type];
-        return isTierAtLeast(
-          viewMode,
-          hasAppDefault ? 'intermediate' : 'simple',
-        );
+        return isTierAtLeast(viewMode, hasAppDefault ? 'advanced' : 'simple');
       }),
     [currentModel, selectedProvider, viewMode, modelDefaults],
   );
@@ -164,7 +158,7 @@ const ModelSelectSectionComponent = ({
     [onModelPathChange],
   );
 
-  const isSimple = viewMode === 'simple';
+  const isSimple = viewMode === 'simple' || viewMode === 'intermediate';
 
   // In Simple view the component files collapse into a compact read-only
   // summary once set — only unset components keep their full input so the
