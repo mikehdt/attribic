@@ -17,7 +17,8 @@ from fastapi.responses import JSONResponse
 from captioning.batch_manager import CaptionBatchManager
 from captioning.provider import get_provider as get_caption_provider
 from captioning.provider import unload_provider as unload_caption_provider
-from config import SidecarConfig, load_config
+from config import SidecarConfig, load_config, read_hf_token
+from downloads.manager import DownloadManager
 from job_manager import JobManager
 from job_registry import JobKind, JobRegistry, LifecycleStatus, run_worker
 from models import (
@@ -26,6 +27,8 @@ from models import (
     CaptionRequest,
     CaptionResponse,
     HealthResponse,
+    StartDownloadRequest,
+    StartDownloadResponse,
     StartJobRequest,
     SystemStats,
 )
@@ -52,9 +55,11 @@ _ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
 # --- Globals initialised at startup ---
 ws_manager = WebSocketManager()
 caption_ws_manager = WebSocketManager()
+download_ws_manager = WebSocketManager()
 job_registry = JobRegistry()
 job_manager: JobManager
 caption_manager: CaptionBatchManager
+download_manager: DownloadManager
 sidecar_config: SidecarConfig
 # Tracks any ai-toolkit UI server we spawn so we can stop it on shutdown.
 aitk_server: Optional["AiToolkitServer"] = None
@@ -99,6 +104,11 @@ async def _idle_watchdog():
             continue
         # Never shut down mid-job; let running/queued work finish first.
         if job_registry.has_running() or job_registry.queued_jobs():
+            continue
+        # Downloads aren't in the registry (they're not GPU-bound and must not
+        # queue behind training), so they need their own check — exiting here
+        # is exactly the mid-transfer death this sidecar exists to prevent.
+        if download_manager.has_active:
             continue
 
         idle_for = time.monotonic() - _last_activity_at
@@ -198,7 +208,7 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle for the FastAPI app."""
-    global job_manager, caption_manager, sidecar_config
+    global job_manager, caption_manager, download_manager, sidecar_config
 
     sidecar_config = load_config()
     jobs_dir = sidecar_config.training_dir / "jobs"
@@ -212,6 +222,11 @@ async def lifespan(app: FastAPI):
     )
     caption_manager = CaptionBatchManager(
         ws_manager=caption_ws_manager, registry=job_registry
+    )
+    download_manager = DownloadManager(
+        downloads_dir=sidecar_config.training_dir / "downloads",
+        ws_manager=download_ws_manager,
+        hf_token_provider=lambda: read_hf_token(sidecar_config.config_path),
     )
     _register_providers(job_manager, sidecar_config)
 
@@ -239,6 +254,17 @@ async def lifespan(app: FastAPI):
             )
         )
         print(f"[sidecar] Worker {i} pinned to GPU {wc.gpu_id}")
+
+    # Downloads survive this process dying: their records are on disk and their
+    # partial files resume from the bytes already fetched. Anything the last
+    # run left unfinished goes straight back on the queue.
+    download_manager.load_records()
+    resumed = download_manager.resume_interrupted()
+    if resumed:
+        print(
+            f"[sidecar] Resuming {len(resumed)} interrupted download(s): "
+            f"{', '.join(resumed)}"
+        )
 
     # Watchdog that exits the process once Node stops heartbeating and there's
     # nothing left to do (see _idle_watchdog).
@@ -595,6 +621,70 @@ async def clear_caption_batch(batch_id: str):
             status_code=409,
         )
     return {"status": "cleared"}
+
+
+# --- Model downloads ---
+
+
+@app.post("/downloads/start", response_model=StartDownloadResponse)
+async def start_download(request: StartDownloadRequest):
+    """Queue a model download. Returns as soon as it's accepted — progress
+    streams over /ws/downloads and survives the client that started it."""
+    try:
+        state = await download_manager.start(request)
+    except RuntimeError as err:
+        return JSONResponse({"error": str(err)}, status_code=409)
+    return StartDownloadResponse(job_id=state.job_id, status=state.status)
+
+
+@app.post("/downloads/{job_id}/cancel")
+async def cancel_download(job_id: str):
+    """Stop a queued or running download. Partial files stay on disk so a
+    later retry resumes instead of starting over."""
+    if not await download_manager.cancel(job_id):
+        return JSONResponse(
+            {"error": f"Download {job_id} is not active"}, status_code=404
+        )
+    return {"status": "cancelling"}
+
+
+@app.get("/downloads")
+async def list_downloads():
+    """Every tracked download — queued, running and terminal.
+
+    The source of truth for the client's download cards, and what a client
+    reads to resynchronise after a refresh or a dropped WebSocket.
+    """
+    return {"downloads": download_manager.list_jobs()}
+
+
+@app.post("/downloads/{job_id}/clear")
+async def clear_download(job_id: str):
+    """Drop a terminal download's record. Files on disk are untouched —
+    deleting those is the Node side's DELETE /api/model-manager/download."""
+    if not download_manager.clear(job_id):
+        return JSONResponse(
+            {"error": f"Download {job_id} is unknown or still active"},
+            status_code=409,
+        )
+    return {"status": "cleared"}
+
+
+@app.websocket("/ws/downloads")
+async def ws_downloads(websocket: WebSocket):
+    """Progress stream for model downloads."""
+    origin = websocket.headers.get("origin")
+    if origin is not None and origin not in _ALLOWED_ORIGINS:
+        await websocket.close(code=4403)
+        return
+    await download_ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        download_ws_manager.disconnect(websocket)
 
 
 @app.post("/caption/unload")

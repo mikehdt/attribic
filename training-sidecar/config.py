@@ -29,6 +29,10 @@ class SidecarConfig:
     # `src/app/services/training/training-root.ts` for the Node-side twin.
     training_dir: Path = field(default_factory=lambda: Path.cwd() / ".training")
     backends: dict[str, str] = field(default_factory=dict)
+    # Path to the app's config.json, so readers that need a value fresh (the
+    # HuggingFace token, which the user can change mid-session) can re-read it
+    # rather than serving whatever was there at boot.
+    config_path: Optional[Path] = None
     # Default: a single worker on GPU 0. Multi-GPU users can add a second
     # entry (e.g. `{gpu_id: 1}`) in config.json under `sidecarWorkers`.
     workers: list[WorkerConfig] = field(
@@ -98,4 +102,22 @@ def load_config(app_root: Optional[Path] = None) -> SidecarConfig:
         training_dir=(projects_folder or app_root) / ".training",
         backends=backends,
         workers=workers,
+        config_path=config_path,
     )
+
+
+def read_hf_token(config_path: Optional[Path]) -> Optional[str]:
+    """The HuggingFace token for gated repos, read fresh from config.json.
+
+    Deliberately not cached on SidecarConfig: the user can paste a token into
+    Model Manager → Settings while the sidecar is already running, and a
+    download that 403s until the next restart would be baffling.
+    """
+    if config_path is None or not config_path.exists():
+        return None
+    try:
+        with open(config_path, "r") as f:
+            token = json.load(f).get("hfToken")
+    except (json.JSONDecodeError, OSError):
+        return None
+    return token.strip() if isinstance(token, str) and token.strip() else None

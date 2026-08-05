@@ -3,6 +3,19 @@
  *
  * Tracks all long-running operations: training runs, model downloads,
  * and future generation jobs. The activity panel reads from this slice.
+ *
+ * Nothing here is persisted client-side, deliberately. Every long-running job
+ * is owned by the Python sidecar, which keeps its own durable record —
+ * `<training>/jobs/<job_id>.json` for training runs, `<training>/downloads/
+ * <job_id>.json` for downloads — and this slice is a projection of those,
+ * rebuilt on mount by `hydrateTrainingHistory`, `hydrateActiveTraining` and
+ * `hydrateDownloads`.
+ *
+ * Downloads used to be mirrored into localStorage, back when the transfer
+ * itself ran in the Next.js route and died with the browser connection: a
+ * saved copy was the only way a refresh remembered anything. Now the sidecar
+ * keeps downloading through the refresh, so a second copy could only go stale
+ * and contradict it.
  */
 
 import {
@@ -185,35 +198,11 @@ const jobsSlice = createSlice({
       job.startedAt ??= Date.now();
     },
 
-    completeDownload: (state, action: PayloadAction<string>) => {
-      const job = state.jobs[action.payload];
-      if (!job || job.type !== 'download') return;
-
-      job.status = 'completed';
-      job.completedAt = Date.now();
-
-      // Snap the byte count to the total. Progress ticks are sampled, so the
-      // last one to land is normally short of the end (a 340 MB file finished
-      // reading "339.7 MB / 340.2 MB"), and the engine's final event — which
-      // does carry bytesDownloaded === totalBytes — is consumed as a status
-      // change, not as progress. Without this, a finished download reads as
-      // permanently incomplete.
-      if (job.progress) {
-        job.progress.bytesDownloaded = job.progress.totalBytes;
-      }
-    },
-
-    failDownload: (
-      state,
-      action: PayloadAction<{ id: string; error: string }>,
-    ) => {
-      const job = state.jobs[action.payload.id];
-      if (!job || job.type !== 'download') return;
-
-      job.status = 'failed';
-      job.error = action.payload.error;
-      job.completedAt = Date.now();
-    },
+    // Terminal download transitions go through `updateJobStatus` like any
+    // other job's. There were dedicated `completeDownload`/`failDownload`
+    // reducers here while the browser drove the transfer; one of them existed
+    // purely to snap a sampled byte count up to the total on completion, which
+    // the sidecar now reports exactly.
 
     // --- Tagging-specific progress ---
 
@@ -377,8 +366,6 @@ export const {
   updateTrainingProgress,
   updateTrainingSamples,
   updateDownloadProgress,
-  completeDownload,
-  failDownload,
   updateTaggingProgress,
   recordTaggingResult,
   completeTagging,

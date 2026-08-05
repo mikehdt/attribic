@@ -1,6 +1,6 @@
 /**
  * Middleware for the jobs slice:
- * - Persists download jobs to localStorage on every change
+ * - Archives terminal training runs into the durable history record
  * - Auto-opens the activity panel when a new job is added
  * - Mirrors model-manager status changes into the auto-tagger slice so
  *   both surfaces stay in sync (the Model Manager modal owns the
@@ -23,7 +23,6 @@ import {
   updateTrainingProgress,
   updateTrainingSamples,
 } from '../jobs';
-import { persistDownloadJobs } from '../jobs/persistence';
 import type { TrainingJob } from '../jobs/types';
 import { setModelStatus } from '../model-manager';
 import {
@@ -134,20 +133,18 @@ function archiveTerminalTrainingRuns(
   }
 }
 
-// High-frequency / UI-only jobs actions that never change what actually gets
-// persisted (all downloads + *terminal* training runs). Progress ticks fire
-// many times a second during active work, tagging jobs aren't persisted at all,
-// and panel toggles are pure UI state — so serialising + writing localStorage on
-// them is wasted work. Everything else still persists (fail-safe denylist: a
-// future job-mutating action persists by default).
+// High-frequency / UI-only jobs actions that can never make a training run
+// terminal. Progress ticks fire many times a second during active work and
+// panel toggles are pure UI state, so walking the job list on them is wasted.
+// Everything else is checked (fail-safe denylist: a future job-mutating action
+// is inspected by default).
 //
-// NOTE: `updateTrainingProgress` is excluded here to avoid serialising on every
-// tick, but a training run reaches its terminal status *through* this same
-// action (the sidecar broadcasts the final completed/failed/cancelled progress
-// over the WebSocket). Archiving is therefore handled by its own dedicated
-// listener below, which short-circuits on non-terminal ticks — without it,
-// terminal runs would never be recorded to history.
-const NON_PERSISTING_JOB_ACTIONS = new Set<string>([
+// NOTE: `updateTrainingProgress` is excluded here despite being exactly how a
+// run reaches its terminal status (the sidecar broadcasts the final
+// completed/failed/cancelled progress over the WebSocket). Archiving on it is
+// handled by its own dedicated listener below, which short-circuits on
+// non-terminal ticks — without that, terminal runs would never be recorded.
+const NON_ARCHIVING_JOB_ACTIONS = new Set<string>([
   updateTrainingProgress.type,
   updateDownloadProgress.type,
   updateTaggingProgress.type,
@@ -156,20 +153,17 @@ const NON_PERSISTING_JOB_ACTIONS = new Set<string>([
   togglePanel.type,
 ]);
 
-// Persist download jobs to localStorage on meaningful jobs/ actions, and
-// snapshot any newly-terminal training run into the durable history archive —
-// which is the single persisted home for terminal training runs (the jobs
-// slice no longer writes its own `img-tagger:training-jobs` copy). This covers
-// terminal transitions that arrive via a non-excluded action (e.g. a manual
-// `updateJobStatus`); the WebSocket-driven common case is handled below.
+// Snapshot any newly-terminal training run into the durable history archive.
+// This covers terminal transitions that arrive via a non-excluded action (e.g.
+// a manual `updateJobStatus`); the WebSocket-driven common case is handled by
+// the dedicated listener below.
 jobPersistenceMiddleware.startListening({
   predicate: (action) =>
     typeof action.type === 'string' &&
     action.type.startsWith('jobs/') &&
-    !NON_PERSISTING_JOB_ACTIONS.has(action.type),
+    !NON_ARCHIVING_JOB_ACTIONS.has(action.type),
   effect: (_action, listenerApi) => {
     const state = listenerApi.getState() as RootState;
-    persistDownloadJobs(state.jobs.jobs);
     archiveTerminalTrainingRuns(state, listenerApi.dispatch);
   },
 });

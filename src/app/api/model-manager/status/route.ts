@@ -10,8 +10,8 @@ import path from 'path';
 import { getAllModels } from '@/app/services/auto-tagger';
 import { checkModelStatus } from '@/app/services/auto-tagger/model-manager';
 import { getModelsFolder } from '@/app/services/config/server-config';
-import { isDownloadActive } from '@/app/services/model-manager/active-downloads';
 import { ALL_TRAINING_MODELS } from '@/app/services/model-manager/registries/training-models';
+import { activeDownloadModelIds } from '@/app/services/model-manager/sidecar-downloads';
 import {
   checkModelFiles,
   getInstalledFileNames,
@@ -25,13 +25,16 @@ export async function GET() {
       { status: string; localPath: string | null; resolvedPath?: string | null }
     > = {};
 
-    // Check auto-tagger models. An active download in this process (e.g.
-    // started from another browser tab) overrides the disk check so
-    // siblings don't see partial bytes and offer Delete/Resume actions.
+    // A download in flight overrides the disk check so nothing offers Delete or
+    // Resume against bytes that are landing right now. The sidecar owns
+    // downloads, so this covers every tab and survives a Node restart — the
+    // old in-process Set only ever knew about this process's own transfers.
+    const downloading = await activeDownloadModelIds();
+
     for (const model of getAllModels()) {
       const diskStatus = checkModelStatus(model);
       statuses[model.id] = {
-        status: isDownloadActive(model.id) ? 'downloading' : diskStatus,
+        status: downloading.has(model.id) ? 'downloading' : diskStatus,
         localPath: null, // auto-tagger paths are computed internally
       };
     }
@@ -48,7 +51,7 @@ export async function GET() {
       }
 
       const diskStatus = checkModelFiles(modelDir, model.id, model.files);
-      const status = isDownloadActive(model.id) ? 'downloading' : diskStatus;
+      const status = downloading.has(model.id) ? 'downloading' : diskStatus;
 
       // Path the training form should use for a ready install. The manifest
       // knows which variant's files actually exist, so it wins over the

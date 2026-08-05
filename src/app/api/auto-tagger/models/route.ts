@@ -11,10 +11,14 @@ import {
   getModelTotalSize,
 } from '@/app/services/auto-tagger';
 import { checkModelStatus } from '@/app/services/auto-tagger/model-manager';
-import { isDownloadActive } from '@/app/services/model-manager/active-downloads';
+import { activeDownloadModelIds } from '@/app/services/model-manager/sidecar-downloads';
 
 export async function GET() {
   try {
+    // Models with bytes landing right now, so a second tab (or this one after
+    // a refresh) suppresses actions that would collide with the live write.
+    const downloading = await activeDownloadModelIds();
+
     const providers = getAllProviders().map((provider) => ({
       id: provider.id,
       name: provider.name,
@@ -38,9 +42,7 @@ export async function GET() {
         runtime: model.runtime,
         supportsVideo: model.supportsVideo,
         videoDefaults: model.videoDefaults,
-        // If another tab in the same process is actively writing this
-        // model, surface that so the second tab can suppress actions.
-        status: isDownloadActive(model.id) ? 'downloading' : diskStatus,
+        status: downloading.has(model.id) ? 'downloading' : diskStatus,
       };
     });
 

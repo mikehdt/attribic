@@ -8,10 +8,30 @@ import { useState } from 'react';
 
 import { useAppDispatch } from '@/app/store/hooks';
 import { type Job, removeJob } from '@/app/store/jobs';
+import {
+  cancelDownload,
+  clearDownload,
+} from '@/app/store/jobs/download-runtime';
 
 export function PendingJobsList({ jobs }: { jobs: Job[] }) {
   const dispatch = useAppDispatch();
   const [expanded, setExpanded] = useState(false);
+
+  /**
+   * A queued download is queued in the *sidecar*, so dropping the card alone
+   * would leave it to start downloading anyway — and the next resync would
+   * bring the card straight back. Cancel it there first, then retire the
+   * record.
+   */
+  const handleRemove = (job: Job) => {
+    if (job.type === 'download') {
+      void dispatch(cancelDownload(job.id)).then(() =>
+        dispatch(clearDownload(job.id)),
+      );
+      return;
+    }
+    dispatch(removeJob(job.id));
+  };
 
   const label = `${jobs.length} queued ${jobs.length === 1 ? 'job' : 'jobs'}`;
 
@@ -57,7 +77,7 @@ export function PendingJobsList({ jobs }: { jobs: Job[] }) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => dispatch(removeJob(job.id))}
+                  onClick={() => handleRemove(job)}
                   className="cursor-pointer rounded p-0.5 text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400"
                   title="Remove from queue"
                 >

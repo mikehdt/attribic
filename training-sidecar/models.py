@@ -404,3 +404,45 @@ class CaptionBatchResponse(BaseModel):
     batch_id: str
     status: str = "started"
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Model downloads
+# ---------------------------------------------------------------------------
+
+
+class DownloadFileSpec(BaseModel):
+    """One file to fetch from a HuggingFace repo."""
+
+    name: str
+    # Expected size in bytes. 0 means unknown — the engine then skips the size
+    # check and won't try to resume (it can't tell complete from partial).
+    size: int = 0
+
+
+class StartDownloadRequest(BaseModel):
+    """A fully-resolved download, as handed over by the Node side.
+
+    The sidecar knows nothing about model registries, variants or folder
+    conventions — resolving a model id into a repo, a file list and a target
+    directory stays in TypeScript, where the registries live. This request is
+    the result of that resolution.
+    """
+
+    job_id: str
+    model_id: str
+    model_name: str
+    repo_id: str
+    files: list[DownloadFileSpec]
+    target_dir: str
+    # Written as `<sidecar_file_name>.model.json` next to the model when the
+    # download completes, so the training model scanner can identify it. Stored
+    # verbatim apart from a `downloadedAt` stamp added at write time. Both
+    # fields are absent for auto-tagger models, which have no such sidecar.
+    sidecar_meta: Optional[dict] = None
+    sidecar_file_name: Optional[str] = None
+
+
+class StartDownloadResponse(BaseModel):
+    job_id: str
+    status: str

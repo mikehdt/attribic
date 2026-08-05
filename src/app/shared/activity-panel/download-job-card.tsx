@@ -1,7 +1,10 @@
 import { DownloadIcon, RefreshCwIcon, Trash2Icon, XIcon } from 'lucide-react';
+import { useCallback } from 'react';
 
+import { useConfirmAction } from '@/app/shared/use-confirm-action';
 import { useAppDispatch } from '@/app/store/hooks';
-import { type DownloadJob, removeJob } from '@/app/store/jobs';
+import { type DownloadJob } from '@/app/store/jobs';
+import { clearDownload } from '@/app/store/jobs/download-runtime';
 
 import { ProgressBar } from '../progress-bar/progress-bar';
 import { ActionButton } from './action-button';
@@ -19,6 +22,14 @@ export function DownloadJobCard({
   onDelete?: (job: DownloadJob) => void;
 }) {
   const dispatch = useAppDispatch();
+
+  // Cancel is a two-step confirm — it sits in the tight header row, so a
+  // stray click shouldn't throw away a part-finished multi-gigabyte download.
+  const handleConfirmCancel = useCallback(() => {
+    onCancel?.(job);
+  }, [onCancel, job]);
+  const { armed: confirmingCancel, trigger: handleCancelClick } =
+    useConfirmAction(handleConfirmCancel);
 
   const isRunning = job.status === 'running';
   const isCompleted = job.status === 'completed';
@@ -58,9 +69,25 @@ export function DownloadJobCard({
       {/* Header */}
       <div className="flex items-center gap-2">
         <DownloadIcon className={`h-3.5 w-3.5 shrink-0 ${iconColour}`} />
-        <span className="text-xs font-medium text-(--foreground)">
+        <span className="truncate text-xs font-medium text-(--foreground)">
           {job.modelName}
         </span>
+        {isRunning && onCancel && (
+          <div className="ml-auto flex shrink-0 items-center">
+            <ActionButton
+              onClick={handleCancelClick}
+              title={
+                confirmingCancel
+                  ? 'Click again to confirm cancellation'
+                  : 'Cancel download'
+              }
+              variant="danger"
+            >
+              <XIcon className="h-2.5 w-2.5" />
+              {confirmingCancel ? 'Confirm?' : 'Cancel'}
+            </ActionButton>
+          </div>
+        )}
       </div>
 
       {/* Progress bar */}
@@ -92,47 +119,36 @@ export function DownloadJobCard({
         <p className="mt-1 text-xs text-red-500">{job.error}</p>
       )}
 
-      {/* Actions */}
-      <div className="mt-1.5 flex items-center justify-end gap-1">
-        {isRunning && onCancel && (
+      {/* Actions — running jobs carry their only action (Cancel) in the
+          header, so this row is for finished/failed jobs. */}
+      {isDone && (
+        <div className="mt-1.5 flex items-center justify-end gap-1">
+          {canRetry && onRetry && (
+            <ActionButton onClick={() => onRetry(job)} title="Retry download">
+              <RefreshCwIcon className="h-2.5 w-2.5" />
+              Retry
+            </ActionButton>
+          )}
+          {canRetry && onDelete && (
+            <ActionButton
+              onClick={() => onDelete(job)}
+              title="Delete partial files and remove"
+              variant="danger"
+            >
+              <Trash2Icon className="h-2.5 w-2.5" />
+              Delete
+            </ActionButton>
+          )}
+          <div className="mr-auto" />
           <ActionButton
-            onClick={() => onCancel(job)}
-            title="Cancel download"
-            variant="danger"
+            onClick={() => void dispatch(clearDownload(job.id))}
+            title="Clear from list"
           >
             <XIcon className="h-2.5 w-2.5" />
-            Cancel
+            Clear
           </ActionButton>
-        )}
-        {canRetry && onRetry && (
-          <ActionButton onClick={() => onRetry(job)} title="Retry download">
-            <RefreshCwIcon className="h-2.5 w-2.5" />
-            Retry
-          </ActionButton>
-        )}
-        {canRetry && onDelete && (
-          <ActionButton
-            onClick={() => onDelete(job)}
-            title="Delete partial files and remove"
-            variant="danger"
-          >
-            <Trash2Icon className="h-2.5 w-2.5" />
-            Delete
-          </ActionButton>
-        )}
-        {isDone && (
-          <>
-            <div className="mr-auto" />
-            <ActionButton
-              onClick={() => dispatch(removeJob(job.id))}
-              title="Clear from list"
-            >
-              <XIcon className="h-2.5 w-2.5" />
-              Clear
-            </ActionButton>
-          </>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

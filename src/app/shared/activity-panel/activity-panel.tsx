@@ -15,7 +15,6 @@ import {
   closePanel,
   openJobDetail,
   openPanel,
-  restoreJobs,
   selectActiveJobs,
   selectCompletedJobs,
   selectDetailJob,
@@ -24,12 +23,11 @@ import {
   selectPanelOpen,
   selectPendingJobs,
   type TaggingJob,
-  updateJobStatus,
 } from '@/app/store/jobs';
 import {
-  loadPersistedDownloads,
-  reconcileDownloadsWithServer,
-} from '@/app/store/jobs/persistence';
+  clearTerminalDownloads,
+  hydrateDownloads,
+} from '@/app/store/jobs/download-runtime';
 import {
   dismissTrainingJobs,
   hydrateTrainingHistory,
@@ -68,14 +66,11 @@ const ActivityPanelComponent = () => {
     pathname.startsWith('/tagging') || pathname.startsWith('/training');
   const bottomClass = hasBottomShelf ? 'bottom-16' : 'bottom-4';
 
-  // Restore past training runs and persisted downloads on mount. Training runs
-  // are read back from their records under `.training/jobs` (the source of truth
-  // for them); downloads still persist to localStorage, being a purely
-  // client-side concern.
-  // Downloads that were `running` when the page closed are restored as-is,
-  // then reconciled against the server's active-download set: another tab
-  // may still own the stream, in which case we leave the job alone. Only
-  // jobs the server no longer tracks get flipped to `interrupted`.
+  // Restore past training runs and in-flight downloads on mount. Both are
+  // projections of the sidecar's durable records rather than anything this
+  // browser saved: training runs from `.training/jobs`, downloads from
+  // `.training/downloads`. A download the sidecar resumed by itself after an
+  // interrupted session arrives through the same path as any other.
   const restoredRef = useRef(false);
   const historyRef = useRef(false);
   useEffect(() => {
@@ -93,27 +88,7 @@ const ActivityPanelComponent = () => {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    const downloads = loadPersistedDownloads();
-    if (downloads.length === 0) return;
-
-    dispatch(restoreJobs(downloads));
-    if (downloads.some((j) => j.status === 'interrupted')) {
-      dispatch(openPanel());
-    }
-
-    void reconcileDownloadsWithServer(downloads).then((staleIds) => {
-      if (staleIds.length === 0) return;
-      for (const id of staleIds) {
-        dispatch(
-          updateJobStatus({
-            id,
-            status: 'interrupted',
-            error: 'Download interrupted — click Retry to continue',
-          }),
-        );
-      }
-      dispatch(openPanel());
-    });
+    void dispatch(hydrateDownloads());
   }, [dispatch]);
 
   const handleOpen = useCallback(() => {
@@ -139,6 +114,11 @@ const ActivityPanelComponent = () => {
   );
 
   const handleClearAll = useCallback(() => {
+    // Downloads first: their records live on the sidecar, so clearing them
+    // locally isn't enough — the next resync would walk them back in. It reads
+    // the job list synchronously, so it has to run before `clearCompletedJobs`
+    // empties it.
+    void dispatch(clearTerminalDownloads());
     dispatch(clearCompletedJobs());
     // Terminal training runs live on their own durable records, not in the jobs
     // slice's persistence. Mark them dismissed locally for an immediate response…
