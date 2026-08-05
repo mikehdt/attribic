@@ -1,5 +1,6 @@
 """Tests for the musubi-tuner provider: dataset TOML generation, cache-dir
-fingerprinting, CLI translation, and the `--g` sample-prompt grammar.
+fingerprinting, CLI translation, and the sample-prompt grammar (CFG via `--l`
+for most archs, `--g` for Flux.2).
 
 The subprocess/log state machine is the shared `SdScriptsProvider` machinery
 already covered by test_log_parsing.py; these tests cover only what the
@@ -29,11 +30,13 @@ def make_request(
     hyperparameters: dict = None,
     datasets: list[DatasetEntry] = None,
     sample_prompts=(),
+    base_model: str = "zimage",
+    vae_key: str = "vae",
 ) -> StartJobRequest:
     hp = {
         "model_paths": {
             "checkpoint": str(tmp_path / "dit.safetensors"),
-            "vae": str(tmp_path / "vae.safetensors"),
+            vae_key: str(tmp_path / "vae.safetensors"),
             "qwen": str(tmp_path / "te.safetensors"),
         },
     }
@@ -41,7 +44,7 @@ def make_request(
     return StartJobRequest(
         project_path=str(tmp_path),
         provider=ProviderType.MUSUBI,
-        base_model="zimage",
+        base_model=base_model,
         output_path=str(tmp_path / "loras"),
         output_name="demo",
         datasets=datasets
@@ -292,45 +295,164 @@ class TestBuildCliArgs:
         assert args[idx + 1] == "weight_decay=0.01"
 
 
+class TestNewArchitectures:
+    """Per-arch quirks of the entries beyond Z-Image: fp8 flag names,
+    --model_version wiring, and the Flux.2 ae→--vae component mapping."""
+
+    def test_krea2_args(self, provider, tmp_path):
+        request = make_request(
+            tmp_path,
+            {
+                "transformer_quantization": "float8",
+                "text_encoder_quantization": "float8",
+            },
+            base_model="krea2",
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--network_module=networks.lora_krea2" in args
+        assert "--timestep_sampling=shift" in args
+        assert "--discrete_flow_shift=2.5" in args
+        # DiT fp8 works; the krea2 scripts have no TE fp8 flag at all.
+        assert "--fp8_base" in args and "--fp8_scaled" in args
+        joined = " ".join(args)
+        assert "--fp8_llm" not in joined
+        assert "--fp8_vl" not in joined
+        assert "--fp8_text_encoder" not in joined
+        assert "--model_version" not in joined
+
+    def test_qwen_image_args(self, provider, tmp_path):
+        request = make_request(
+            tmp_path,
+            {"text_encoder_quantization": "float8"},
+            base_model="qwen-image",
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--network_module=networks.lora_qwen_image" in args
+        assert "--fp8_vl" in args
+        assert "--fp8_llm" not in " ".join(args)
+
+    def test_flux2_args(self, provider, tmp_path):
+        request = make_request(
+            tmp_path,
+            {"text_encoder_quantization": "float8"},
+            base_model="flux2-klein-base-4b",
+            vae_key="ae",
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--network_module=networks.lora_flux_2" in args
+        assert "--model_version=klein-base-4b" in args
+        assert "--timestep_sampling=flux2_shift" in args
+        assert "--fp8_text_encoder" in args
+        # The app catalogues the Flux.2 autoencoder under `ae`; musubi's flag
+        # for it is --vae.
+        assert f"--vae={tmp_path / 'vae.safetensors'}" in args
+
+    def test_flux2_blocks_to_swap_capped(self, provider, tmp_path):
+        for name in ("dit.safetensors", "vae.safetensors", "te.safetensors"):
+            (tmp_path / name).write_bytes(b"")
+        request = make_request(
+            tmp_path,
+            {"blocks_to_swap": 17},
+            base_model="flux2-klein-base-9b",
+            vae_key="ae",
+        )
+        errors = provider.validate_request(request)
+        assert any("16" in e for e in errors)
+
+
 # --------------------------------------------------------------------------
 # Sample prompts
 # --------------------------------------------------------------------------
 
 
 class TestSampleArgs:
-    def test_guidance_flag_is_g(self, provider, tmp_path):
+    def _prompt_line(self, provider, request, tmp_path, model_def=None):
+        args = provider._sample_args(
+            request, str(tmp_path), model_def or {"train_defaults": {}}
+        )
+        prompt_file = next(
+            a.split("=", 1)[1] for a in args if a.startswith("--sample_prompts=")
+        )
+        return Path(prompt_file).read_text(encoding="utf-8")
+
+    def test_guidance_flag_is_l(self, provider, tmp_path):
+        # Musubi samplers read CFG from `--l` (they parse `--g` but ignore it
+        # for every arch except Flux.2).
         request = make_request(
             tmp_path,
             {"guidance_scale": 4, "sample_steps": 24, "resolution": [1024]},
             sample_prompts=["a cat"],
         )
-        args = provider._sample_args(
-            request, str(tmp_path), {"train_defaults": {}}
-        )
-        prompt_file = next(
-            a.split("=", 1)[1] for a in args if a.startswith("--sample_prompts=")
-        )
-        line = Path(prompt_file).read_text(encoding="utf-8")
-        assert "--g 4" in line
-        assert "--l " not in line
+        line = self._prompt_line(provider, request, tmp_path)
+        assert "--l 4" in line
+        assert "--g " not in line
         assert "--w 1024" in line and "--h 1024" in line
         assert "--s 24" in line
         # Frame count is video-only; never emitted for image archs.
         assert "--f " not in line
 
+    def test_flux2_guidance_flag_is_g(self, provider, tmp_path):
+        from providers.musubi import _find_model
+
+        request = make_request(
+            tmp_path,
+            {"guidance_scale": 4},
+            sample_prompts=["a cat"],
+            base_model="flux2-klein-base-9b",
+            vae_key="ae",
+        )
+        line = self._prompt_line(
+            provider, request, tmp_path, _find_model("flux2-klein-base-9b")
+        )
+        assert "--g 4" in line
+        assert "--l " not in line
+
     def test_user_guidance_wins(self, provider, tmp_path):
         request = make_request(
-            tmp_path, {"guidance_scale": 4}, sample_prompts=["a cat --g 7"]
+            tmp_path, {"guidance_scale": 4}, sample_prompts=["a cat --l 7"]
         )
-        args = provider._sample_args(
-            request, str(tmp_path), {"train_defaults": {}}
+        line = self._prompt_line(provider, request, tmp_path)
+        assert line.count("--l ") == 1
+        assert "--l 7" in line
+
+    def test_krea2_default_negative_injected(self, provider, tmp_path):
+        from providers.musubi import _find_model
+
+        request = make_request(
+            tmp_path,
+            sample_prompts=["a cat", "a dog --n my own negative"],
+            base_model="krea2",
         )
-        prompt_file = next(
-            a.split("=", 1)[1] for a in args if a.startswith("--sample_prompts=")
+        line = self._prompt_line(
+            provider, request, tmp_path, _find_model("krea2")
         )
-        line = Path(prompt_file).read_text(encoding="utf-8")
-        assert line.count("--g ") == 1
-        assert "--g 7" in line
+        lines = line.splitlines()
+        # Krea 2 only runs CFG when a negative prompt exists; the provider
+        # injects a generic one where the prompt has none.
+        assert "--n low quality, blurry" in lines[0]
+        # A user-supplied negative is left alone.
+        assert "--n my own negative" in lines[1]
+        assert "low quality, blurry" not in lines[1]
+
+    def test_qwen_image_flow_shift_emitted(self, provider, tmp_path):
+        from providers.musubi import _find_model
+
+        request = make_request(
+            tmp_path,
+            {"discrete_flow_shift": 2.2},
+            sample_prompts=["a cat"],
+            base_model="qwen-image",
+        )
+        line = self._prompt_line(
+            provider, request, tmp_path, _find_model("qwen-image")
+        )
+        # Qwen-Image's sampler falls back to flow shift 14.5 without --fs.
+        assert "--fs 2.2" in line
+        # Other archs don't emit it (their samplers ignore or self-derive it).
+        zline = self._prompt_line(
+            provider, make_request(tmp_path, sample_prompts=["a cat"]), tmp_path
+        )
+        assert "--fs " not in zline
 
     def test_cadence_defaults_to_250_steps(self, provider, tmp_path):
         request = make_request(tmp_path, sample_prompts=["a cat"])

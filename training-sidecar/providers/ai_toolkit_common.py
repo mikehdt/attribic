@@ -150,6 +150,36 @@ SUPPORTED_MODELS = [
             "timestep_type": "weighted",
         },
     },
+    # Krea 2 RAW — also trains on the musubi backend from the same single-file
+    # DiT. ai-toolkit's Krea2Model accepts a bare .safetensors path (its
+    # custom loader reads the MMDiT state dict directly) and fetches its own
+    # TE (Qwen/Qwen3-VL-4B-Instruct) and VAE (Qwen/Qwen-Image) from HF at run
+    # time, so the client only ever sends the checkpoint. The Turbo variant
+    # (assistant-LoRA de-distillation, as with Z-Image Turbo) is deliberately
+    # not offered: musubi's docs confirm a RAW-trained LoRA applies to Turbo
+    # at inference.
+    {
+        "id": "krea2",
+        "name": "Krea 2",
+        "architecture": "krea2",
+        "model_path": "krea/Krea-2-Raw",
+        "config": {"arch": "krea2", "quantize": True},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2500,
+            # Krea's reference guidance is offset by one (official 4.5 == 5.5
+            # here); RAW samples want real CFG.
+            "guidance_scale": 5.5,
+            "sample_steps": 28,
+            # ai-toolkit's own krea2 UI preset sets `linear` — fallback only,
+            # the client always sends the app-level default.
+            "timestep_type": "linear",
+        },
+    },
     # Anima also trains on the kohya backend, but from a different set of
     # weights: kohya takes the single-file DiT + Qwen3 TE + VAE, while
     # ai-toolkit builds the modular diffusers pipeline from a directory (see

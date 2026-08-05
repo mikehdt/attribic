@@ -19,8 +19,12 @@ here:
   `--discrete_flow_shift`) replace the DDPM noise controls, and
   `--save_precision` defaults to fp32 upstream so it is always passed.
 
-First supported architecture: Z-Image Base (musubi's docs recommend Base over
-Turbo for training; the ai-toolkit `zimage-turbo` flow is separate).
+Supported architectures: Z-Image Base (musubi's docs recommend Base over
+Turbo for training; the ai-toolkit `zimage-turbo` flow is separate), Krea 2
+RAW, Qwen-Image, and Flux.2 Klein Base 4B/9B. Per-arch quirks — fp8 flag
+names, `--model_version` selection, sample-prompt guidance flags — live as
+keys on the SUPPORTED_MODELS entries, all verified against the checkout's
+argparse setups.
 """
 
 import hashlib
@@ -40,6 +44,7 @@ from providers.sd_scripts_base import (
     _num,
     _parse_kv_args,
     _parse_native_resolution,
+    _prompt_line_has_flag,
     _toml_bool,
     _toml_str,
 )
@@ -50,6 +55,23 @@ from providers.sd_scripts_base import (
 # carries the per-architecture scripts and component→flag mapping so the CLI
 # builder stays generic. Musubi architectures additionally name their two
 # cache scripts, since pre-caching is per-model-family.
+#
+# Per-arch keys beyond the Kohya set (all verified against the checkout's
+# argparse setups):
+# - `te_fp8_flag`: the text-encoder fp8 flag this arch's train + TE-cache
+#   scripts accept (`fp8_llm` / `fp8_vl` / `fp8_text_encoder`), or None where
+#   the scripts have none (Krea 2 hardcodes its TE to bf16).
+# - `extra_args` / `cache_extra_args`: static per-arch flags for the train
+#   script and for *both* cache scripts (Flux.2's `--model_version`).
+# - `sample_guidance_flag`: the prompt-file flag that actually controls
+#   guidance for this arch. Musubi archs read CFG from `--l` — except Flux.2,
+#   whose sampler reads `--g` for both embedded guidance and true CFG.
+# - `sample_default_negative`: injected as `--n` when the prompt has none.
+#   Krea 2 only engages CFG when a negative prompt is present, and CFG-off
+#   RAW output is blurry by design.
+# - `sample_flow_shift`: emit `--fs <discrete_flow_shift>` per prompt line.
+#   Qwen-Image's sampler honours `--fs` but falls back to an inherited 14.5 —
+#   far off its 2.2 training shift — when the line omits it.
 
 SUPPORTED_MODELS = [
     {
@@ -75,6 +97,7 @@ SUPPORTED_MODELS = [
                 "required": True,
             },
         ],
+        "te_fp8_flag": "fp8_llm",
         # docs/zimage.md: "The maximum number of blocks that can be offloaded
         # is 28."
         "max_blocks_to_swap": 28,
@@ -87,6 +110,193 @@ SUPPORTED_MODELS = [
             # docs/zimage.md's recommended baseline for Z-Image training.
             "timestep_sampling": "shift",
             "discrete_flow_shift": 2.0,
+        },
+    },
+    {
+        "id": "krea2",
+        "name": "Krea 2",
+        "architecture": "krea2",
+        "train_script": "src/musubi_tuner/krea2_train_network.py",
+        "latent_cache_script": "src/musubi_tuner/krea2_cache_latents.py",
+        "te_cache_script": "src/musubi_tuner/krea2_cache_text_encoder_outputs.py",
+        "network_module": "networks.lora_krea2",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "dit",
+                "label": "Krea 2 RAW DiT",
+                "required": True,
+            },
+            {
+                "key": "vae",
+                "flag": "vae",
+                "label": "Qwen-Image VAE",
+                "required": True,
+            },
+            {
+                # Only consulted for sample generation (TE outputs are
+                # pre-cached), but our runs always sample.
+                "key": "qwen",
+                "flag": "text_encoder",
+                "label": "Qwen3-VL text encoder",
+                "required": True,
+            },
+        ],
+        # The krea2 scripts have no TE fp8 flag at all — the training script
+        # hardcodes the TE dtype to bf16.
+        "te_fp8_flag": None,
+        # docs/krea2.md: 28 main blocks, swap max is 28 − 2.
+        "max_blocks_to_swap": 26,
+        # Krea 2's sampler only runs CFG when a negative prompt exists, and
+        # RAW without CFG is blurry by design — so give prompts that carry no
+        # `--n` of their own a generic negative.
+        "sample_default_negative": "low quality, blurry",
+        "train_defaults": {
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2500,
+            # docs/krea2.md: shift at 2.5 matches K2 inference at 1024x1024.
+            "timestep_sampling": "shift",
+            "discrete_flow_shift": 2.5,
+            # Krea's reference guidance is offset by one (official 4.5).
+            "guidance_scale": 5.5,
+            "sample_steps": 28,
+        },
+    },
+    {
+        "id": "qwen-image",
+        "name": "Qwen-Image",
+        "architecture": "qwenimage",
+        "train_script": "src/musubi_tuner/qwen_image_train_network.py",
+        "latent_cache_script": "src/musubi_tuner/qwen_image_cache_latents.py",
+        "te_cache_script": "src/musubi_tuner/qwen_image_cache_text_encoder_outputs.py",
+        "network_module": "networks.lora_qwen_image",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "dit",
+                "label": "Qwen-Image DiT",
+                "required": True,
+            },
+            {
+                "key": "vae",
+                "flag": "vae",
+                "label": "Qwen-Image VAE",
+                "required": True,
+            },
+            {
+                "key": "qwen",
+                "flag": "text_encoder",
+                "label": "Qwen2.5-VL text encoder",
+                "required": True,
+            },
+        ],
+        "te_fp8_flag": "fp8_vl",
+        # 60-layer DiT; musubi's convention caps swap at layers − 2. The doc's
+        # VRAM table tops out at 45 and warns system RAM climbs sharply beyond.
+        "max_blocks_to_swap": 58,
+        # Qwen-Image's sampler honours `--fs` but defaults to an inherited
+        # 14.5 when absent — emit the training shift so samples match.
+        "sample_flow_shift": True,
+        "train_defaults": {
+            "optimizer": "adamw8bit",
+            # docs/qwen_image.md trains LoRA at 5e-5, not the usual 1e-4.
+            "lr": 5e-5,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2500,
+            # docs/qwen_image.md: unusually low shift for a flow-matching arch.
+            "timestep_sampling": "shift",
+            "discrete_flow_shift": 2.2,
+        },
+    },
+    {
+        "id": "flux2-klein-base-4b",
+        "name": "Flux.2 Klein Base 4B",
+        "architecture": "flux",
+        "train_script": "src/musubi_tuner/flux_2_train_network.py",
+        "latent_cache_script": "src/musubi_tuner/flux_2_cache_latents.py",
+        "te_cache_script": "src/musubi_tuner/flux_2_cache_text_encoder_outputs.py",
+        "network_module": "networks.lora_flux_2",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "dit",
+                "label": "Klein Base 4B DiT",
+                "required": True,
+            },
+            # The app catalogues Flux.2's autoencoder under the `ae` component
+            # type (shared with the ai-toolkit Klein download); musubi's flag
+            # for it is `--vae`.
+            {"key": "ae", "flag": "vae", "label": "Flux.2 VAE", "required": True},
+            {
+                "key": "qwen",
+                "flag": "text_encoder",
+                "label": "Qwen3 4B text encoder",
+                "required": True,
+            },
+        ],
+        "te_fp8_flag": "fp8_text_encoder",
+        # Selects the arch variant in all three scripts (their shared parser
+        # validates it; the TE loader derives 4B-vs-8B from it too).
+        "extra_args": ["--model_version=klein-base-4b"],
+        "cache_extra_args": ["--model_version=klein-base-4b"],
+        # Flux.2 sampling reads guidance — embedded *and* true CFG — from
+        # `--g`; `--l` is parsed but never consulted.
+        "sample_guidance_flag": "g",
+        # docs/flux_2.md: max with fp8 for klein-4b.
+        "max_blocks_to_swap": 13,
+        "train_defaults": {
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2500,
+            # Resolution-aware schedule that derives its own mu — the doc's
+            # recommendation; --discrete_flow_shift isn't consulted by it.
+            "timestep_sampling": "flux2_shift",
+            "discrete_flow_shift": 1.0,
+        },
+    },
+    {
+        "id": "flux2-klein-base-9b",
+        "name": "Flux.2 Klein Base 9B",
+        "architecture": "flux",
+        "train_script": "src/musubi_tuner/flux_2_train_network.py",
+        "latent_cache_script": "src/musubi_tuner/flux_2_cache_latents.py",
+        "te_cache_script": "src/musubi_tuner/flux_2_cache_text_encoder_outputs.py",
+        "network_module": "networks.lora_flux_2",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "dit",
+                "label": "Klein Base 9B DiT",
+                "required": True,
+            },
+            {"key": "ae", "flag": "vae", "label": "Flux.2 VAE", "required": True},
+            {
+                "key": "qwen",
+                "flag": "text_encoder",
+                "label": "Qwen3 8B text encoder",
+                "required": True,
+            },
+        ],
+        "te_fp8_flag": "fp8_text_encoder",
+        "extra_args": ["--model_version=klein-base-9b"],
+        "cache_extra_args": ["--model_version=klein-base-9b"],
+        "sample_guidance_flag": "g",
+        # docs/flux_2.md: max with fp8 for klein-9b.
+        "max_blocks_to_swap": 16,
+        "train_defaults": {
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2500,
+            "timestep_sampling": "flux2_shift",
+            "discrete_flow_shift": 1.0,
         },
     },
 ]
@@ -108,10 +318,15 @@ def _find_model(model_id: str) -> Optional[dict]:
 
 
 class MusubiProvider(SdScriptsProvider):
-    """Training provider backed by kohya-ss/musubi-tuner."""
+    """Training provider backed by kohya-ss/musubi-tuner.
 
-    # Musubi prompt files carry CFG scale as `--g` (sd-scripts uses `--l`).
-    sample_guidance_flag = "g"
+    Note on guidance flags: musubi prompt files carry CFG scale as `--l`,
+    same as sd-scripts — its samplers parse `--g` too but ignore it for every
+    arch except Flux.2 (which reads guidance *only* from `--g`, hence that
+    model entry's `sample_guidance_flag` override). This provider previously
+    emitted `--g` across the board; Z-Image samples silently fell back to the
+    parser's CFG default of 4.0, which happened to match the app's default.
+    """
 
     def __init__(self, scripts_path: str):
         super().__init__(scripts_path)
@@ -302,7 +517,8 @@ class MusubiProvider(SdScriptsProvider):
                 else [resolution],
                 "bucket": enable_bucket,
                 "bucket_no_upscale": bool(hp.get("bucket_no_upscale", False)),
-                "vae": model_paths.get("vae"),
+                # Flux.2 carries its autoencoder under `ae` (see _pre_train).
+                "vae": model_paths.get("vae") or model_paths.get("ae"),
                 "text_encoder": model_paths.get("qwen"),
                 "arch": model_def["architecture"],
             },
@@ -370,12 +586,18 @@ class MusubiProvider(SdScriptsProvider):
         cwd = str(self._scripts_path)
         env = self._subprocess_env(gpu_id)
 
+        # The VAE path lives under `vae` for most archs but `ae` for Flux.2
+        # (whose autoencoder component is shared with the ai-toolkit path).
+        vae_path = paths.get("vae") or paths.get("ae")
+        cache_extra = model_def.get("cache_extra_args", [])
+
         latent_argv = [
             python_exe,
             "-u",
             str(self._scripts_path / model_def["latent_cache_script"]),
             f"--dataset_config={config_path}",
-            f"--vae={paths['vae']}",
+            f"--vae={vae_path}",
+            *cache_extra,
         ]
         async for tick in self._run_phase_subprocess(
             job_id, run, latent_argv, cwd, env, "Caching latents"
@@ -390,9 +612,13 @@ class MusubiProvider(SdScriptsProvider):
             str(self._scripts_path / model_def["te_cache_script"]),
             f"--dataset_config={config_path}",
             f"--text_encoder={paths['qwen']}",
+            *cache_extra,
         ]
-        if hp.get("text_encoder_quantization") == "float8":
-            te_argv.append("--fp8_llm")
+        # TE fp8 flag naming varies per arch (--fp8_llm / --fp8_vl /
+        # --fp8_text_encoder), and Krea 2 has none at all.
+        te_fp8_flag = model_def.get("te_fp8_flag")
+        if te_fp8_flag and hp.get("text_encoder_quantization") == "float8":
+            te_argv.append(f"--{te_fp8_flag}")
         async for tick in self._run_phase_subprocess(
             job_id, run, te_argv, cwd, env, "Caching text-encoder outputs"
         ):
@@ -477,16 +703,22 @@ class MusubiProvider(SdScriptsProvider):
         )
 
         # Runtime fp8 quantisation of the bf16 weights (the docs say to pass
-        # both together). Pre-quantised fp8 checkpoint files are rejected by
-        # musubi — the downloader only offers bf16 weights for its models.
+        # both together — krea2 even raises on --fp8_base alone). Pre-quantised
+        # fp8 checkpoint files are rejected by musubi — the downloader only
+        # offers bf16 weights for its models.
         if hp.get("transformer_quantization") == "float8":
             args.append("--fp8_base")
             args.append("--fp8_scaled")
         # The train script reloads the TE briefly at startup to cache the
         # sample prompts' embeddings, so its quantisation choice applies here
-        # too, not just in the cache phase.
-        if hp.get("text_encoder_quantization") == "float8":
-            args.append("--fp8_llm")
+        # too, not just in the cache phase. Flag name varies per arch; Krea 2
+        # has none (its TE is hardcoded bf16).
+        te_fp8_flag = model_def.get("te_fp8_flag")
+        if te_fp8_flag and hp.get("text_encoder_quantization") == "float8":
+            args.append(f"--{te_fp8_flag}")
+
+        # Static per-arch flags (Flux.2's --model_version).
+        args.extend(model_def.get("extra_args", []))
 
         blocks_to_swap = int(hp.get("blocks_to_swap", 0) or 0)
         if blocks_to_swap > 0:
@@ -567,10 +799,13 @@ class MusubiProvider(SdScriptsProvider):
     ) -> list[str]:
         """Write the sample-prompt file and return the sampling CLI flags.
 
-        Musubi prompt lines take `--w/--h/--s/--g` (guidance is `--g`, not
-        sd-scripts' `--l` — hence `sample_guidance_flag` above). `--f` (frame
-        count) is deliberately never emitted for image architectures. There is
-        no `--sample_sampler`; each arch uses its own fixed sampler.
+        Musubi prompt lines carry CFG scale as `--l` like sd-scripts — except
+        Flux.2, which reads guidance from `--g` (per-model override). `--f`
+        (frame count) is deliberately never emitted for image architectures.
+        There is no `--sample_sampler`; each arch uses its own fixed sampler.
+        Per-model extras: a default negative prompt where CFG needs one to
+        engage (Krea 2), and an explicit `--fs` where the sampler's fallback
+        flow shift is far off the training value (Qwen-Image).
         """
         hp = request.hyperparameters
         defaults = model_def["train_defaults"]
@@ -585,15 +820,31 @@ class MusubiProvider(SdScriptsProvider):
         sample_guidance = _num(
             hp.get("guidance_scale", defaults.get("guidance_scale", 4))
         )
+        guidance_flag = model_def.get("sample_guidance_flag")
+        default_negative = model_def.get("sample_default_negative")
+        flow_shift = (
+            _num(
+                hp.get(
+                    "discrete_flow_shift",
+                    defaults.get("discrete_flow_shift", 2.0),
+                )
+            )
+            if model_def.get("sample_flow_shift")
+            else None
+        )
 
         prompt_lines = []
         for i, prompt in enumerate(request.sample_prompts):
             width, height = request.sample_size_at(i, sample_w, sample_h)
-            prompt_lines.append(
-                self._add_missing_sample_flags(
-                    prompt, width, height, sample_steps, sample_guidance
-                )
+            line = self._add_missing_sample_flags(
+                prompt, width, height, sample_steps, sample_guidance,
+                guidance_flag,
             )
+            if default_negative and not _prompt_line_has_flag(line, "n"):
+                line += f" --n {default_negative}"
+            if flow_shift is not None and not _prompt_line_has_flag(line, "fs"):
+                line += f" --fs {flow_shift}"
+            prompt_lines.append(line)
 
         prompt_file = os.path.join(
             config_dir, f"{request.output_name}.sample-prompts.txt"

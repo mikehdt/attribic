@@ -1,11 +1,11 @@
 """Kohya (sd-scripts) training provider.
 
-Covers SDXL (plus its Illustrious/NoobAI finetunes) and Anima — the
+Covers SDXL (plus its Illustrious/NoobAI finetunes), Anima — the
 Cosmos-Predict2-based anime DiT supported in mainline kohya-ss/sd-scripts via
-`anima_train_network.py` and the `networks.lora_anima` module. Anima needs
-three explicit model paths — the DiT, the Qwen3-0.6B text encoder, and the
-Qwen-Image VAE — unlike ai-toolkit which takes a single checkpoint and resolves
-the rest.
+`anima_train_network.py` — and Flux.1 Dev/Schnell via `flux_train_network.py`
+(a second backend for the models ai-toolkit already trains, loading the same
+four single-file weights). Multi-file archs need each model path explicitly —
+unlike ai-toolkit which takes a single checkpoint and resolves the rest.
 
 Training is launched with `accelerate launch <arch>_train_network.py ...` as a
 subprocess and progress is scraped from sd-scripts' tqdm output. All of that —
@@ -137,6 +137,119 @@ SUPPORTED_MODELS = [
             "dtype": "bf16",
             "resolution": [1024],
             "steps": 3000,
+        },
+    },
+    # Flux.1 Dev/Schnell — second backend for models that also train on
+    # ai-toolkit. flux_train_network.py takes the four single-file weights
+    # (DiT checkpoint, CLIP-L, T5-XXL, AE) as separate flags; the same files
+    # the ai-toolkit path already downloads.
+    {
+        "id": "flux-dev",
+        "name": "Flux.1 Dev",
+        "architecture": "flux",
+        "train_script": "flux_train_network.py",
+        "network_module": "networks.lora_flux",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "pretrained_model_name_or_path",
+                "label": "Flux.1 checkpoint",
+                "required": True,
+            },
+            {
+                "key": "clip_l",
+                "flag": "clip_l",
+                "label": "CLIP-L text encoder",
+                "required": True,
+            },
+            {
+                "key": "t5",
+                "flag": "t5xxl",
+                "label": "T5-XXL text encoder",
+                "required": True,
+            },
+            {"key": "ae", "flag": "ae", "label": "Autoencoder", "required": True},
+        ],
+        "flow_matching": True,
+        "no_half_vae": False,
+        "supports_block_swap": True,
+        # docs/flux_train_network.md: "up to 35 blocks" (double + single).
+        "max_blocks_to_swap": 35,
+        # sd-scripts' fp8 path is how the doc's 16 GB configuration works
+        # (--fp8_base + block swap); see the fp8 emission in _build_cli_args.
+        "supports_fp8": True,
+        # Flux sampling reads embedded guidance from `--g`; `--l` is real CFG
+        # and defaults to 1.0 (off) when absent, which is what dev wants.
+        "sample_guidance_flag": "g",
+        # flux_train_network's sampler lookup is commented out upstream —
+        # sampling is hard-wired flow-matching Euler, so don't emit the flag.
+        "supports_sample_sampler": False,
+        # The doc's recommended combo: shift sampling at 3.1582 with raw
+        # prediction. --guidance_scale is the *training-time* embedded
+        # guidance conditioning, which must be 1.0 for dev.
+        "extra_args": ["--model_prediction_type=raw", "--guidance_scale=1.0"],
+        "te_network_args": [],
+        "train_defaults": {
+            "optimizer": "AdamW8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768, 1024],
+            "steps": 2000,
+            "timestep_sampling": "shift",
+            "discrete_flow_shift": 3.1582,
+            "guidance_scale": 4,
+            "sample_steps": 20,
+        },
+    },
+    {
+        "id": "flux-schnell",
+        "name": "Flux.1 Schnell",
+        "architecture": "flux",
+        "train_script": "flux_train_network.py",
+        "network_module": "networks.lora_flux",
+        "components": [
+            {
+                "key": "checkpoint",
+                "flag": "pretrained_model_name_or_path",
+                "label": "Flux.1 checkpoint",
+                "required": True,
+            },
+            {
+                "key": "clip_l",
+                "flag": "clip_l",
+                "label": "CLIP-L text encoder",
+                "required": True,
+            },
+            {
+                "key": "t5",
+                "flag": "t5xxl",
+                "label": "T5-XXL text encoder",
+                "required": True,
+            },
+            {"key": "ae", "flag": "ae", "label": "Autoencoder", "required": True},
+        ],
+        "flow_matching": True,
+        "no_half_vae": False,
+        "supports_block_swap": True,
+        "max_blocks_to_swap": 35,
+        "supports_fp8": True,
+        "sample_guidance_flag": "g",
+        "supports_sample_sampler": False,
+        # Schnell takes the guidance input but was distilled without it doing
+        # anything useful — 1.0 is the conventional training value, same as dev.
+        "extra_args": ["--model_prediction_type=raw", "--guidance_scale=1.0"],
+        "te_network_args": [],
+        "train_defaults": {
+            "optimizer": "AdamW8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [512, 768, 1024],
+            "steps": 1500,
+            "timestep_sampling": "shift",
+            "discrete_flow_shift": 3.1582,
+            # Schnell samples in 4 steps with guidance effectively off.
+            "guidance_scale": 1,
+            "sample_steps": 4,
         },
     },
     {
@@ -540,9 +653,19 @@ class KohyaProvider(SdScriptsProvider):
         if blocks_to_swap > 0 and model_def.get("supports_block_swap"):
             args.append(f"--blocks_to_swap={blocks_to_swap}")
 
-        # NOTE: --fp8_base is deliberately NOT emitted — the UI hides the
-        # quantization fields for these models accordingly (Anima has no fp8
-        # support; SDXL fits comfortably at bf16).
+        # fp8 quantisation (Flux only; Anima has no fp8 support and SDXL fits
+        # comfortably at bf16 — the UI hides the quantization fields for those
+        # models). sd-scripts has two granularities: --fp8_base quantises the
+        # DiT *and* both text encoders, --fp8_base_unet keeps the TEs in
+        # bf16/fp16 while the DiT goes fp8 — mapped from the app's separate
+        # transformer/TE quantisation fields.
+        if model_def.get("supports_fp8"):
+            transformer_fp8 = hp.get("transformer_quantization") == "float8"
+            te_fp8 = hp.get("text_encoder_quantization") == "float8"
+            if transformer_fp8 and te_fp8:
+                args.append("--fp8_base")
+            elif transformer_fp8:
+                args.append("--fp8_base_unet")
 
         # Checkpoint saving. The user picks either a step or epoch cadence; the
         # Node side sends whichever is non-zero (steps take precedence). sd-scripts
@@ -593,12 +716,20 @@ class KohyaProvider(SdScriptsProvider):
 
         # Per-prompt sizes override the run default where the UI supplied
         # them; a short/absent list leaves the older behaviour intact.
+        # Flux prompt lines carry embedded guidance as `--g` (`--l` is real
+        # CFG, defaulting off) — the SDXL family uses `--l` for CFG.
+        guidance_flag = model_def.get("sample_guidance_flag")
         prompt_lines = []
         for i, prompt in enumerate(request.sample_prompts):
             width, height = request.sample_size_at(i, sample_w, sample_h)
             prompt_lines.append(
                 self._add_missing_sample_flags(
-                    prompt, width, height, sample_steps, sample_guidance
+                    prompt,
+                    width,
+                    height,
+                    sample_steps,
+                    sample_guidance,
+                    guidance_flag,
                 )
             )
 
@@ -619,7 +750,10 @@ class KohyaProvider(SdScriptsProvider):
             args.append(f"--sample_every_n_epochs={sample_every_epochs}")
         else:
             args.append(f"--sample_every_n_steps={sample_every_steps or 250}")
-        args.append(f"--sample_sampler={hp.get('sample_sampler', 'euler_a')}")
+        # Flux's sampler lookup is commented out upstream (always flow-matching
+        # Euler), so the flag is only emitted where it's actually consulted.
+        if model_def.get("supports_sample_sampler", True):
+            args.append(f"--sample_sampler={hp.get('sample_sampler', 'euler_a')}")
         return args
 
     def _train_command(
@@ -662,6 +796,14 @@ class KohyaProvider(SdScriptsProvider):
         model_def = _find_model(request.base_model)
         if model_def is None:
             return errors
+
+        blocks_to_swap = int(hp.get("blocks_to_swap", 0) or 0)
+        max_swap = model_def.get("max_blocks_to_swap")
+        if max_swap is not None and blocks_to_swap > max_swap:
+            errors.append(
+                f"{model_def['name']} supports at most {max_swap} swapped "
+                f"blocks (got {blocks_to_swap})"
+            )
 
         model_paths = hp.get("model_paths") or {}
         for comp in model_def["components"]:

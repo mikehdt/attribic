@@ -173,8 +173,9 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
         )
 
     # Kohya (sd-scripts) — subprocess-driven, stderr-scraped (sd-scripts has no
-    # UI/API of its own). Supports SDXL (+ Illustrious/NoobAI finetunes) and
-    # Anima; add more architectures to KohyaProvider.SUPPORTED_MODELS.
+    # UI/API of its own). Supports SDXL (+ Illustrious/NoobAI finetunes),
+    # Anima and Flux.1; add more architectures to
+    # KohyaProvider.SUPPORTED_MODELS.
     kohya_path = backends.get("kohya")
     if kohya_path:
         provider = KohyaProvider(kohya_path)
@@ -183,8 +184,9 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
 
     # Musubi Tuner — sd-scripts lineage, so it shares the Kohya provider's
     # subprocess/log machinery, but pre-caches latents and TE outputs in
-    # separate phases before the training spawn. Supports Z-Image Base; add
-    # more architectures to MusubiProvider.SUPPORTED_MODELS.
+    # separate phases before the training spawn. Supports Z-Image Base,
+    # Krea 2, Qwen-Image and Flux.2 Klein Base; add more architectures to
+    # MusubiProvider.SUPPORTED_MODELS.
     musubi_path = backends.get("musubi")
     if musubi_path:
         provider = MusubiProvider(musubi_path)

@@ -21,7 +21,16 @@ from providers.base import TrainingProvider
 
 # Pretend we support every architecture so the user can select "mock"
 # from any model's backend dropdown.
-_SUPPORTED_ARCHS = ["flux", "sdxl", "zimage", "anima", "wan22_14b", "ltx2"]
+_SUPPORTED_ARCHS = [
+    "flux",
+    "sdxl",
+    "zimage",
+    "krea2",
+    "qwenimage",
+    "anima",
+    "wan22_14b",
+    "ltx2",
+]
 
 
 class MockProvider(TrainingProvider):

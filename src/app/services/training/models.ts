@@ -11,7 +11,14 @@ import {
 } from './types';
 
 export type ModelArchitecture =
-  'flux' | 'sdxl' | 'zimage' | 'anima' | 'wan' | 'ltx';
+  | 'flux'
+  | 'sdxl'
+  | 'zimage'
+  | 'krea2'
+  | 'qwenimage'
+  | 'anima'
+  | 'wan'
+  | 'ltx';
 
 export type ModelComponentType =
   | 'checkpoint'
@@ -77,6 +84,13 @@ export type ModelDefinition = {
    * still images, and require manually-supplied weights.
    */
   experimental?: boolean;
+  /**
+   * Kept out of the model pickers (training form and Model Manager) without
+   * being deleted: a saved config that names a hidden model still resolves
+   * via {@link getModelById} and renders its own selection. Used for the
+   * video models (Wan, LTX) until their UI/UX is actually built out.
+   */
+  hidden?: boolean;
 };
 
 export type TrainingDefaults = {
@@ -303,7 +317,9 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Flux.1 Dev',
     architecture: 'flux',
     description: 'Best for photorealistic styles and characters',
-    providers: ['ai-toolkit', 'mock'],
+    // Both backends load the same four single-file weights, so no
+    // providerComponents split is needed (unlike Anima).
+    providers: ['ai-toolkit', 'kohya', 'mock'],
     components: [
       {
         type: 'checkpoint',
@@ -333,11 +349,21 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     tips: [
       'Constant scheduler with 1e-4 LR is reliable for most use cases',
       'Rank 16 is a good starting point; increase for complex subjects',
+      'On SD Scripts, Shift timestep sampling (flow shift ~3.16) with fp8 quantisation and block swap is the documented 16 GB recipe',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
+    // Flow-matching arch on both backends: the DDPM-only noise controls don't
+    // exist here, and neither backend honours a sampler choice (sd-scripts
+    // hard-wires flow-matching Euler; ai-toolkit forces `flowmatch` for any
+    // flow-matching arch).
+    hiddenFields: ['minSnrGamma', 'noiseOffset', 'sampleSampler'],
     defaults: {
       ...BASE_DEFAULTS,
       sampleEvery: 250,
+      // sd-scripts' recommended flux recipe pairs Shift sampling with this
+      // value; pre-set so switching Timestep Type to Shift lands on it.
+      // (ai-toolkit doesn't consult discreteFlowShift.)
+      discreteFlowShift: 3.1582,
     },
   },
   {
@@ -345,7 +371,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     name: 'Flux.1 Schnell',
     architecture: 'flux',
     description: 'Fast generation, fewer steps needed',
-    providers: ['ai-toolkit', 'mock'],
+    providers: ['ai-toolkit', 'kohya', 'mock'],
     components: [
       {
         type: 'checkpoint',
@@ -377,6 +403,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Uses unconditioned generation (guidance scale 1.0)',
     ],
     availableResolutions: [256, 512, 768, 1024, 1536, 2048],
+    hiddenFields: ['minSnrGamma', 'noiseOffset', 'sampleSampler'],
     defaults: {
       ...BASE_DEFAULTS,
       steps: 1500,
@@ -384,6 +411,135 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       sampleEvery: 250,
       guidanceScale: 1,
       sampleSteps: 4,
+      discreteFlowShift: 3.1582,
+    },
+  },
+  // Flux.2 Klein *base* checkpoints — the undistilled variants Musubi trains
+  // on. Separate models from `flux2` above: that entry is ai-toolkit's
+  // diffusers path around the distilled Klein 9B download, while these take
+  // the single-file klein-base DiT plus the shared Qwen3 TE and Flux.2 AE
+  // (musubi's loader reads the same Comfy-Org single-file weights Z-Image
+  // uses — verified against its `load_qwen3`/`load_ae` strict loaders).
+  {
+    id: 'flux2-klein-base-4b',
+    name: 'Flux.2 Klein Base 4B',
+    architecture: 'flux',
+    description: 'Undistilled Klein 4B — light enough to train comfortably on 16 GB',
+    providers: ['musubi', 'mock'],
+    components: [
+      {
+        type: 'checkpoint',
+        label: 'Klein Base 4B DiT',
+        required: true,
+        downloadId: 'dl-flux2-klein-base-4b',
+      },
+      {
+        type: 'qwen',
+        label: 'Qwen3 4B Text Encoder',
+        required: true,
+        downloadId: 'shared-zimage-qwen3',
+        hint: 'Same Qwen3 4B file Z-Image Base uses',
+      },
+      {
+        type: 'ae',
+        label: 'Flux.2 VAE',
+        required: true,
+        downloadId: 'shared-flux2-vae',
+      },
+    ],
+    tips: [
+      'Train on Klein Base — the distilled Klein 4B/9B checkpoints are inference models',
+      'A LoRA trained on Base applies to the distilled Klein at inference',
+      'Latents and text-encoder outputs are pre-cached before each run; unchanged re-runs skip both in seconds',
+    ],
+    availableResolutions: [512, 768, 1024, 1536],
+    hiddenFields: [
+      // Musubi trains the network only — no TE-unfreeze path.
+      'trainTextEncoder',
+      'textEncoderLR',
+      'timestepBias',
+      // Flow-matching arch: DDPM-only mechanisms don't exist here.
+      'minSnrGamma',
+      'noiseOffset',
+      // Caching is mandatory and runs as separate pre-phases.
+      'cacheLatents',
+      'bucketResoSteps',
+      // Fixed per-arch sampler.
+      'sampleSampler',
+      // Flux.2 uses its own resolution-aware `flux2_shift` schedule — the
+      // sidecar always passes it, so neither knob applies.
+      'timestepType',
+      'discreteFlowShift',
+    ],
+    defaults: {
+      ...BASE_DEFAULTS,
+      steps: 2500,
+      epochs: 25,
+      networkDim: 32,
+      networkAlpha: 32,
+      resolution: [1024],
+      saveFormat: 'bf16',
+      timestepType: 'flux2_shift',
+      sampleEvery: 250,
+      sampleSteps: 28,
+    },
+  },
+  {
+    id: 'flux2-klein-base-9b',
+    name: 'Flux.2 Klein Base 9B',
+    architecture: 'flux',
+    description: 'Undistilled Klein 9B — the training base for Flux.2 Klein LoRAs',
+    providers: ['musubi', 'mock'],
+    components: [
+      {
+        type: 'checkpoint',
+        label: 'Klein Base 9B DiT',
+        required: true,
+        downloadId: 'dl-flux2-klein-base-9b',
+      },
+      {
+        type: 'qwen',
+        label: 'Qwen3 8B Text Encoder',
+        required: true,
+        downloadId: 'shared-qwen3-8b',
+        hint: 'bf16 variant — Musubi rejects pre-quantised fp8 weights',
+      },
+      {
+        type: 'ae',
+        label: 'Flux.2 VAE',
+        required: true,
+        downloadId: 'shared-flux2-vae',
+      },
+    ],
+    tips: [
+      'Train on Klein Base — the distilled Klein 4B/9B checkpoints are inference models',
+      'A LoRA trained on Base applies to the distilled Klein at inference',
+      'fp8 quantisation plus block swap (max 16) is what fits the 9B DiT on 16 GB cards',
+    ],
+    availableResolutions: [512, 768, 1024, 1536],
+    hiddenFields: [
+      'trainTextEncoder',
+      'textEncoderLR',
+      'timestepBias',
+      'minSnrGamma',
+      'noiseOffset',
+      'cacheLatents',
+      'bucketResoSteps',
+      'sampleSampler',
+      'timestepType',
+      'discreteFlowShift',
+    ],
+    defaults: {
+      ...BASE_DEFAULTS,
+      steps: 2500,
+      epochs: 25,
+      networkDim: 32,
+      networkAlpha: 32,
+      resolution: [1024],
+      saveFormat: 'bf16',
+      timestepType: 'flux2_shift',
+      sampleEvery: 250,
+      sampleSteps: 28,
     },
   },
   {
@@ -653,6 +809,153 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     },
   },
   {
+    id: 'krea2',
+    name: 'Krea 2',
+    architecture: 'krea2',
+    description:
+      'Krea 2 RAW — aesthetic-focused MMDiT with a Qwen3-VL text encoder',
+    // Musubi trains the RAW single-file DiT with split VAE/TE weights;
+    // ai-toolkit loads the same DiT file and auto-downloads its own copies of
+    // the TE (Qwen/Qwen3-VL-4B-Instruct) and VAE (Qwen/Qwen-Image) from HF on
+    // first run — hence the checkpoint-only component list on that path.
+    providers: ['musubi', 'ai-toolkit', 'mock'],
+    components: [
+      {
+        type: 'checkpoint',
+        label: 'Krea 2 RAW DiT',
+        required: true,
+        downloadId: 'dl-krea2-raw',
+        hint: 'Train on RAW — the distilled Turbo checkpoint is for inference',
+      },
+      {
+        type: 'vae',
+        label: 'Qwen-Image VAE',
+        required: true,
+        downloadId: 'shared-qwen-image-vae',
+      },
+      {
+        type: 'qwen',
+        label: 'Qwen3-VL 4B Text Encoder',
+        required: true,
+        downloadId: 'shared-qwen3vl-4b',
+      },
+    ],
+    providerComponents: {
+      'ai-toolkit': [
+        {
+          type: 'checkpoint',
+          label: 'Krea 2 RAW DiT',
+          required: true,
+          downloadId: 'dl-krea2-raw',
+          hint: 'ai-toolkit fetches the text encoder and VAE from HuggingFace itself on first run',
+        },
+      ],
+    },
+    tips: [
+      'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
+      'The ~24 GB bf16 DiT wants fp8 quantisation plus block swap (max 26) on 16 GB cards — expect it to be tight',
+      'Sample images run real CFG against a default negative prompt; without CFG, RAW output is blurry by design',
+      'Gated HuggingFace repo — accept the licence and set your HF token first',
+    ],
+    availableResolutions: [512, 768, 1024, 1280],
+    hiddenFields: [
+      // Musubi trains the network only — no TE-unfreeze path.
+      'trainTextEncoder',
+      'textEncoderLR',
+      'timestepBias',
+      // Flow-matching arch: DDPM-only mechanisms don't exist here.
+      'minSnrGamma',
+      'noiseOffset',
+      // Caching is mandatory and runs as separate pre-phases (musubi).
+      'cacheLatents',
+      'bucketResoSteps',
+      // Fixed per-arch sampler on both backends.
+      'sampleSampler',
+      // Musubi's krea2 scripts have no TE fp8 flag (the TE is hardcoded
+      // bf16), and ai-toolkit's quantize_te default matches this field's
+      // default — hidden so the musubi path can't promise what it can't do.
+      'textEncoderQuantization',
+    ],
+    defaults: {
+      ...BASE_DEFAULTS,
+      steps: 2500,
+      epochs: 25,
+      networkDim: 32,
+      networkAlpha: 32,
+      resolution: [1024],
+      saveFormat: 'bf16',
+      // docs/krea2.md: shift at 2.5 matches K2 inference at 1024x1024.
+      timestepType: 'shift',
+      discreteFlowShift: 2.5,
+      sampleEvery: 250,
+      // Krea's reference guidance is offset by one: official 4.5 == 5.5 here.
+      guidanceScale: 5.5,
+      sampleSteps: 28,
+    },
+  },
+  {
+    id: 'qwen-image',
+    name: 'Qwen-Image',
+    architecture: 'qwenimage',
+    description:
+      '20B MMDiT with strong prompt adherence and text rendering',
+    providers: ['musubi', 'mock'],
+    components: [
+      {
+        type: 'checkpoint',
+        label: 'Qwen-Image DiT (bf16)',
+        required: true,
+        downloadId: 'dl-qwen-image-dit',
+        hint: 'bf16 single-file weights — Musubi rejects pre-quantised fp8 repacks',
+      },
+      {
+        type: 'qwen',
+        label: 'Qwen2.5-VL 7B Text Encoder',
+        required: true,
+        downloadId: 'shared-qwen25vl-7b',
+      },
+      {
+        type: 'vae',
+        label: 'Qwen-Image VAE',
+        required: true,
+        downloadId: 'shared-qwen-image-vae',
+      },
+    ],
+    tips: [
+      'The biggest model here (~38 GB download); fp8 plus a 45-block swap brings training under 16 GB, at a real speed cost',
+      '64 GB system RAM is the documented floor for heavy block swapping',
+      'Latents and text-encoder outputs are pre-cached before each run; unchanged re-runs skip both in seconds',
+      'Uses an unusually low flow shift (2.2) compared to other flow-matching models',
+    ],
+    availableResolutions: [512, 768, 1024, 1328],
+    hiddenFields: [
+      'trainTextEncoder',
+      'textEncoderLR',
+      'timestepBias',
+      'minSnrGamma',
+      'noiseOffset',
+      'cacheLatents',
+      'bucketResoSteps',
+      'sampleSampler',
+    ],
+    defaults: {
+      ...BASE_DEFAULTS,
+      steps: 2500,
+      epochs: 25,
+      // docs/qwen_image.md's LoRA example trains at 5e-5, not the usual 1e-4.
+      learningRate: 5e-5,
+      resolution: [1024],
+      saveFormat: 'bf16',
+      timestepType: 'shift',
+      discreteFlowShift: 2.2,
+      sampleEvery: 250,
+      sampleSteps: 25,
+      // fp8 + 45 swapped blocks is the doc's 12 GB configuration — the
+      // default here so a first run on a 16 GB card doesn't OOM or spill.
+      blocksToSwap: 45,
+    },
+  },
+  {
     id: 'anima',
     name: 'Anima',
     architecture: 'anima',
@@ -751,6 +1054,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     availableResolutions: [256, 512, 768, 1024],
     hiddenFields: ['trainTextEncoder'],
     experimental: true,
+    hidden: true,
     defaults: {
       ...BASE_DEFAULTS,
       learningRate: 2e-4,
@@ -772,6 +1076,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     availableResolutions: [256, 512, 768, 1024],
     hiddenFields: ['trainTextEncoder'],
     experimental: true,
+    hidden: true,
     defaults: {
       ...BASE_DEFAULTS,
       networkDim: 32,
@@ -792,6 +1097,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     availableResolutions: [256, 512, 768, 1024],
     hiddenFields: ['trainTextEncoder'],
     experimental: true,
+    hidden: true,
     defaults: {
       ...BASE_DEFAULTS,
       networkDim: 32,
@@ -804,6 +1110,8 @@ export const ARCHITECTURE_LABELS: Record<ModelArchitecture, string> = {
   flux: 'Flux',
   sdxl: 'Stable Diffusion',
   zimage: 'Z-Image',
+  krea2: 'Krea',
+  qwenimage: 'Qwen-Image',
   anima: 'Anima',
   wan: 'Wan',
   ltx: 'LTX-Video',
@@ -1075,13 +1383,19 @@ export function getModelById(id: string): ModelDefinition | undefined {
   return MODEL_DEFINITIONS.find((m) => m.id === id);
 }
 
-export function getModelsByArchitecture(): {
+/**
+ * Pickable models grouped by architecture. Hidden models are excluded unless
+ * they are `keepId` — the currently selected model, so a config saved against
+ * a since-hidden model still renders its own selection.
+ */
+export function getModelsByArchitecture(keepId?: string): {
   architecture: ModelArchitecture;
   label: string;
   models: ModelDefinition[];
 }[] {
   const groups = new Map<ModelArchitecture, ModelDefinition[]>();
   for (const model of MODEL_DEFINITIONS) {
+    if (model.hidden && model.id !== keepId) continue;
     const existing = groups.get(model.architecture) ?? [];
     existing.push(model);
     groups.set(model.architecture, existing);

@@ -104,11 +104,15 @@ export const PROVIDER_CAPABILITIES: Record<
   TrainingProvider,
   ReadonlySet<ProviderCapability>
 > = {
+  // `quantization` arrived with the Flux.1 models (--fp8_base/--fp8_base_unet)
+  // — the older kohya models (SDXL family, Anima) hide those fields per-model,
+  // so they see no change.
   kohya: new Set([
     ...SD_SCRIPTS_FAMILY,
     'ddpmNoiseControls',
     'latentCacheToggle',
     'blockSwap',
+    'quantization',
   ]),
   // Musubi shares the sd-scripts family set, plus block swap and runtime fp8
   // quantisation. Deliberately absent: ddpmNoiseControls (every musubi arch is

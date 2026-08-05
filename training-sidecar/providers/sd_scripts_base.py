@@ -1106,13 +1106,22 @@ class SdScriptsProvider(TrainingProvider):
     # --- Sample prompt files ---
 
     def _add_missing_sample_flags(
-        self, line: str, width: int, height: int, steps: int, guidance: str
+        self,
+        line: str,
+        width: int,
+        height: int,
+        steps: int,
+        guidance: str,
+        guidance_flag: Optional[str] = None,
     ) -> str:
         """Append the size/steps/guidance flags to a sample prompt line, unless
         the user already set that flag on the line themselves (their explicit
-        choice wins). The guidance flag differs per backend — see
+        choice wins). The guidance flag differs per backend — and per model
+        within a backend (sd-scripts Flux and musubi Flux.2 read `--g` where
+        their siblings read `--l`), hence the per-call override of
         `sample_guidance_flag`.
         """
+        flag = guidance_flag or self.sample_guidance_flag
         extras: list[str] = []
         if not _prompt_line_has_flag(line, "w"):
             extras.append(f"--w {width}")
@@ -1120,8 +1129,8 @@ class SdScriptsProvider(TrainingProvider):
             extras.append(f"--h {height}")
         if not _prompt_line_has_flag(line, "s"):
             extras.append(f"--s {steps}")
-        if not _prompt_line_has_flag(line, self.sample_guidance_flag):
-            extras.append(f"--{self.sample_guidance_flag} {guidance}")
+        if not _prompt_line_has_flag(line, flag):
+            extras.append(f"--{flag} {guidance}")
         if not extras:
             return line
         return line + " " + " ".join(extras)

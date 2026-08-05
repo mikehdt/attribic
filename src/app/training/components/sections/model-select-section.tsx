@@ -81,7 +81,7 @@ const ModelSelectSectionComponent = ({
   const filterActive = hasLoadedStatuses && !showAll;
 
   const modelGroups = useMemo(() => {
-    return getModelsByArchitecture()
+    return getModelsByArchitecture(modelId)
       .map((group) => ({
         groupLabel: group.label,
         items: group.models
@@ -118,7 +118,7 @@ const ModelSelectSectionComponent = ({
   // is actually hidden (or currently revealed by it).
   const hasHiddenModels = useMemo(() => {
     if (!hasLoadedStatuses) return false;
-    return getModelsByArchitecture().some((group) =>
+    return getModelsByArchitecture(modelId).some((group) =>
       group.models.some((m) => !configuredIds.has(m.id) && m.id !== modelId),
     );
   }, [hasLoadedStatuses, configuredIds, modelId]);

@@ -77,7 +77,7 @@ const SHARED_COMPONENTS: DownloadableModel[] = [
     files: [
       {
         name: 'split_files/text_encoders/qwen_3_8b.safetensors',
-        size: 16_400_000_000,
+        size: 16_381_517_176,
       },
     ],
     feature: 'training',
@@ -92,18 +92,19 @@ const SHARED_COMPONENTS: DownloadableModel[] = [
         files: [
           {
             name: 'split_files/text_encoders/qwen_3_8b.safetensors',
-            size: 16_400_000_000,
+            size: 16_381_517_176,
           },
         ],
       },
       {
         id: 'fp8',
         label: 'fp8',
-        description: 'Half the size, minimal quality loss',
+        description:
+          'Half the size, minimal quality loss (ai-toolkit only — Musubi needs bf16)',
         files: [
           {
             name: 'split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors',
-            size: 8_660_000_000,
+            size: 8_664_848_742,
           },
         ],
       },
@@ -113,16 +114,20 @@ const SHARED_COMPONENTS: DownloadableModel[] = [
     id: 'shared-flux2-vae',
     name: 'Flux.2 VAE',
     repoId: 'Comfy-Org/vae-text-encorder-for-flux-klein-9b',
+    // Byte-identical to BFL's gated `ae.safetensors`, in the original (non-
+    // diffusers) key layout — so it also serves as musubi-tuner's `--vae`
+    // for the Klein Base models (its strict loader wants exactly this shape,
+    // `bn.running_*` keys included — verified against the file header).
     files: [
       {
         name: 'split_files/vae/flux2-vae.safetensors',
-        size: 336_000_000,
+        size: 336_211_292,
       },
     ],
     feature: 'training',
     componentType: 'ae',
     sharedId: 'flux2-vae',
-    description: 'Autoencoder for Flux.2 models (~336 MB)',
+    description: 'Autoencoder for Flux.2 models (~320 MB)',
   },
 
   // --- Z-Image Base components (musubi-tuner) ---
@@ -156,6 +161,62 @@ const SHARED_COMPONENTS: DownloadableModel[] = [
     componentType: 'qwen',
     sharedId: 'zimage-qwen3',
     description: 'Qwen3 4B text encoder for Z-Image (~7.5 GB, bf16)',
+  },
+
+  // --- Qwen-Image family components (musubi-tuner) ---
+  // The Qwen-Image VAE serves three musubi archs: Qwen-Image itself, Krea 2
+  // (which reuses it wholesale), and — as a separate registration — Anima's
+  // copy below. Anima keeps its own entry: it predates this one, downloads
+  // from the Anima repo alongside its other split files, and re-pointing it
+  // would orphan existing installs.
+  {
+    id: 'shared-qwen-image-vae',
+    name: 'Qwen-Image VAE',
+    repoId: 'Comfy-Org/Qwen-Image_ComfyUI',
+    files: [
+      {
+        name: 'split_files/vae/qwen_image_vae.safetensors',
+        size: 253_806_246,
+      },
+    ],
+    feature: 'training',
+    componentType: 'vae',
+    sharedId: 'qwen-image-vae',
+    description: 'Autoencoder shared by Qwen-Image and Krea 2 (~242 MB)',
+  },
+  {
+    id: 'shared-qwen25vl-7b',
+    name: 'Qwen2.5-VL 7B Text Encoder',
+    repoId: 'Comfy-Org/Qwen-Image_ComfyUI',
+    files: [
+      {
+        name: 'split_files/text_encoders/qwen_2.5_vl_7b.safetensors',
+        size: 16_584_415_576,
+      },
+    ],
+    feature: 'training',
+    componentType: 'qwen',
+    sharedId: 'qwen25vl-7b',
+    description: 'Qwen2.5-VL 7B text encoder for Qwen-Image (~15.4 GB, bf16)',
+  },
+
+  // --- Krea 2 text encoder ---
+  // Qwen3-VL 4B — a *vision-language* Qwen3, distinct from the text-only
+  // Qwen3 4B that Z-Image and Flux.2 Klein 4B share.
+  {
+    id: 'shared-qwen3vl-4b',
+    name: 'Qwen3-VL 4B Text Encoder',
+    repoId: 'Comfy-Org/Qwen3-VL',
+    files: [
+      {
+        name: 'text_encoders/qwen3vl_4b_bf16.safetensors',
+        size: 8_875_719_384,
+      },
+    ],
+    feature: 'training',
+    componentType: 'qwen',
+    sharedId: 'qwen3vl-4b',
+    description: 'Qwen3-VL 4B text encoder for Krea 2 (~8.3 GB, bf16)',
   },
 
   // --- SDXL VAE ---
@@ -440,6 +501,83 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
     dependencies: ['zimage-vae', 'zimage-qwen3'],
     description:
       'Undistilled Z-Image base for LoRA training (~11.5 GB, bf16 only)',
+  },
+
+  // --- Flux.2 Klein Base (musubi-tuner) ---
+  // The undistilled training bases. Both are single-file DiTs at the repo
+  // root; the TE and AE come from the shared components the distilled Klein
+  // 9B / Z-Image entries already register (musubi's loaders read the same
+  // Comfy-Org single-file weights). 4B is public Apache 2.0; 9B is gated.
+  {
+    id: 'dl-flux2-klein-base-4b',
+    name: 'Flux.2 Klein Base 4B',
+    repoId: 'black-forest-labs/FLUX.2-klein-base-4B',
+    files: [
+      { name: 'flux-2-klein-base-4b.safetensors', size: 7_751_105_712 },
+    ],
+    feature: 'training',
+    architecture: 'flux',
+    componentType: 'checkpoint',
+    dependencies: ['zimage-qwen3', 'flux2-vae'],
+    description: 'Undistilled Klein 4B for LoRA training (~7.2 GB)',
+  },
+  {
+    id: 'dl-flux2-klein-base-9b',
+    name: 'Flux.2 Klein Base 9B',
+    repoId: 'black-forest-labs/FLUX.2-klein-base-9B',
+    files: [
+      { name: 'flux-2-klein-base-9b.safetensors', size: 18_157_185_168 },
+    ],
+    feature: 'training',
+    architecture: 'flux',
+    componentType: 'checkpoint',
+    dependencies: ['qwen3-8b', 'flux2-vae'],
+    description: 'Undistilled Klein 9B for LoRA training (~17 GB)',
+    requiresLicense: {
+      url: 'https://huggingface.co/black-forest-labs/FLUX.2-klein-base-9B',
+      name: 'FLUX.2 Klein Non-Commercial',
+    },
+  },
+
+  // --- Krea 2 (musubi-tuner + ai-toolkit) ---
+  // The RAW (undistilled) DiT both backends train against. ai-toolkit loads
+  // this same single file and fetches its own TE/VAE copies from HF at run
+  // time; musubi takes the shared Qwen3-VL 4B and Qwen-Image VAE components.
+  {
+    id: 'dl-krea2-raw',
+    name: 'Krea 2 RAW',
+    repoId: 'krea/Krea-2-Raw',
+    files: [{ name: 'raw.safetensors', size: 26_283_332_608 }],
+    feature: 'training',
+    architecture: 'krea2',
+    componentType: 'checkpoint',
+    dependencies: ['qwen-image-vae', 'qwen3vl-4b'],
+    description: 'Undistilled Krea 2 DiT for LoRA training (~24.5 GB)',
+    requiresLicense: {
+      url: 'https://huggingface.co/krea/Krea-2-Raw',
+      name: 'Krea 2 Community Licence',
+    },
+  },
+
+  // --- Qwen-Image (musubi-tuner) ---
+  // bf16 only — musubi quantises to fp8 at runtime (--fp8_base/--fp8_scaled/
+  // --fp8_vl) and rejects the pre-quantised fp8 releases outright.
+  {
+    id: 'dl-qwen-image-dit',
+    name: 'Qwen-Image DiT',
+    repoId: 'Comfy-Org/Qwen-Image_ComfyUI',
+    files: [
+      {
+        name: 'split_files/diffusion_models/qwen_image_bf16.safetensors',
+        size: 40_861_031_488,
+      },
+    ],
+    feature: 'training',
+    architecture: 'qwenimage',
+    componentType: 'checkpoint',
+    dependencies: ['qwen25vl-7b', 'qwen-image-vae'],
+    description:
+      '20B Qwen-Image DiT for LoRA training (~38 GB, bf16 only)',
   },
 
   // --- Z-Image ---
