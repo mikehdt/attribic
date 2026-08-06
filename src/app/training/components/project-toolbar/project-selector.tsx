@@ -1,17 +1,11 @@
 'use client';
 
-import {
-  ChevronDownIcon,
-  CircleIcon,
-  PencilIcon,
-  SaveIcon,
-  Trash2Icon,
-} from 'lucide-react';
-import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
+import { CircleIcon, PencilIcon, SaveIcon, Trash2Icon } from 'lucide-react';
+import { memo, useMemo, useState } from 'react';
 
 import { Button } from '@/app/shared/button';
+import { DropdownButton } from '@/app/shared/dropdown';
 import { Input } from '@/app/shared/input/input';
-import { Popup, usePopup } from '@/app/shared/popup';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   selectIsDirty,
@@ -42,22 +36,6 @@ const ProjectSelectorComponent = ({
   const loadedProject = useAppSelector(selectLoadedProject);
   const isDirty = useAppSelector(selectIsDirty);
 
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const { openPopup, closePopup, getPopupState } = usePopup();
-  const popupId = useId();
-  const isOpen = getPopupState(popupId).isOpen;
-
-  const handleToggle = useCallback(() => {
-    if (isOpen) {
-      closePopup(popupId);
-    } else {
-      openPopup(popupId, {
-        position: 'bottom-left',
-        triggerRef: buttonRef,
-      });
-    }
-  }, [isOpen, openPopup, closePopup, popupId]);
-
   const triggerLabel = loadedProject ? (
     <span className="flex items-center gap-1.5">
       <span className="font-medium">{loadedProject.name}</span>
@@ -78,45 +56,27 @@ const ProjectSelectorComponent = ({
     </span>
   );
 
-  const handleClose = useCallback(() => {
-    closePopup(popupId);
-  }, [closePopup, popupId]);
-
   return (
-    <div className="relative">
-      <Button
-        ref={buttonRef}
-        size="sm"
-        variant="ghost"
-        onClick={handleToggle}
-        isPressed={isOpen}
-      >
-        {triggerLabel}
-        <ChevronDownIcon
-          className={`ml-1 h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-        />
-      </Button>
-
-      <Popup
-        id={popupId}
-        position="bottom-left"
-        triggerRef={buttonRef}
-        className="min-w-72 rounded-md border border-slate-200 bg-white shadow-lg shadow-slate-600/50 dark:border-slate-600 dark:bg-slate-800 dark:shadow-slate-950/50"
-      >
+    <DropdownButton
+      label={triggerLabel}
+      aria-label="Loaded project"
+      menuClassName="min-w-72"
+    >
+      {(close) => (
         <PopupContent
           loadedProject={loadedProject}
           onRequestSaveAs={() => {
-            handleClose();
+            close();
             onRequestSaveAs();
           }}
           onRequestDelete={() => {
-            handleClose();
+            close();
             onRequestDelete();
           }}
-          onClose={handleClose}
+          onClose={close}
         />
-      </Popup>
-    </div>
+      )}
+    </DropdownButton>
   );
 };
 

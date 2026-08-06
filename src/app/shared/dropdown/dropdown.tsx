@@ -11,6 +11,13 @@ import React, {
 
 import { Popup, usePopup } from '../popup';
 import { useListHighlight } from '../popup/use-list-highlight';
+import {
+  DROPDOWN_MENU_CLASS,
+  type DropdownSize,
+  dropdownSizeClass,
+  dropdownTriggerClass,
+  type DropdownVariant,
+} from './dropdown-styles';
 
 /**
  * Dropdown Item interface - defines the structure of each dropdown option
@@ -65,18 +72,6 @@ function flattenEntries<T>(
 }
 
 /**
- * Size options for the dropdown
- */
-type DropdownSize = 'sm' | 'md' | 'lg' | 'toolbar';
-
-/**
- * Visual variant for the dropdown trigger
- * - default: border, background and shadow always visible
- * - ghost: transparent until hover/open, then shows background and shadow
- */
-type DropdownVariant = 'default' | 'ghost';
-
-/**
  * Props for the Dropdown component
  */
 interface DropdownProps<T> {
@@ -106,16 +101,6 @@ interface DropdownProps<T> {
    */
   footer?: ReactNode;
 }
-
-/**
- * Size styles for dropdown buttons
- */
-const sizeStyles: Record<DropdownSize, string> = {
-  sm: 'px-2 py-1 text-sm',
-  md: 'px-2.5 py-1.5 text-sm',
-  lg: 'px-4 py-2 text-base',
-  toolbar: 'px-2 py-1 text-sm',
-};
 
 /** Minimum width for the popup menu (matches Tailwind min-w-40 = 10rem) */
 const MIN_MENU_WIDTH = 160;
@@ -338,7 +323,7 @@ export function Dropdown<T>({
         <div
           className={`flex min-w-40 items-center rounded-sm border border-slate-300 whitespace-nowrap dark:border-slate-700 ${
             fullWidth ? 'w-full' : ''
-          } ${sizeStyles[size]} text-slate-500 dark:text-slate-400 ${buttonClassName}`}
+          } ${dropdownSizeClass[size]} text-slate-500 dark:text-slate-400 ${buttonClassName}`}
           aria-label={ariaLabel}
         >
           {selectedValueRenderer
@@ -357,19 +342,9 @@ export function Dropdown<T>({
         onClick={handleClick}
         onKeyDown={handleButtonKeyDown}
         onBlur={handleButtonBlur}
-        className={`flex min-w-20 cursor-pointer items-center justify-between rounded-sm whitespace-nowrap transition-colors ${
-          variant === 'ghost'
-            ? `border border-transparent hover:inset-shadow-xs hover:inset-shadow-white dark:hover:inset-shadow-white/10 ${
-                isOpen
-                  ? 'border-slate-300 bg-white shadow-sm inset-shadow-xs inset-shadow-white dark:border-slate-700 dark:bg-slate-700 dark:inset-shadow-white/10'
-                  : 'bg-transparent hover:border-slate-300 hover:bg-slate-100 hover:shadow-sm dark:hover:border-slate-700 dark:hover:bg-slate-600'
-              }`
-            : `border border-slate-300 inset-shadow-xs inset-shadow-white dark:border-slate-700 dark:inset-shadow-white/10 ${
-                isOpen
-                  ? 'bg-white shadow-sm dark:bg-slate-700'
-                  : 'bg-slate-100 shadow-sm hover:bg-slate-200 dark:bg-slate-600 dark:hover:bg-slate-500'
-              }`
-        } ${fullWidth ? 'w-full' : ''} ${sizeStyles[size]} ${buttonClassName}`}
+        className={`flex min-w-20 items-center justify-between ${dropdownTriggerClass(
+          { size, variant, isOpen },
+        )} ${fullWidth ? 'w-full' : ''} ${buttonClassName}`}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-controls={isOpen ? listboxId : undefined}
@@ -403,7 +378,7 @@ export function Dropdown<T>({
         style={popupStyle}
         className={`${
           fullWidth ? '' : 'min-w-40'
-        } rounded-md border border-slate-200 bg-white whitespace-nowrap shadow-md shadow-slate-600/50 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:shadow-slate-950/50 ${menuClassName}`}
+        } ${DROPDOWN_MENU_CLASS} whitespace-nowrap ${menuClassName}`}
       >
         <div
           ref={listboxRef}

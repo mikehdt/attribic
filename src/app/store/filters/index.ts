@@ -72,6 +72,8 @@ export const {
   clearExtensionFilters,
   clearFileFilters,
   clearFilters,
+  clearSelections,
+  clearVisibilityFilters,
   resetFilterModeIfNeeded,
   removeSubfolderFilters,
   addFilenamePattern,

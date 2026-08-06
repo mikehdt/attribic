@@ -11,7 +11,10 @@ import {
   selectSortType,
   SortType,
 } from '@/app/store/assets';
-import { clearFilters, selectPaginationSize } from '@/app/store/filters';
+import {
+  clearVisibilityFilters,
+  selectPaginationSize,
+} from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   clearClickTracking,
@@ -169,9 +172,10 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
     selectShiftHoverPreview(state, paginatedAssetIds),
   );
 
-  // Same clear-all as the top-shelf clear-filters button
+  // Same as the top-shelf clear-filters button: stop filtering but keep the
+  // selection lists — empty results are always caused by active filtering.
   const handleClearFilters = useCallback(
-    () => dispatch(clearFilters()),
+    () => dispatch(clearVisibilityFilters()),
     [dispatch],
   );
 
@@ -247,7 +251,7 @@ export const AssetList = ({ currentPage = 1 }: AssetListProps) => {
         No results match your filters
       </h1>
       <Button onClick={handleClearFilters} size="md" width="xl">
-        Clear all filters
+        Clear filters
       </Button>
     </div>
   );

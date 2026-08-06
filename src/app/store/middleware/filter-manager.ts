@@ -29,6 +29,8 @@ import {
   ClassFilterMode,
   clearBucketFilters,
   clearExtensionFilters,
+  clearFileFilters,
+  clearSelections,
   clearSizeFilters,
   clearTagFilters,
   FilterMode,
@@ -360,6 +362,8 @@ filterManagerMiddleware.startListening({
     clearSizeFilters,
     clearExtensionFilters,
     clearBucketFilters,
+    clearFileFilters,
+    clearSelections,
   ),
   effect: async (_action, listenerApi) => {
     const state = listenerApi.getState() as RootState;

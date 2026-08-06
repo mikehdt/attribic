@@ -7,6 +7,7 @@ import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 import { AssetSortControls } from './asset-sort-controls';
 import { ClearFiltersButton } from './clear-filters-button';
 import { ClearSelectionButton } from './clear-selection-button';
+import { ClearSelectionsButton } from './clear-selections-button';
 import { MoveToFolderButton } from './move-to-folder-button';
 import { SelectAllButton } from './select-all-button';
 import { VisibilityControl } from './visibility-control/visibility-control';
@@ -31,6 +32,7 @@ const AssetSelectionControlsComponent = () => {
       <ToolbarDivider />
 
       <ClearFiltersButton />
+      <ClearSelectionsButton />
 
       <ToolbarDivider />
 

@@ -3,21 +3,18 @@ import { useCallback } from 'react';
 
 import { Button } from '@/app/shared/button';
 import {
-  clearFilters,
-  selectHasActiveFilters,
-  selectHasActiveVisibility,
+  clearVisibilityFilters,
+  selectHasVisibilitySettings,
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 
 export const ClearFiltersButton = () => {
   const dispatch = useAppDispatch();
 
-  const hasActiveFilters = useAppSelector(selectHasActiveFilters);
-  const hasActiveVisibility = useAppSelector(selectHasActiveVisibility);
-  const canClear = hasActiveFilters || hasActiveVisibility;
+  const canClear = useAppSelector(selectHasVisibilitySettings);
 
   const handleClearFilters = useCallback(
-    () => dispatch(clearFilters()),
+    () => dispatch(clearVisibilityFilters()),
     [dispatch],
   );
 
@@ -29,7 +26,7 @@ export const ClearFiltersButton = () => {
       disabled={!canClear}
       ghostDisabled={!canClear}
       size="toolbar"
-      title="Clear all filters"
+      title="Clear filters (keeps selections)"
     >
       <FunnelXIcon />
     </Button>

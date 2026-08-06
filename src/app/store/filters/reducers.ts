@@ -20,6 +20,28 @@ type VisibilityClassKey =
   | 'subfolders'
   | 'triggerPhrases';
 
+const resetSelections = (state: Filters) => {
+  state.filterTags = [];
+  state.filterSizes = [];
+  state.filterBuckets = [];
+  state.filterExtensions = [];
+  state.filterSubfolders = [];
+  state.filenamePatterns = [];
+};
+
+const resetVisibility = (state: Filters) => {
+  state.visibility.tags = ClassFilterMode.OFF;
+  state.visibility.nameSearch = ClassFilterMode.OFF;
+  state.visibility.sizes = ClassFilterMode.OFF;
+  state.visibility.buckets = ClassFilterMode.OFF;
+  state.visibility.extensions = ClassFilterMode.OFF;
+  state.visibility.subfolders = ClassFilterMode.OFF;
+  state.visibility.triggerPhrases = ClassFilterMode.OFF;
+  state.visibility.scopeTagless = false;
+  state.visibility.scopeSelected = false;
+  state.visibility.showModified = false;
+};
+
 export const coreReducers = {
   setTagFilterMode: (
     state: Filters,
@@ -120,24 +142,28 @@ export const coreReducers = {
     state.filenamePatterns = [];
   },
 
+  /**
+   * Stop filtering without touching the selection lists: class modes to Off,
+   * scopes off. Selections survive because they double as the working set for
+   * tag actions (edit, delete-toggle), not just filter input.
+   */
+  clearVisibilityFilters: (state: Filters) => {
+    resetVisibility(state);
+  },
+
+  /**
+   * Clear every selection list (tags, sizes, buckets, files). The now-empty
+   * class modes are reset by the filter-manager middleware, same as the
+   * per-class clear actions.
+   */
+  clearSelections: (state: Filters) => {
+    resetSelections(state);
+  },
+
+  /** Full reset — selections and visibility together. Used on project switch. */
   clearFilters: (state: Filters) => {
-    state.filterTags = [];
-    state.filterSizes = [];
-    state.filterBuckets = [];
-    state.filterExtensions = [];
-    state.filterSubfolders = [];
-    state.filenamePatterns = [];
-    // Also clear visibility settings
-    state.visibility.tags = ClassFilterMode.OFF;
-    state.visibility.nameSearch = ClassFilterMode.OFF;
-    state.visibility.sizes = ClassFilterMode.OFF;
-    state.visibility.buckets = ClassFilterMode.OFF;
-    state.visibility.extensions = ClassFilterMode.OFF;
-    state.visibility.subfolders = ClassFilterMode.OFF;
-    state.visibility.triggerPhrases = ClassFilterMode.OFF;
-    state.visibility.scopeTagless = false;
-    state.visibility.scopeSelected = false;
-    state.visibility.showModified = false;
+    resetSelections(state);
+    resetVisibility(state);
   },
 
   addFilenamePattern: (state: Filters, { payload }: PayloadAction<string>) => {

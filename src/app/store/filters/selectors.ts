@@ -80,6 +80,26 @@ export const selectHasActiveVisibility = createSelector(
       triggerPhrases.length > 0),
 );
 
+/**
+ * True when any visibility setting is set at all — class modes or scopes —
+ * regardless of whether it currently filters anything. Drives the enabled
+ * state of the clear-filters button, which clears exactly this state.
+ */
+export const selectHasVisibilitySettings = createSelector(
+  selectVisibility,
+  (visibility) =>
+    visibility.scopeTagless ||
+    visibility.scopeSelected ||
+    visibility.showModified ||
+    visibility.tags !== ClassFilterMode.OFF ||
+    visibility.nameSearch !== ClassFilterMode.OFF ||
+    visibility.sizes !== ClassFilterMode.OFF ||
+    visibility.buckets !== ClassFilterMode.OFF ||
+    visibility.extensions !== ClassFilterMode.OFF ||
+    visibility.subfolders !== ClassFilterMode.OFF ||
+    visibility.triggerPhrases !== ClassFilterMode.OFF,
+);
+
 export const selectHasNonTagFilters = createSelector(
   selectFilterSizes,
   selectFilterBuckets,
