@@ -20,6 +20,8 @@ type FolderNameFieldsProps = {
   /** Appended to the preview line, e.g. a collision warning. */
   note?: ReactNode;
   autoFocus?: boolean;
+  /** Fired when Enter is pressed in the name field. */
+  onSubmit?: () => void;
 };
 
 /**
@@ -38,6 +40,7 @@ export const FolderNameFields = ({
   folderName,
   note,
   autoFocus,
+  onSubmit,
 }: FolderNameFieldsProps) => {
   const trimmedLabel = label.trim();
 
@@ -79,6 +82,11 @@ export const FolderNameFields = ({
             type="text"
             value={label}
             onChange={(e) => onLabelChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              onSubmit?.();
+            }}
             placeholder="e.g. sonic"
             autoFocus={autoFocus}
             className={`w-full rounded border px-2 py-1 text-sm ${

@@ -12,6 +12,7 @@ import {
   type PayloadAction,
 } from '@reduxjs/toolkit';
 
+import { bucketedStepsPerEpoch } from '@/app/services/training/bucket-steps';
 import {
   type CaptionEmission,
   isEmissionChoosable,
@@ -129,10 +130,7 @@ function sectionFieldsDiffer(
   );
 }
 
-/**
- * Images the run sees per epoch, before and after per-folder repeats.
- * Shared by the dataset-stats selector and the epochs↔steps conversion.
- */
+/** Images the run sees per epoch, before and after per-folder repeats. */
 function datasetTotals(form: FormState) {
   let totalImages = 0;
   let totalEffective = 0;
@@ -145,6 +143,30 @@ function datasetTotals(form: FormState) {
     }
   }
   return { totalImages, totalEffective };
+}
+
+/**
+ * Steps in one epoch — the conversion factor behind every epochs↔steps readout
+ * in the form. Not `images / batch`: the trainers batch within aspect-ratio
+ * buckets, so each bucket rounds its own partial batch up to a whole step. See
+ * `services/training/bucket-steps` for the maths and why the difference is
+ * worth modelling (25% on a 15-image dataset, and it compounds over a run).
+ */
+function stepsPerEpoch(form: FormState): number {
+  return bucketedStepsPerEpoch({
+    folders: form.datasets.flatMap((ds) =>
+      ds.folders.map((folder) => ({
+        histogram: ds.folderHistograms?.[folder.name],
+        effectiveImages:
+          folder.imageCount * (folder.overrideRepeats ?? folder.detectedRepeats),
+      })),
+    ),
+    batchSize: form.batchSize,
+    resolution: form.resolution,
+    nativeResolution: form.nativeResolution,
+    bucketResoSteps: form.bucketResoSteps,
+    bucketNoUpscale: form.bucketNoUpscale,
+  });
 }
 
 /**
@@ -179,7 +201,7 @@ const findCadencePair = (field: string): CadencePair | undefined =>
  * both directions floor to at least 1: a cadence of 0 means "never" to the
  * backends, which is a silent way to turn sampling or saving off.
  *
- * With no dataset attached there's no images-per-epoch to convert through, so
+ * With no dataset attached there's no steps-per-epoch to convert through, so
  * the stored values are left alone and only the unit changes.
  */
 function switchCadenceUnit(
@@ -187,21 +209,14 @@ function switchCadenceUnit(
   pair: CadencePair,
   next: DurationMode,
 ) {
-  const { totalEffective } = datasetTotals(form);
-  const canConvert =
-    totalEffective > 0 && form.batchSize > 0 && form[pair.mode] !== next;
+  const perEpoch = stepsPerEpoch(form);
+  const canConvert = perEpoch > 0 && form[pair.mode] !== next;
 
   if (canConvert) {
     if (next === 'steps') {
-      form[pair.steps] = Math.max(
-        1,
-        Math.ceil((totalEffective * form[pair.epochs]) / form.batchSize),
-      );
+      form[pair.steps] = Math.max(1, form[pair.epochs] * perEpoch);
     } else {
-      form[pair.epochs] = Math.max(
-        1,
-        Math.floor((form[pair.steps] * form.batchSize) / totalEffective),
-      );
+      form[pair.epochs] = Math.max(1, Math.floor(form[pair.steps] / perEpoch));
     }
   }
 
@@ -897,13 +912,21 @@ export const selectDatasetIssues = createSelector(selectForm, (form) => {
   return issues;
 });
 
+/**
+ * Steps one epoch takes — surfaced so the Duration readout can show the
+ * conversion factor rather than an images ÷ batch sum that no longer holds.
+ */
+export const selectStepsPerEpoch = createSelector(selectForm, (form) =>
+  stepsPerEpoch(form),
+);
+
 export const selectCalculatedSteps = createSelector(
   selectForm,
   selectDatasetStats,
   (form, stats) => {
     if (stats.totalEffective === 0) return 0;
     if (form.durationMode === 'epochs') {
-      return Math.ceil((stats.totalEffective * form.epochs) / form.batchSize);
+      return stepsPerEpoch(form) * form.epochs;
     }
     return form.steps;
   },
@@ -915,7 +938,7 @@ export const selectCalculatedEpochs = createSelector(
   (form, stats) => {
     if (stats.totalEffective === 0) return 0;
     if (form.durationMode === 'steps') {
-      return Math.floor((form.steps * form.batchSize) / stats.totalEffective);
+      return Math.floor(form.steps / stepsPerEpoch(form));
     }
     return form.epochs;
   },

@@ -172,7 +172,7 @@ const SamplingSectionComponent = ({
   // Shared by the read-only Simple summary and the editable tiers, so the
   // cost of a cadence/prompt change is visible wherever it can be changed.
   const tally = totalImages > 0 && (
-    <p className="text-sm text-slate-500 tabular-nums dark:text-slate-400">
+    <p className="mt-2 text-sm text-slate-500 tabular-nums dark:text-slate-400">
       {rounds} {rounds === 1 ? 'round' : 'rounds'} &times; {prompts.length}{' '}
       {prompts.length === 1 ? 'prompt' : 'prompts'} ={' '}
       <span className="font-medium text-slate-600 dark:text-slate-300">
@@ -295,6 +295,8 @@ const SamplingSectionComponent = ({
                       size="md"
                     />
                   </InputTray>
+
+                  {tally}
                 </div>
               )}
 
@@ -355,8 +357,6 @@ const SamplingSectionComponent = ({
                 </div>
               )}
             </div>
-
-            {tally}
           </>
         )}
       </div>

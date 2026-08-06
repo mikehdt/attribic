@@ -65,6 +65,8 @@ type LearningSectionProps = {
   cacheTextEmbeddings: boolean;
   calculatedSteps: number;
   calculatedEpochs: number;
+  /** Bucket-aware steps one epoch takes — the epochs↔steps conversion factor. */
+  stepsPerEpoch: number;
   totalEffective: number;
   batchSize: number;
   /** Display name of the currently selected model, for the epoch-guidance hint. */
@@ -177,6 +179,7 @@ const LearningSectionComponent = ({
   cacheTextEmbeddings,
   calculatedSteps,
   calculatedEpochs,
+  stepsPerEpoch,
   totalEffective,
   batchSize,
   modelName,
@@ -284,8 +287,8 @@ const LearningSectionComponent = ({
   // larger (and so usually broader) datasets.
   const targetSteps = targetStepsFor(defaults.steps, totalEffective);
   const recommendedEpochs =
-    totalEffective > 0
-      ? clamp(Math.round((targetSteps * batchSize) / totalEffective), 1, 999)
+    totalEffective > 0 && stepsPerEpoch > 0
+      ? clamp(Math.round(targetSteps / stepsPerEpoch), 1, 999)
       : 0;
   const epochsDivergent =
     durationMode === 'epochs' &&
@@ -347,12 +350,20 @@ const LearningSectionComponent = ({
               </InputTray>
 
               {totalEffective > 0 && (
-                <p className="mt-1 text-xs text-slate-400 tabular-nums">
-                  {totalEffective} images/epoch &times;{' '}
+                // Steps per epoch is shown rather than derived in the readout:
+                // it isn't images ÷ batch. The trainers batch within
+                // aspect-ratio buckets, so each bucket's partial batch costs a
+                // whole step — 15 images at batch 2 is 10 steps, not 7.5.
+                <p
+                  className="mt-1 text-xs text-slate-400 tabular-nums"
+                  title={`${totalEffective} images at batch ${batchSize}, batched within aspect-ratio buckets`}
+                >
+                  {totalEffective} images &rarr; {stepsPerEpoch} steps/epoch
+                  &times;{' '}
                   {durationMode === 'epochs'
                     ? `${epochs}`
                     : `${calculatedEpochs}`}{' '}
-                  epochs &divide; {batchSize} batch ={' '}
+                  epochs ={' '}
                   <span className="font-medium text-slate-500">
                     {durationMode === 'epochs'
                       ? calculatedSteps.toLocaleString()

@@ -55,6 +55,7 @@ const TrainingConfigFormComponent = ({
     datasetIssues,
     calculatedSteps,
     calculatedEpochs,
+    stepsPerEpoch,
     sectionHasChanges,
     setField,
     setOptimizer,
@@ -271,6 +272,7 @@ const TrainingConfigFormComponent = ({
             cacheTextEmbeddings={state.cacheTextEmbeddings}
             calculatedSteps={calculatedSteps}
             calculatedEpochs={calculatedEpochs}
+            stepsPerEpoch={stepsPerEpoch}
             totalEffective={datasetStats.totalEffective}
             batchSize={state.batchSize}
             modelName={currentModel.name}
@@ -366,6 +368,8 @@ const TrainingConfigFormComponent = ({
             maxSavesToKeep={state.maxSavesToKeep}
             saveState={state.saveState}
             resumeState={state.resumeState}
+            calculatedSteps={calculatedSteps}
+            calculatedEpochs={calculatedEpochs}
             hasChanges={sectionHasChanges.saving}
             defaults={defaults}
             visibleFields={visibleFields}

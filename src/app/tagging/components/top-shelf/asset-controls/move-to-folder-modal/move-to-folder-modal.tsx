@@ -214,6 +214,7 @@ export const MoveToFolderModal = ({
                       onLabelChange={setRenameLabel}
                       isLabelValid={isRenameLabelValid}
                       folderName={renameFolderName}
+                      onSubmit={handleSubmit}
                       note={
                         isRenameUnchanged ? (
                           <span className="ml-2 text-slate-400">
@@ -275,6 +276,7 @@ export const MoveToFolderModal = ({
                 onLabelChange={setNewLabel}
                 isLabelValid={isNewLabelValid}
                 folderName={newFolderName}
+                onSubmit={handleSubmit}
                 autoFocus
                 note={
                   newFolderAlreadyExists ? (

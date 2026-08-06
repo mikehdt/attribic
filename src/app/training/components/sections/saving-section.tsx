@@ -31,6 +31,9 @@ type SavingSectionProps = {
   maxSavesToKeep: number;
   saveState: boolean;
   resumeState: string;
+  /** Resolved run length, for working out how many checkpoints the run writes. */
+  calculatedSteps: number;
+  calculatedEpochs: number;
   hasChanges: boolean;
   defaults: TrainingDefaults;
   visibleFields: Set<TrainingFieldName>;
@@ -59,6 +62,8 @@ const SavingSectionComponent = ({
   maxSavesToKeep,
   saveState,
   resumeState,
+  calculatedSteps,
+  calculatedEpochs,
   hasChanges,
   defaults,
   visibleFields,
@@ -92,6 +97,18 @@ const SavingSectionComponent = ({
   const activeField =
     saveMode === 'epochs' ? 'saveEveryEpochs' : 'saveEverySteps';
   const activeValue = saveMode === 'epochs' ? saveEveryEpochs : saveEverySteps;
+
+  // How many times the cadence fires across the resolved run length — the same
+  // count the sampling tally uses. Both are 0 until a dataset is attached, so
+  // the tally is left off until then.
+  const checkpoints =
+    saveMode === 'epochs'
+      ? saveEveryEpochs > 0
+        ? Math.floor(calculatedEpochs / saveEveryEpochs)
+        : 0
+      : saveEverySteps > 0
+        ? Math.floor(calculatedSteps / saveEverySteps)
+        : 0;
 
   return (
     <CollapsibleSection
@@ -176,6 +193,17 @@ const SavingSectionComponent = ({
                       size="md"
                     />
                   </InputTray>
+
+                  {saveEnabled && checkpoints > 0 && (
+                    <p className="mt-2 text-sm text-slate-500 tabular-nums dark:text-slate-400">
+                      Will save{' '}
+                      <span className="font-medium text-slate-600 dark:text-slate-300">
+                        {checkpoints.toLocaleString()}{' '}
+                        {checkpoints === 1 ? 'checkpoint' : 'checkpoints'}
+                      </span>{' '}
+                      over the run
+                    </p>
+                  )}
                 </div>
 
                 {visibleFields.has('maxSavesToKeep') ? (

@@ -39,6 +39,7 @@ import {
   selectLoadedProject,
   selectModelDefaults,
   selectSectionHasChanges,
+  selectStepsPerEpoch,
   setAppModelDefaults as setAppModelDefaultsAction,
   setDatasetCaptionEmission as setDatasetCaptionEmissionAction,
   setField as setFieldAction,
@@ -92,6 +93,7 @@ export function useTrainingConfigForm() {
   const datasetIssues = useAppSelector(selectDatasetIssues);
   const calculatedSteps = useAppSelector(selectCalculatedSteps);
   const calculatedEpochs = useAppSelector(selectCalculatedEpochs);
+  const stepsPerEpoch = useAppSelector(selectStepsPerEpoch);
   const sectionHasChanges = useAppSelector(selectSectionHasChanges);
   const lastTrainingModelId = useAppSelector(selectLastTrainingModelId);
   const configuredModelIds = useAppSelector(selectConfiguredModelIds);
@@ -341,6 +343,7 @@ export function useTrainingConfigForm() {
     datasetIssues,
     calculatedSteps,
     calculatedEpochs,
+    stepsPerEpoch,
     sectionHasChanges,
     setField,
     setOptimizer,
