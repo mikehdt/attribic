@@ -120,7 +120,7 @@ export function BackendPathsSection({
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
               {label}
             </span>
-            <InputTray size="md" width="full" className="dark:bg-slate-900">
+            <InputTray size="md" width="full" tone="deep">
               <Input
                 size="md"
                 placeholder={placeholder}

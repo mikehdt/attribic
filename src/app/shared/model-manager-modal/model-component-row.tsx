@@ -109,7 +109,7 @@ export function ModelComponentRow({
 
   return (
     <div
-      className={`rounded-md border bg-white p-3 transition-colors dark:bg-slate-800 ${
+      className={`flex flex-col gap-y-2 rounded-md border bg-white p-3 transition-colors dark:bg-slate-700/50 ${
         isReady || hasPath
           ? 'border-teal-200 dark:border-teal-800'
           : 'border-slate-200 dark:border-slate-700'
@@ -246,11 +246,10 @@ export function ModelComponentRow({
             ? `Using installed download — ${installedPath}`
             : undefined
         }
-        className="mt-2 dark:bg-slate-900"
       />
 
       {component.hint && (
-        <p className="mt-1 text-xs text-slate-400">{component.hint}</p>
+        <p className="text-xs text-slate-400">{component.hint}</p>
       )}
 
       {downloadable?.requiresLicense && !isReady && (

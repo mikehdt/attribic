@@ -34,7 +34,6 @@ type ModelPathFieldProps = {
    * Leave unset inside the modal's own rows.
    */
   setupModelId?: string;
-  className?: string;
 };
 
 export function ModelPathField({
@@ -45,7 +44,6 @@ export function ModelPathField({
   downloadId,
   resetTo,
   setupModelId,
-  className,
 }: ModelPathFieldProps) {
   const dispatch = useAppDispatch();
   const statuses = useAppSelector(selectAllModelStatuses);
@@ -93,21 +91,19 @@ export function ModelPathField({
   // gives the user variant/precision choice, progress visibility, and a
   // single canonical place to reason about downloads and defaults.
   const handleOpenSetup = useCallback(() => {
-    dispatch(
-      openModelManagerModal({ tab: 'training', modelId: setupModelId }),
-    );
+    dispatch(openModelManagerModal({ tab: 'training', modelId: setupModelId }));
   }, [dispatch, setupModelId]);
 
   const hasExtra = canReset || (canOfferSetup && !isDownloading);
 
   return (
-    <InputTray size="md" width="full" className={className}>
+    <InputTray size="md" width="full" tone="deep">
       <Input
         type="text"
         size="md"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder ?? `Path to ${browseTitle.toLowerCase()}…`}
+        placeholder={placeholder ?? `Path to ${browseTitle.toLowerCase()}...`}
         className="min-w-0 flex-1"
       />
       <Button

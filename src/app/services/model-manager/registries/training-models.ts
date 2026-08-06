@@ -290,7 +290,7 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
     description: 'Latest generation, practical for home GPUs',
     requiresLicense: {
       url: 'https://huggingface.co/black-forest-labs/FLUX.2-klein-9B',
-      name: 'FLUX.2 Klein Non-Commercial',
+      name: 'Flux.2 Klein Non-Commercial',
     },
     variants: [
       {
@@ -512,9 +512,7 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
     id: 'dl-flux2-klein-base-4b',
     name: 'Flux.2 Klein Base 4B',
     repoId: 'black-forest-labs/FLUX.2-klein-base-4B',
-    files: [
-      { name: 'flux-2-klein-base-4b.safetensors', size: 7_751_105_712 },
-    ],
+    files: [{ name: 'flux-2-klein-base-4b.safetensors', size: 7_751_105_712 }],
     feature: 'training',
     architecture: 'flux',
     componentType: 'checkpoint',
@@ -525,9 +523,7 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
     id: 'dl-flux2-klein-base-9b',
     name: 'Flux.2 Klein Base 9B',
     repoId: 'black-forest-labs/FLUX.2-klein-base-9B',
-    files: [
-      { name: 'flux-2-klein-base-9b.safetensors', size: 18_157_185_168 },
-    ],
+    files: [{ name: 'flux-2-klein-base-9b.safetensors', size: 18_157_185_168 }],
     feature: 'training',
     architecture: 'flux',
     componentType: 'checkpoint',
@@ -576,8 +572,7 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
     architecture: 'qwenimage',
     componentType: 'checkpoint',
     dependencies: ['qwen25vl-7b', 'qwen-image-vae'],
-    description:
-      '20B Qwen-Image DiT for LoRA training (~38 GB, bf16 only)',
+    description: '20B Qwen-Image DiT for LoRA training (~38 GB, bf16 only)',
   },
 
   // --- Z-Image ---

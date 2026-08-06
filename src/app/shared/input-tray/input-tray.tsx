@@ -8,7 +8,7 @@ type InputTrayProps = {
   children: ReactNode;
   size?: InputTraySize;
   width?: InputTrayWidth;
-  className?: string;
+  tone?: 'surface' | 'deep' | undefined;
   gap?: Gap;
 };
 
@@ -28,12 +28,12 @@ export function InputTray({
   children,
   size = 'sm',
   width = 'inline',
-  className = '',
+  tone,
   gap = 'none',
 }: InputTrayProps) {
   return (
     <div
-      className={`${width === 'full' ? 'flex w-full' : 'inline-flex'} items-center bg-slate-200 inset-shadow-xs inset-shadow-slate-300 dark:bg-slate-600 dark:inset-shadow-slate-900 ${gapClasses[gap]} ${sizeClasses[size]} ${className}`}
+      className={`${width === 'full' ? 'flex w-full' : 'inline-flex'} items-center bg-slate-200 inset-shadow-xs inset-shadow-slate-300 dark:inset-shadow-slate-900 ${gapClasses[gap]} ${sizeClasses[size]} ${tone === 'surface' ? 'dark:bg-slate-800' : tone === 'deep' ? 'dark:bg-slate-900' : 'dark:bg-slate-600'}`}
     >
       {children}
     </div>

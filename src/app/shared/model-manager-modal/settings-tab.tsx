@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckIcon, CpuIcon, ExternalLinkIcon, TrashIcon } from 'lucide-react';
+import { CheckIcon, CpuIcon, ExternalLinkIcon, Trash2Icon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -184,13 +184,12 @@ export function SettingsTab() {
                 </div>
                 <Button
                   onClick={handleClear}
-                  color="rose"
                   variant="ghost"
                   size="sm"
                   width="sm"
                   disabled={saving}
                 >
-                  <TrashIcon />
+                  <Trash2Icon />
                   Clear
                 </Button>
               </div>

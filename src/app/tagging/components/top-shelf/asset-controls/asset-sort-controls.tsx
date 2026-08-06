@@ -145,7 +145,7 @@ export const AssetSortControls = () => {
     (sortType === SortType.FOLDER && !hasSubfolderAssets);
 
   return (
-    <InputTray>
+    <InputTray tone="surface">
       <Dropdown
         size="toolbar"
         items={sortTypeItems}

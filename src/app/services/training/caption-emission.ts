@@ -37,6 +37,8 @@ const ARCHITECTURE_PREFERENCE: Record<ModelArchitecture, CaptionEmission> = {
   flux: 'natural',
   wan: 'natural',
   ltx: 'natural',
+  krea2: 'natural',
+  qwenimage: 'natural',
 };
 
 /**

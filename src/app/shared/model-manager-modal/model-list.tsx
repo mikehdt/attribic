@@ -24,7 +24,7 @@ export function ModelList({
     >
       {groups.map((group) => (
         <div key={group.architecture}>
-          <h3 className="mb-1 px-2 text-xs font-medium tracking-wide text-slate-400 uppercase">
+          <h3 className="mb-1 border-b border-b-slate-200 px-2 pb-1 text-xs font-medium tracking-wide text-slate-400 uppercase dark:border-b-slate-700">
             {group.label}
           </h3>
           <div className="flex flex-col gap-0.5">
@@ -36,7 +36,7 @@ export function ModelList({
                   type="button"
                   onClick={() => onSelect(model.id)}
                   aria-current={isSelected ? 'true' : undefined}
-                  className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                  className={`flex cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                     isSelected
                       ? 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/50 dark:text-indigo-100'
                       : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/50'
