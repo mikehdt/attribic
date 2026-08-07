@@ -286,10 +286,11 @@ const ProjectMenuComponent = () => {
             onClick={handleAddImages}
             disabled={ioInProgress}
           />
+
           <MenuItem
-            icon={<CalculatorIcon className="h-5 w-5" />}
-            label="Bucket Visualisation Tool"
-            onClick={handleOpenBucketModal}
+            icon={<HighlighterIcon className="h-5 w-5" />}
+            label="Trigger Phrases"
+            onClick={handleOpenTriggersModal}
           />
 
           <MenuCaptionModeSwitcher
@@ -307,15 +308,15 @@ const ProjectMenuComponent = () => {
             />
           )}
 
-          <MenuItem
-            icon={<HighlighterIcon className="h-5 w-5" />}
-            label="Trigger Phrases"
-            onClick={handleOpenTriggersModal}
-          />
-
           <MenuEditModeSwitcher
             editMode={tagEditMode}
             setEditMode={handleSetTagEditMode}
+          />
+
+          <MenuItem
+            icon={<CalculatorIcon className="h-5 w-5" />}
+            label="Bucket Visualisation Tool"
+            onClick={handleOpenBucketModal}
           />
         </div>
       </Popup>

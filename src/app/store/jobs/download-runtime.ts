@@ -37,11 +37,7 @@ type ThunkDispatch = (action: unknown) => unknown;
 // ---------------------------------------------------------------------------
 
 type SidecarDownloadStatus =
-  | 'queued'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+  'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 type SidecarDownload = {
   job_id: string;

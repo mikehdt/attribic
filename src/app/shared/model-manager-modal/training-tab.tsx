@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
-import { type ReactNode,useState } from 'react';
+import { type ReactNode, useState } from 'react';
 
 import {
   type BackendComponentGroup,

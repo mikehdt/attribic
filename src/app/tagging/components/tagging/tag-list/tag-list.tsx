@@ -5,7 +5,7 @@
  * TagsDisplay so its memo boundary can block re-renders of the whole tree.
  */
 import { ClipboardIcon, ClipboardListIcon } from 'lucide-react';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 
 import { Button } from '@/app/shared/button';
 import { TagEditMode } from '@/app/store/preferences';
@@ -54,13 +54,19 @@ const TagListComponent = ({
     handleSubmit,
     handleCancel,
     handleMultipleTagsSubmit,
+    handleSuggestionAdd,
     handleEditChange,
     handleEditSubmit,
     handleEditCancel,
+    handleEditSelect,
     handleToggleTag,
     handleStartEditWithCancel,
     handleCopyTags,
   } = useTagList({ tags, tagEditMode, onAddTag, onToggleTag, onEditTag });
+
+  // Stable identity so InputTag/EditableTag memo comparisons hold during
+  // keystrokes — suggestions matching these names are no-ops and hidden
+  const tagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
 
   return (
     <div className="flex h-full w-full">
@@ -76,12 +82,14 @@ const TagListComponent = ({
           editValue={editValue}
           isDuplicateEdit={isDuplicateEdit}
           matchingTagName={matchingTagName}
+          suggestionsExclude={tagNames}
           onToggleTag={handleToggleTag}
           onEditTag={handleStartEditWithCancel}
           onDeleteTag={onDeleteTag}
           onEditChange={handleEditChange}
           onEditSubmit={handleEditSubmit}
           onEditCancel={handleEditCancel}
+          onEditSelect={handleEditSelect}
         />
 
         <div className="mt-2">
@@ -95,6 +103,8 @@ const TagListComponent = ({
             isDuplicate={isDuplicateAdd}
             disabled={editingTagName !== null}
             onMultipleTagsSubmit={handleMultipleTagsSubmit}
+            suggestionsExclude={tagNames}
+            onSuggestionSelect={handleSuggestionAdd}
           />
         </div>
       </div>

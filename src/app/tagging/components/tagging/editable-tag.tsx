@@ -29,7 +29,9 @@ type EditableTagProps = {
   onEditChange: (value: string) => void;
   onEditSubmit: () => void;
   onEditCancel: () => void;
+  onEditSelect: (tag: string) => void;
   isDuplicateEdit: boolean;
+  suggestionsExclude: string[];
 };
 
 const EditableTagComponent = ({
@@ -49,7 +51,9 @@ const EditableTagComponent = ({
   onEditChange,
   onEditSubmit,
   onEditCancel,
+  onEditSelect,
   isDuplicateEdit,
+  suggestionsExclude,
 }: EditableTagProps) => {
   if (isEditing) {
     return (
@@ -61,6 +65,8 @@ const EditableTagComponent = ({
         onCancel={onEditCancel}
         placeholder="Edit tag..."
         isDuplicate={isDuplicateEdit}
+        suggestionsExclude={suggestionsExclude}
+        onSuggestionSelect={onEditSelect}
       />
     );
   }
@@ -117,7 +123,9 @@ const editableTagPropsAreEqual = (
     prevProps.onDelete === nextProps.onDelete &&
     prevProps.onEditChange === nextProps.onEditChange &&
     prevProps.onEditSubmit === nextProps.onEditSubmit &&
-    prevProps.onEditCancel === nextProps.onEditCancel
+    prevProps.onEditCancel === nextProps.onEditCancel &&
+    prevProps.onEditSelect === nextProps.onEditSelect &&
+    prevProps.suggestionsExclude === nextProps.suggestionsExclude
   );
 };
 

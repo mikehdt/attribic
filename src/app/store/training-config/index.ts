@@ -158,7 +158,8 @@ function stepsPerEpoch(form: FormState): number {
       ds.folders.map((folder) => ({
         histogram: ds.folderHistograms?.[folder.name],
         effectiveImages:
-          folder.imageCount * (folder.overrideRepeats ?? folder.detectedRepeats),
+          folder.imageCount *
+          (folder.overrideRepeats ?? folder.detectedRepeats),
       })),
     ),
     batchSize: form.batchSize,
@@ -1165,7 +1166,6 @@ function deepValueEqual(a: unknown, b: unknown): boolean {
   if (aKeys.length !== bKeys.length) return false;
   return aKeys.every(
     (key) =>
-      Object.hasOwn(bRecord, key) &&
-      deepValueEqual(aRecord[key], bRecord[key]),
+      Object.hasOwn(bRecord, key) && deepValueEqual(aRecord[key], bRecord[key]),
   );
 }

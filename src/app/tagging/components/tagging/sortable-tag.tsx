@@ -30,7 +30,9 @@ type SortableTagProps = {
   onEditChange: (value: string) => void;
   onEditSubmit: () => void;
   onEditCancel: () => void;
+  onEditSelect: (tag: string) => void;
   isDuplicateEdit: boolean;
+  suggestionsExclude: string[];
 };
 
 const SortableTagComponent = ({
@@ -51,7 +53,9 @@ const SortableTagComponent = ({
   onEditChange,
   onEditSubmit,
   onEditCancel,
+  onEditSelect,
   isDuplicateEdit,
+  suggestionsExclude,
 }: SortableTagProps) => {
   // Disable drag while editing, faded, or when shown as matching duplicate
   const isDragDisabled = isEditing || fade || isMatchingDuplicate;
@@ -110,7 +114,9 @@ const SortableTagComponent = ({
         onEditChange={onEditChange}
         onEditSubmit={onEditSubmit}
         onEditCancel={onEditCancel}
+        onEditSelect={onEditSelect}
         isDuplicateEdit={isDuplicateEdit}
+        suggestionsExclude={suggestionsExclude}
       />
     </div>
   );
@@ -152,7 +158,9 @@ const sortableTagPropsAreEqual = (
     prevProps.onDelete === nextProps.onDelete &&
     prevProps.onEditChange === nextProps.onEditChange &&
     prevProps.onEditSubmit === nextProps.onEditSubmit &&
-    prevProps.onEditCancel === nextProps.onEditCancel
+    prevProps.onEditCancel === nextProps.onEditCancel &&
+    prevProps.onEditSelect === nextProps.onEditSelect &&
+    prevProps.suggestionsExclude === nextProps.suggestionsExclude
   );
 };
 

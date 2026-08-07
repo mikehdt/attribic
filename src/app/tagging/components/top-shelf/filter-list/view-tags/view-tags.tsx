@@ -1,4 +1,4 @@
-import { highlightText } from '@/app/tagging/utils/text-highlight';
+import { highlightText } from '@/app/shared/text-highlight';
 
 import { FilterSearchInput } from '../filter-search-input';
 import {

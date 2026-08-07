@@ -136,7 +136,8 @@ function selectBucket(
     const heightRounded = roundToSteps(resizedHeight, resoSteps);
     const widthInHr = roundToSteps(heightRounded * aspect, resoSteps);
 
-    const arWidthRounded = heightInWr > 0 ? widthRounded / heightInWr : Infinity;
+    const arWidthRounded =
+      heightInWr > 0 ? widthRounded / heightInWr : Infinity;
     const arHeightRounded =
       heightRounded > 0 ? widthInHr / heightRounded : Infinity;
 
@@ -195,7 +196,12 @@ export function bucketedStepsPerEpoch({
   const resoSteps = bucketResoSteps > 0 ? bucketResoSteps : 64;
   const maxArea = maxRes * maxRes;
 
-  const resos = makeBucketResolutions([maxRes, maxRes], minSize, maxRes, resoSteps);
+  const resos = makeBucketResolutions(
+    [maxRes, maxRes],
+    minSize,
+    maxRes,
+    resoSteps,
+  );
   const resoKeys = new Set(resos.map(([w, h]) => `${w}x${h}`));
 
   const counts = new Map<string, number>();

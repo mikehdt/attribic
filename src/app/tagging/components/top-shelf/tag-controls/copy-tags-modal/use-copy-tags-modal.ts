@@ -12,7 +12,10 @@ type UseCopyTagsModalParams = {
   onClose: () => void;
 };
 
-export const useCopyTagsModal = ({ isOpen, onClose }: UseCopyTagsModalParams) => {
+export const useCopyTagsModal = ({
+  isOpen,
+  onClose,
+}: UseCopyTagsModalParams) => {
   const dispatch = useAppDispatch();
   const selectedAssetsData = useAppSelector(selectSelectedAssetsData);
   const tagCounts = useAppSelector(selectTagCounts);

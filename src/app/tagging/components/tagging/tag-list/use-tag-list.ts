@@ -130,6 +130,15 @@ export const useTagList = ({
     [onAddTag],
   );
 
+  // Autocomplete selections commit immediately. Suggestions already exclude
+  // the asset's current tags, so no duplicate refusal path is needed here.
+  const handleSuggestionAdd = useCallback(
+    (tag: string, prepend?: boolean) => {
+      handleMultipleTagsSubmit([tag], prepend);
+    },
+    [handleMultipleTagsSubmit],
+  );
+
   // Edit handlers
   const handleStartEdit = useCallback((tagName: string) => {
     setEditingTagName(tagName);
@@ -158,6 +167,24 @@ export const useTagList = ({
     setEditingTagName(null);
     setEditValue('');
   }, []);
+
+  // Renaming via autocomplete — commits the chosen project-wide tag directly
+  // (the consolidation flow: variant spelling → canonical tag). Suggestions
+  // exclude this asset's tags, so the duplicate guard is just a race backstop.
+  const handleEditSelect = useCallback(
+    (tag: string) => {
+      if (!editingTagName) return;
+      const exists = tagsRef.current.some(
+        (t) => t.name.toLowerCase() === tag.toLowerCase(),
+      );
+      if (!exists && tag !== editingTagName) {
+        onEditTag(editingTagName, tag);
+      }
+      setEditingTagName(null);
+      setEditValue('');
+    },
+    [editingTagName, onEditTag],
+  );
 
   // Double-click timing: in DOUBLE_CLICK mode, defer single-click toggles
   // so a rapid second click can cancel the toggle and trigger edit instead.
@@ -262,9 +289,11 @@ export const useTagList = ({
     handleSubmit,
     handleCancel,
     handleMultipleTagsSubmit,
+    handleSuggestionAdd,
     handleEditChange,
     handleEditSubmit,
     handleEditCancel,
+    handleEditSelect,
     handleToggleTag,
     handleStartEditWithCancel,
     handleCopyTags,

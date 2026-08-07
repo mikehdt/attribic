@@ -7,6 +7,7 @@ import { Modal } from '@/app/shared/modal';
 import { ScopingCheckboxes } from '@/app/shared/scoping-checkboxes';
 import { TagStatusLegend } from '@/app/shared/tag-status-legend';
 
+import { EditTagRow } from './edit-tag-row';
 import { useEditTagsModal } from './use-edit-tags-modal';
 
 interface EditTagsModalProps {
@@ -142,31 +143,14 @@ export const EditTagsModal = ({
               }
 
               return (
-                <div
+                <EditTagRow
                   key={`${tag}-${index}`}
-                  className="flex w-full items-center"
-                >
-                  {/* Original tag */}
-                  <div className="relative w-1/2 truncate pr-10 font-medium text-slate-500 dark:text-slate-400">
-                    {tag}
-                    <div className="absolute top-0 right-0 w-10 text-center text-slate-700 dark:text-slate-500">
-                      -&gt;
-                    </div>
-                  </div>
-
-                  {/* Edit field */}
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      value={editedTags[tag] || ''}
-                      onChange={(e) => handleTagChange(tag, e.target.value)}
-                      className={`w-full rounded-full border px-4 py-1 inset-shadow-sm focus:outline ${inputStyles[status] || inputStyles.none}`}
-                      placeholder="New tag name"
-                      title={tooltipText}
-                      aria-label={`Rename tag ${tag}`}
-                    />
-                  </div>
-                </div>
+                  tag={tag}
+                  value={editedTags[tag] || ''}
+                  inputClassName={inputStyles[status] || inputStyles.none}
+                  tooltip={tooltipText}
+                  onChange={handleTagChange}
+                />
               );
             })}
           </div>

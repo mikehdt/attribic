@@ -63,9 +63,7 @@ export async function GET() {
           getInstalledFileNames(modelDir, model.id) ??
           model.files.map((f) => f.name);
         resolvedPath =
-          fileNames.length === 1
-            ? path.join(modelDir, fileNames[0])
-            : modelDir;
+          fileNames.length === 1 ? path.join(modelDir, fileNames[0]) : modelDir;
       }
 
       statuses[model.id] = {

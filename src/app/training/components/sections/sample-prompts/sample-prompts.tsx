@@ -69,7 +69,9 @@ export function SamplePrompts({
   // letting a deliberate drag start straight away.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   const ids = prompts.map((_, i) => `prompt-${i}`);

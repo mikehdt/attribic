@@ -38,6 +38,8 @@ type TagsDisplayProps = {
   isDuplicateEdit: boolean;
   // Duplicate match state (for fading non-matching tags)
   matchingTagName: string | null;
+  // Autocomplete: tags hidden from rename suggestions (the asset's own tags)
+  suggestionsExclude: string[];
   // Handlers
   onToggleTag: (tagName: string) => void;
   onEditTag: (tagName: string) => void;
@@ -45,6 +47,7 @@ type TagsDisplayProps = {
   onEditChange: (value: string) => void;
   onEditSubmit: () => void;
   onEditCancel: () => void;
+  onEditSelect: (tag: string) => void;
 };
 
 const TagsDisplayComponent = ({
@@ -58,12 +61,14 @@ const TagsDisplayComponent = ({
   editValue,
   isDuplicateEdit,
   matchingTagName,
+  suggestionsExclude,
   onToggleTag,
   onEditTag,
   onDeleteTag,
   onEditChange,
   onEditSubmit,
   onEditCancel,
+  onEditSelect,
 }: TagsDisplayProps) => {
   const {
     displayedTags,
@@ -109,7 +114,9 @@ const TagsDisplayComponent = ({
         onEditChange={onEditChange}
         onEditSubmit={onEditSubmit}
         onEditCancel={onEditCancel}
+        onEditSelect={onEditSelect}
         isDuplicateEdit={tagIsDuplicateEdit}
+        suggestionsExclude={suggestionsExclude}
       />
     ) : (
       <div key={tag.name} className="mr-2 mb-2">
@@ -130,7 +137,9 @@ const TagsDisplayComponent = ({
           onEditChange={onEditChange}
           onEditSubmit={onEditSubmit}
           onEditCancel={onEditCancel}
+          onEditSelect={onEditSelect}
           isDuplicateEdit={tagIsDuplicateEdit}
+          suggestionsExclude={suggestionsExclude}
         />
       </div>
     );
@@ -219,7 +228,9 @@ const tagsDisplayPropsAreEqual = (
     prevProps.onToggleTag !== nextProps.onToggleTag ||
     prevProps.onEditTag !== nextProps.onEditTag ||
     prevProps.onDeleteTag !== nextProps.onDeleteTag ||
-    prevProps.onReorder !== nextProps.onReorder
+    prevProps.onReorder !== nextProps.onReorder ||
+    prevProps.onEditSelect !== nextProps.onEditSelect ||
+    prevProps.suggestionsExclude !== nextProps.suggestionsExclude
   ) {
     return false;
   }

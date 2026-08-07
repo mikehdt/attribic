@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 
-import { highlightTriggerPhrases } from '@/app/tagging/utils/text-highlight';
+import { highlightTriggerPhrases } from '@/app/shared/text-highlight';
 
 /**
  * Render backdrop text with trigger phrase highlights, preserving empty lines.

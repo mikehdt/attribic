@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 
+import { scrollOptionIntoView } from './scroll-option-into-view';
+
 /**
  * Shared keyboard-navigation and highlight state for popup lists
  * (dropdowns, menus, etc.).
@@ -13,7 +15,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react';
  * - Two-layer highlight: keyboard anchor + mouse hover override
  * - Arrow/Home/End/Tab navigation (skipping non-navigable indices)
  * - Enter/Space to confirm, Escape to close
- * - Scroll-into-view for the highlighted item
+ * - Scroll-into-view with adjacent-item peek for the keyboard highlight
  * - Option ID generation for aria-activedescendant
  * - onPositioned callback to highlight an initial item after the popup opens
  */
@@ -194,12 +196,29 @@ export function useListHighlight({
     [],
   );
 
-  // Scroll highlighted item into view when navigating by keyboard
+  // Scroll the highlighted item into view when navigating by keyboard, with a
+  // peek of the adjacent item so a scrollable list visibly continues. Gated on
+  // hover being inactive — hover-driven scrolling would move the list under
+  // the cursor.
   useEffect(() => {
-    if (!isOpen || highlightedIndex < 0) return;
-    const el = document.getElementById(getOptionId(highlightedIndex));
-    el?.scrollIntoView({ block: 'nearest' });
-  }, [isOpen, highlightedIndex, getOptionId]);
+    if (!isOpen || hoverIndex >= 0 || !keyboardActive || keyboardIndex < 0) {
+      return;
+    }
+    const el = document.getElementById(getOptionId(keyboardIndex));
+    if (!el) return;
+    scrollOptionIntoView(el, {
+      isFirst: keyboardIndex === findNext(count, isNavigable, 0, 1),
+      isLast: keyboardIndex === findNext(count, isNavigable, count - 1, -1),
+    });
+  }, [
+    isOpen,
+    hoverIndex,
+    keyboardActive,
+    keyboardIndex,
+    getOptionId,
+    count,
+    isNavigable,
+  ]);
 
   return {
     highlightedIndex,

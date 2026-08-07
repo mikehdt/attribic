@@ -20,6 +20,9 @@ import {
   useState,
 } from 'react';
 
+import { TagAutocomplete } from '@/app/shared/tag-autocomplete/tag-autocomplete';
+import { useTagAutocomplete } from '@/app/shared/tag-autocomplete/use-tag-autocomplete';
+
 // Calculate dynamic input width based on text length
 // Uses discrete Tailwind classes for proper CSS extraction
 const useInputWidth = (textLength: number): string => {
@@ -57,6 +60,13 @@ type InputTagProps = {
   isDuplicate?: boolean;
   disabled?: boolean;
   onMultipleTagsSubmit?: (tags: string[], prepend?: boolean) => void;
+  /** Tags excluded from autocomplete suggestions (the asset's current tags) */
+  suggestionsExclude?: string[];
+  /**
+   * Commits a chosen suggestion (add mode adds it, edit mode renames to it).
+   * Autocomplete is enabled only when this is provided.
+   */
+  onSuggestionSelect?: (tag: string, shiftKey: boolean) => void;
 };
 
 const InputTagComponent = ({
@@ -69,12 +79,35 @@ const InputTagComponent = ({
   isDuplicate = false,
   disabled = false,
   onMultipleTagsSubmit,
+  suggestionsExclude,
+  onSuggestionSelect,
 }: InputTagProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const blurFrameRef = useRef<number | null>(null);
   const [isFocused, setIsFocused] = useState(mode === 'edit');
   const inputWidth = useInputWidth(value.length);
+
+  const handleSuggestionSelect = useCallback(
+    (tag: string, shiftKey: boolean) => {
+      onSuggestionSelect?.(tag, shiftKey);
+    },
+    [onSuggestionSelect],
+  );
+
+  const {
+    handleKeyDown: suggestionsKeyDown,
+    handleFocus: suggestionsFocus,
+    handleBlur: suggestionsBlur,
+    inputProps: suggestionsInputProps,
+    control: suggestionsControl,
+  } = useTagAutocomplete({
+    query: value,
+    exclude: suggestionsExclude,
+    onSelect: handleSuggestionSelect,
+    anchorRef: inputRef,
+    enabled: !disabled && onSuggestionSelect !== undefined,
+  });
 
   // Brief pulse on the input when a submit is blocked by a duplicate — the
   // matching tag is already highlighted (others faded); this ties the refusal
@@ -149,6 +182,11 @@ const InputTagComponent = ({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
+      // The suggestion list gets first refusal: while open it owns Up/Down,
+      // Enter/Tab with a highlight, and Escape (dismissing the list before an
+      // Escape can cancel the edit or close a surrounding modal)
+      if (suggestionsKeyDown(e)) return;
+
       // Handle Enter and comma as submission triggers
       // Shift+Enter or Shift+comma prepends to the start of the list
       if (e.key === 'Enter' || (e.key === ',' && mode === 'add')) {
@@ -181,6 +219,7 @@ const InputTagComponent = ({
       mode,
       processMultipleTags,
       flashDuplicate,
+      suggestionsKeyDown,
     ],
   );
 
@@ -225,9 +264,13 @@ const InputTagComponent = ({
     [handleCancelClick],
   );
 
-  const handleFocus = useCallback(() => setIsFocused(true), []);
+  const handleFocus = useCallback(() => {
+    setIsFocused(true);
+    suggestionsFocus();
+  }, [suggestionsFocus]);
   const handleBlur = useCallback(
     (e: FocusEvent<HTMLInputElement>) => {
+      suggestionsBlur();
       if (mode === 'add') {
         // Defer dropping the focus styling a frame so it doesn't thrash in
         // the same frame as a click on the adjacent submit/cancel buttons
@@ -245,7 +288,7 @@ const InputTagComponent = ({
       }
       onCancel();
     },
-    [mode, onCancel],
+    [mode, onCancel, suggestionsBlur],
   );
 
   // Clear pending blur/flash timers on unmount to avoid setState after unmount
@@ -285,8 +328,11 @@ const InputTagComponent = ({
         placeholder={placeholder}
         disabled={disabled}
         tabIndex={disabled ? -1 : 0}
+        {...suggestionsInputProps}
         className={`${inputWidth} rounded-2xl border py-1 ps-4 pe-14 transition-all ${borderColor} ${disabled ? 'pointer-events-none opacity-50' : 'bg-white dark:bg-slate-800'} ${duplicateFlash ? `inset-shadow-sm ${shadowColor} ring-2 ring-rose-500` : isFocused ? `inset-shadow-sm ${shadowColor} ring-2 ring-sky-500` : ''}`}
       />
+
+      <TagAutocomplete control={suggestionsControl} />
 
       {/* Submit button */}
       <span
@@ -340,6 +386,8 @@ const inputTagPropsAreEqual = (
   prevProps.onChange === nextProps.onChange &&
   prevProps.onSubmit === nextProps.onSubmit &&
   prevProps.onCancel === nextProps.onCancel &&
-  prevProps.onMultipleTagsSubmit === nextProps.onMultipleTagsSubmit;
+  prevProps.onMultipleTagsSubmit === nextProps.onMultipleTagsSubmit &&
+  prevProps.suggestionsExclude === nextProps.suggestionsExclude &&
+  prevProps.onSuggestionSelect === nextProps.onSuggestionSelect;
 
 export const InputTag = memo(InputTagComponent, inputTagPropsAreEqual);

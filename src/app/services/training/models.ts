@@ -5,20 +5,10 @@
  */
 
 import type { TrainingFieldName } from './field-registry';
-import {
-  TRAINING_PROVIDER_SHORT_LABELS,
-  type TrainingProvider,
-} from './types';
+import { TRAINING_PROVIDER_SHORT_LABELS, type TrainingProvider } from './types';
 
 export type ModelArchitecture =
-  | 'flux'
-  | 'sdxl'
-  | 'zimage'
-  | 'krea2'
-  | 'qwenimage'
-  | 'anima'
-  | 'wan'
-  | 'ltx';
+  'flux' | 'sdxl' | 'zimage' | 'krea2' | 'qwenimage' | 'anima' | 'wan' | 'ltx';
 
 export type ModelComponentType =
   | 'checkpoint'
@@ -424,7 +414,8 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     id: 'flux2-klein-base-4b',
     name: 'Flux.2 Klein Base 4B',
     architecture: 'flux',
-    description: 'Undistilled Klein 4B — light enough to train comfortably on 16 GB',
+    description:
+      'Undistilled Klein 4B — light enough to train comfortably on 16 GB',
     providers: ['musubi', 'mock'],
     components: [
       {
@@ -488,7 +479,8 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     id: 'flux2-klein-base-9b',
     name: 'Flux.2 Klein Base 9B',
     architecture: 'flux',
-    description: 'Undistilled Klein 9B — the training base for Flux.2 Klein LoRAs',
+    description:
+      'Undistilled Klein 9B — the training base for Flux.2 Klein LoRAs',
     providers: ['musubi', 'mock'],
     components: [
       {
@@ -897,8 +889,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     id: 'qwen-image',
     name: 'Qwen-Image',
     architecture: 'qwenimage',
-    description:
-      '20B MMDiT with strong prompt adherence and text rendering',
+    description: '20B MMDiT with strong prompt adherence and text rendering',
     providers: ['musubi', 'mock'],
     components: [
       {
@@ -1278,9 +1269,7 @@ export function getComponentsByBackend(
     } else {
       groups.set(key, {
         providers: users,
-        label: users
-          .map((p) => TRAINING_PROVIDER_SHORT_LABELS[p])
-          .join(' & '),
+        label: users.map((p) => TRAINING_PROVIDER_SHORT_LABELS[p]).join(' & '),
         components: [component],
       });
     }

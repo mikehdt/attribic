@@ -86,7 +86,11 @@ export function getModelReadiness(
   savedPaths: ModelPaths | undefined,
   statuses: ComponentStatusMap,
 ): ModelReadiness {
-  let best: ModelReadiness = { resolved: 0, requiredTotal: 0, configured: false };
+  let best: ModelReadiness = {
+    resolved: 0,
+    requiredTotal: 0,
+    configured: false,
+  };
   let bestRatio = -1;
 
   for (const provider of model.providers) {
@@ -99,7 +103,8 @@ export function getModelReadiness(
     ).length;
     const configured = required.length > 0 && resolved === required.length;
     const ratio = required.length === 0 ? 0 : resolved / required.length;
-    if (configured) return { resolved, requiredTotal: required.length, configured };
+    if (configured)
+      return { resolved, requiredTotal: required.length, configured };
     if (ratio > bestRatio) {
       bestRatio = ratio;
       best = { resolved, requiredTotal: required.length, configured };

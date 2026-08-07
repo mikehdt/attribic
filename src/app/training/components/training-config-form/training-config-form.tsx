@@ -379,7 +379,6 @@ const TrainingConfigFormComponent = ({
             onReset={resetSection}
           />
 
-
           <TrainingHistoryModal />
         </div>
 

@@ -1,7 +1,9 @@
 'use client';
 
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 
+import { TagAutocomplete } from '../tag-autocomplete/tag-autocomplete';
+import { useTagAutocomplete } from '../tag-autocomplete/use-tag-autocomplete';
 import { TagChip, TagChipStatus } from './tag-chip';
 
 type TagStatus = {
@@ -81,6 +83,32 @@ export const MultiTagInput = ({
     setInputValue('');
   };
 
+  // Suggestions anchor to the chip container (not the inner input) so the
+  // list aligns with the control's visible edge; chips already entered are
+  // excluded since re-adding them is a no-op
+  const handleSuggestionSelect = useCallback(
+    (tag: string) => {
+      if (!tags.includes(tag)) {
+        onTagsChange([...tags, tag]);
+      }
+      setInputValue('');
+    },
+    [tags, onTagsChange],
+  );
+
+  const {
+    handleKeyDown: suggestionsKeyDown,
+    handleFocus: suggestionsFocus,
+    handleBlur: suggestionsBlur,
+    inputProps: suggestionsInputProps,
+    control: suggestionsControl,
+  } = useTagAutocomplete({
+    query: inputValue,
+    exclude: tags,
+    onSelect: handleSuggestionSelect,
+    anchorRef: containerRef,
+  });
+
   const handleInputChange = (value: string) => {
     // Clear any highlighted tag when typing
     if (highlightedTagIndex !== null) {
@@ -119,6 +147,10 @@ export const MultiTagInput = ({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // The suggestion list gets first refusal (Up/Down, Enter/Tab with a
+    // highlight, Escape) before the input's own add/remove handling
+    if (suggestionsKeyDown(e)) return;
+
     if ((e.key === 'Enter' || e.key === 'Tab') && inputValue.trim()) {
       e.preventDefault();
       addTag(inputValue);
@@ -143,10 +175,16 @@ export const MultiTagInput = ({
 
   const handleInputBlur = () => {
     setHasFocus(false);
+    suggestionsBlur();
     setHighlightedTagIndex(null); // Clear highlight when losing focus
     if (inputValue.trim()) {
       addTag(inputValue);
     }
+  };
+
+  const handleInputFocus = () => {
+    setHasFocus(true);
+    suggestionsFocus();
   };
 
   return (
@@ -172,14 +210,17 @@ export const MultiTagInput = ({
         value={inputValue}
         onChange={(e) => handleInputChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onFocus={() => setHasFocus(true)}
+        onFocus={handleInputFocus}
         onBlur={handleInputBlur}
         placeholder={tags.length === 0 ? placeholder : ''}
         aria-label="Add tags"
+        {...suggestionsInputProps}
         className="min-w-24 grow basis-0 bg-transparent px-2 py-1 text-base focus:ring-0"
         autoFocus={autoFocus}
         data-container="true"
       />
+
+      <TagAutocomplete control={suggestionsControl} />
     </div>
   );
 };

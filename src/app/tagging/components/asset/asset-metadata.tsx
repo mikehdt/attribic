@@ -10,6 +10,7 @@ import { memo, useCallback } from 'react';
 
 import { isSupportedVideoExtension } from '@/app/constants';
 import { Button } from '@/app/shared/button';
+import { highlightPatterns } from '@/app/shared/text-highlight';
 import { useToast } from '@/app/shared/toast';
 import type { RootState } from '@/app/store';
 import {
@@ -28,7 +29,6 @@ import {
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectProjectFolderName } from '@/app/store/project';
-import { highlightPatterns } from '@/app/tagging/utils/text-highlight';
 import { parseSubfolder } from '@/app/utils/subfolder-utils';
 
 // Individual selectors for metadata - avoids creating new object references

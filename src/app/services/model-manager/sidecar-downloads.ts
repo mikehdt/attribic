@@ -81,7 +81,9 @@ async function sidecarFetch(
  */
 export async function startSidecarDownload(
   spec: SidecarDownloadSpec,
-): Promise<{ ok: true; jobId: string } | { ok: false; error: string; status: number }> {
+): Promise<
+  { ok: true; jobId: string } | { ok: false; error: string; status: number }
+> {
   const sidecar = await ensureSidecar();
   if (sidecar.status !== 'ready') {
     return {
