@@ -26,9 +26,15 @@ class TrainingProvider(ABC):
 
     @abstractmethod
     async def generate_config(
-        self, request: StartJobRequest, config_dir: str
+        self, request: StartJobRequest, config_dir: str, job_id: str
     ) -> str:
         """Generate a backend-specific config file from the generic request.
+
+        `job_id` is the manager's id for this run. The sd-scripts-lineage
+        providers name their run-scoped composed caption files after it (see
+        `composed_captions`) and have to write the matching `caption_extension`
+        into the config here, so it arrives with the request rather than only at
+        `start_training`.
 
         Returns:
             Path to the generated config file.

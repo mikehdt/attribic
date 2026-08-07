@@ -1200,15 +1200,57 @@ const MOCK_TRAINER_ENABLED =
 
 /**
  * Backends offerable for a model. `current` is always kept, so a config saved
- * against the mock backend (or loaded with the flag since turned off) still
+ * against the mock backend (or a backend since un-set in Settings) still
  * renders its own selection rather than silently showing a different one.
+ *
+ * `configuredBackends` (provider → has an install folder saved) drops backends
+ * that aren't installed — there's nothing to train with, so offering them only
+ * invites a failed run. Pass `null`/omit while that's unknown, and when *no*
+ * backend for the model is installed the full list comes back so the dropdown
+ * isn't empty; the caller warns instead (see {@link getMissingProviders}).
  */
 export function getSelectableProviders(
   model: ModelDefinition,
   current: TrainingProvider,
+  configuredBackends?: Record<string, boolean> | null,
 ): TrainingProvider[] {
-  if (MOCK_TRAINER_ENABLED) return model.providers;
-  return model.providers.filter((p) => p !== 'mock' || p === current);
+  const providers = MOCK_TRAINER_ENABLED
+    ? model.providers
+    : model.providers.filter((p) => p !== 'mock' || p === current);
+  if (!configuredBackends) return providers;
+  if (hasNoConfiguredProvider(model, configuredBackends)) return providers;
+  return providers.filter(
+    (p) => p === 'mock' || p === current || configuredBackends[p],
+  );
+}
+
+/** A model's real (installable) backends — everything bar the mock trainer. */
+function realProviders(model: ModelDefinition): TrainingProvider[] {
+  return model.providers.filter((p) => p !== 'mock');
+}
+
+/**
+ * Backends this model can train on that have no install folder saved. Empty
+ * when installed-ness is unknown, so an unloaded config never warns.
+ */
+export function getMissingProviders(
+  model: ModelDefinition,
+  configuredBackends?: Record<string, boolean> | null,
+): TrainingProvider[] {
+  if (!configuredBackends) return [];
+  return realProviders(model).filter((p) => !configuredBackends[p]);
+}
+
+/** Whether no backend this model supports is installed. */
+export function hasNoConfiguredProvider(
+  model: ModelDefinition,
+  configuredBackends?: Record<string, boolean> | null,
+): boolean {
+  if (!configuredBackends) return false;
+  return (
+    getMissingProviders(model, configuredBackends).length ===
+    realProviders(model).length
+  );
 }
 
 /** The components a model needs when trained on `provider`. */

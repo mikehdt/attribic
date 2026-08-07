@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../button';
 import { Input } from '../input/input';
 import { InputTray } from '../input-tray/input-tray';
+import { refreshConfiguredBackends } from '../use-configured-backends';
 
 // Keys match what the sidecar reads from config.json `trainingBackends`
 // (training-sidecar/config.py).
@@ -94,6 +95,9 @@ export function BackendPathsSection({
       setSaved(next);
       setDrafts(next);
       setShowSavedPing(true);
+      // Un-setting a backend has to reach the training form's Backend
+      // dropdown without a reload — that reads the same cached config.
+      refreshConfiguredBackends();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {

@@ -50,6 +50,19 @@ export function resolveComponentPath(
   return { path: null, source: null };
 }
 
+/**
+ * Comparison key for a model path. Separators and case both vary between
+ * what a browse dialog hands back, what the download engine writes, and what
+ * a user typed — on Windows all three refer to the same file.
+ */
+export function normalizePathKey(path: string): string {
+  return path
+    .trim()
+    .replace(/[\\/]+/g, '/')
+    .replace(/\/$/, '')
+    .toLowerCase();
+}
+
 /** Path of a ready installed download, or null. */
 export function resolveInstalledPath(
   downloadId: string | undefined,

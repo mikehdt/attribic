@@ -117,12 +117,15 @@ export async function DELETE(request: NextRequest) {
       for (const f of v.files) allFileNames.add(f.name);
     }
 
-    let deletedCount = 0;
+    // Reported back so the client can drop model defaults (and form fields)
+    // that pointed at files which no longer exist — otherwise a deleted model
+    // keeps reading as "ready" until the next status scan disagrees.
+    const deletedPaths: string[] = [];
     for (const fileName of allFileNames) {
       const filePath = path.join(targetDir, fileName);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        deletedCount++;
+        deletedPaths.push(filePath);
       }
       // Also clean up the metadata sidecars (model info + resume validation)
       for (const extra of [
@@ -142,7 +145,11 @@ export async function DELETE(request: NextRequest) {
       fs.unlinkSync(manifestPath);
     }
 
-    return Response.json({ deleted: deletedCount });
+    return Response.json({
+      deleted: deletedPaths.length,
+      deletedPaths,
+      targetDir,
+    });
   } catch (error) {
     console.error('Delete error:', error);
     return Response.json(

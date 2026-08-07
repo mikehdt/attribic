@@ -415,7 +415,7 @@ class MusubiProvider(SdScriptsProvider):
     # --- Dataset config ---
 
     async def generate_config(
-        self, request: StartJobRequest, config_dir: str
+        self, request: StartJobRequest, config_dir: str, job_id: str
     ) -> str:
         """Write the musubi dataset TOML and return its path.
 
@@ -473,15 +473,36 @@ class MusubiProvider(SdScriptsProvider):
             lines.append(f"bucket_no_upscale = {_toml_bool(bucket_no_upscale)}")
         lines.append("")
 
+        # Compose hybrid captions into run-scoped files beside the images, and
+        # point the datasets that got them at the extension they were written
+        # under. `caption_extension` is one of the keys musubi accepts in either
+        # [general] or [[datasets]] (docs/dataset_config.md), so the per-dataset
+        # override is valid; folders with no hybrid captions are absent from the
+        # mapping and inherit the `.txt` set under [general].
+        caption_extensions = self._compose_captions(request, job_id)
+
         model_paths = self._component_paths(request, model_def)
-        for ds in request.datasets:
+        for index, ds in enumerate(request.datasets):
+            extension = caption_extensions.get(index)
             cache_dir = self._cache_dir(
-                request, model_def, ds.path, native, enable_bucket, model_paths
+                request,
+                model_def,
+                ds.path,
+                native,
+                enable_bucket,
+                model_paths,
+                # Only folders we actually composed have captions that depend
+                # on the emission. Feeding it in unconditionally would give
+                # every existing non-hybrid dataset a new fingerprint and throw
+                # away a cache that is still perfectly valid.
+                ds.caption_emission if extension else None,
             )
             lines.append("[[datasets]]")
             lines.append(f"image_directory = {_toml_str(ds.path)}")
             lines.append(f"cache_directory = {_toml_str(str(cache_dir))}")
             lines.append(f"num_repeats = {int(ds.num_repeats)}")
+            if extension:
+                lines.append(f"caption_extension = {_toml_str(extension)}")
             lines.append("")
 
         config_path = os.path.join(config_dir, f"{request.output_name}.toml")
@@ -498,6 +519,7 @@ class MusubiProvider(SdScriptsProvider):
         native: Optional[tuple[int, int]],
         enable_bucket: bool,
         model_paths: dict,
+        caption_emission: Optional[str] = None,
     ) -> Path:
         """Resolve (and create) the shared cache dir for one dataset folder.
 
@@ -506,6 +528,11 @@ class MusubiProvider(SdScriptsProvider):
         files, the architecture — so a settings change gets a fresh dir while
         image-content changes are left to the scripts' own up-to-date checks.
         Stale dirs are inert (a cleanup sweep can come later).
+
+        The emission is in there because the text-encoder cache is computed
+        from the captions: two runs over the same folder wanting different
+        halves of a hybrid caption would otherwise share one cache directory
+        and overwrite each other's embeddings.
         """
         hp = request.hyperparameters
         resolution = native or hp.get("resolution", [1024])
@@ -521,6 +548,7 @@ class MusubiProvider(SdScriptsProvider):
                 "vae": model_paths.get("vae") or model_paths.get("ae"),
                 "text_encoder": model_paths.get("qwen"),
                 "arch": model_def["architecture"],
+                "caption_emission": caption_emission,
             },
             sort_keys=True,
         )

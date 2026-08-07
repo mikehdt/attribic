@@ -1,14 +1,17 @@
 # Per-run caption composition
 
-**Status:** UI built 2026-07-30 and verified in the browser; composition itself
-not implemented, so the control does not yet change what trains. The ai-toolkit
-half is unblocked by the dataset manifests added 2026-07-30
-(`training-sidecar/dataset_manifest.py`).
+**Status:** implemented on all three backends. UI built 2026-07-30; ai-toolkit
+composition (inline manifest captions) 2026-07-30; Kohya and musubi-tuner
+composition, per-dataset `caption_extension`, and cleanup 2026-08-07
+(`training-sidecar/composed_captions.py`).
 
-Done: the emission control, its model-derived default, the derive-not-persist
-caption mode, and the mismatch advice. Remaining: the wire field, the two
-provider composers, cleanup, and the empty-half pre-flight — all listed under
-[What this touches](#what-this-touches).
+Until the 2026-08-07 change, `caption_emission` was read only by the ai-toolkit
+provider — the emission control was shown for every backend, so a hybrid project
+trained on SDXL or Anima silently fed sd-scripts the raw `tags, __, prose`
+string, `__` token included, no matter what the control said.
+
+Remaining: the empty-half pre-flight (step 2 below) is still only a runtime
+report from the sidecar, not a pre-launch count in the form.
 
 ## Problem
 
@@ -122,19 +125,55 @@ No files are written into the dataset folder at all. The empty-value form stays
 the default, and is what a file with no delimiter keeps — it means "read the
 `.txt`", which for a non-hybrid file is already the right answer.
 
-### Kohya: a run-scoped sidecar extension
+### Kohya and musubi: a run-scoped sidecar extension
 
-sd-scripts derives the caption path from the image path, so the composed text
-has to be a real file next to the image. It does not have to be `.txt`:
-`caption_extension` is in `DB_SUBSET_ASCENDABLE_SCHEMA`
-(`library/config_util.py:211`), so a `[[datasets.subsets]]` entry may carry its
-own, and it is appended to the image's basename. Our subsets are
-DreamBooth-shaped (`image_dir` + `is_reg`), so this applies.
+Both sd-scripts-lineage backends derive the caption path from the image path, so
+the composed text has to be a real file next to the image. It does not have to
+be `.txt`:
+
+- **Kohya** — `caption_extension` is in `DB_SUBSET_ASCENDABLE_SCHEMA`
+  (`library/config_util.py:211`), so a `[[datasets.subsets]]` entry may carry its
+  own. Our subsets are DreamBooth-shaped (`image_dir` + `is_reg`), so this
+  applies.
+- **musubi-tuner** — `caption_extension` is one of the keys accepted in either
+  `[general]` or `[[datasets]]` (`docs/dataset_config.md`).
 
 So the run writes `foo.<ext>` beside `foo.jpg`, points the TOML at `<ext>`, and
 deletes them when the job reaches a terminal state.
 
-## Naming the Kohya sidecars
+**Every caption in a composed folder gets a file, not just the hybrid ones.**
+The extension override applies to the whole dataset entry, so an image left
+without one falls back to the backend's no-caption behaviour: sd-scripts warns
+and trains an empty caption, musubi drops the image from the dataset. Plain
+captions in a mixed folder are therefore copied across verbatim.
+
+The one exception is a caption whose chosen half is empty — no file is written
+for those, because sd-scripts' `read_caption` asserts the file is non-empty
+(`library/dreambooth_dataset.py:108`) and would take the run down with it. They
+are counted and reported instead (see [The empty half](#the-empty-half)).
+
+### musubi forces a single-segment extension
+
+musubi filters its image list down to images that have a caption file, matching
+them by `os.path.splitext(os.path.basename(caption_path))[0]`
+(`dataset/media_utils.py:glob_images`). That strips one suffix only. So the
+originally-recommended `.attribic-<job-id>.txt` would reduce to
+`portrait-01.attribic-<job-id>`, match no image, and silently empty the dataset.
+
+The extension is therefore `.attribic-<job-id>` with **no** trailing `.txt`.
+Kohya doesn't care either way (`read_caption` just appends the string), and
+neither backend's image glob can mistake the result for an image.
+
+### musubi's text-encoder cache keys on the emission
+
+musubi pre-caches text-encoder outputs per dataset folder, and those embeddings
+are computed from the captions. The cache-dir fingerprint (`_cache_dir`)
+therefore includes the emission, so two runs over one folder wanting different
+halves can't overwrite each other's embeddings. It is included **only** for
+folders that were actually composed — adding it unconditionally would
+re-fingerprint every existing non-hybrid dataset and throw away a valid cache.
+
+## Naming the composed sidecars
 
 Two candidates, both workable:
 
@@ -149,31 +188,36 @@ our side (`training-sidecar/job_manager.py:371`, `uuid4().hex[:12]`) before
 `generate_config` is called, so there is no chicken-and-egg with the provider:
 ai-toolkit's own job id is a separate thing assigned later and is not involved.
 
-**Recommendation: combine them** — `.attribic-<job-id>.txt`, e.g.
-`portrait-01.attribic-a588e5f13005.txt`.
+**Shipped: both combined** — `.attribic-<job-id>`, e.g.
+`portrait-01.attribic-a588e5f13005` (the `.txt` tail dropped for the musubi
+reason above).
 
 The stable `attribic-` prefix is what makes orphans sweepable without knowing
-job IDs (`*.attribic-*.txt`), and the job ID is what makes concurrent runs on a
-shared dataset safe. The queue is already multi-worker by design
-(`sidecarWorkers` in config.json), and "train the same set two ways at once" is
-exactly the experiment this feature invites, so the concurrency case is worth
-designing for rather than discovering.
+job IDs, and the job ID is what makes concurrent runs on a shared dataset safe.
+The queue is already multi-worker by design (`sidecarWorkers` in config.json),
+and "train the same set two ways at once" is exactly the experiment this feature
+invites, so the concurrency case is worth designing for rather than discovering.
 
 Not `.txt`-suffixed-only names like `foo.attribic.txt` without an ID: same
 collision problem as `.sdscripts.txt`, no benefit.
 
+Matching is on the file's final suffix rather than a `*.attribic-*` glob, so a
+user's own `holiday.attribic-notes.jpg` is never mistaken for one of ours.
+
 ## Cleanup
 
-Composed sidecars are garbage the moment a job is terminal.
+Composed sidecars are garbage the moment a job is terminal. Both hooks live in
+`job_manager._run_training`, which is the only place that has both the dataset
+list and the live-job registry:
 
-- **On job end** (completed, failed, cancelled): delete this run's files by
-  exact extension. Cheap and covers the normal path.
-- **On job start**: sweep `*.attribic-*.txt` in each dataset folder whose job ID
-  is not an active job. Covers the sidecar being killed mid-run, which the
-  on-end hook cannot.
+- **On job end** (completed, failed, cancelled): a `finally` deletes this run's
+  files by exact extension. Covers the normal path.
+- **On job start**: sweep each dataset folder for composed captions whose job ID
+  is not a live job. Covers the sidecar being killed mid-run, which the on-end
+  hook cannot. Keyed on the live job set rather than on age, because a long run
+  and a stale file look identical from the filesystem.
 
-Both are flat per-folder scans — the dataset folders are already enumerated by
-`dataset_manifest.list_dataset_images`.
+Both are flat per-folder scans.
 
 Worth noting these files land in the user's dataset folder, unlike the
 ai-toolkit path. That is unavoidable given how sd-scripts resolves captions, and
@@ -389,17 +433,25 @@ the key is present. Note that branch **bypasses both `clean_caption` and the
 `default_caption` empty-string fallback** — which is what makes the empty-half
 case below a real hazard rather than a cosmetic one.
 
-### Sidecar — Kohya
+### Sidecar — Kohya and musubi
 
-`generate_config` (`providers/kohya.py:418`) writes `caption_extension = ".txt"`
-once under `[general]` (`:450`). Per-subset override is confirmed valid:
-`caption_extension` sits in `DB_SUBSET_ASCENDABLE_SCHEMA`
-(`library/config_util.py:211`), and our subsets are DreamBooth-shaped
-(`image_dir` + `is_reg`), so a `[[datasets.subsets]]` entry may carry its own.
+Composition is shared: `SdScriptsProvider._compose_captions` writes the files
+and returns `{dataset index: extension}`, and each subclass' `generate_config`
+writes that into its own dataset config — a `[[datasets.subsets]]` entry for
+Kohya, a `[[datasets]]` entry for musubi. Folders absent from the mapping
+inherit the `.txt` set under `[general]`.
 
-Two adjacent finds in the same schemas, both relevant to the still-open items
-below — each would let Kohya do the job with a TOML line instead of composed
-files:
+It runs in `generate_config` rather than in the run itself because the config
+has to name the extension, which means `generate_config` needs the job id: it
+gained a third parameter, passed by `job_manager._run_training`.
+
+What composition did is reported to the UI through the run's log tail — a
+PREPARING update up front, and the same lines seeded as the head of the
+subsequent tails, so the empty-half warning survives into the run.
+
+Two adjacent finds in the same Kohya schemas, both relevant to the still-open
+items below — each would let Kohya do the job with a TOML line instead of
+composed files:
 
 - `caption_prefix` / `caption_suffix` (`SUBSET_ASCENDABLE_SCHEMA`, `:186`) —
   trigger words.
@@ -408,18 +460,21 @@ files:
 
 ### Sidecar — cleanup hooks
 
-- **On start:** the sweep goes in `kohya.generate_config`, which already
-  iterates `request.datasets`.
-- **On end:** `_run_training` (`job_manager.py:497`) wraps the whole run in
-  try/except and holds `job_id`; a `finally` there fires on completion, failure
-  and cancellation alike, which is exactly the terminal set
-  (`_TERMINAL_TRAINING_STATUSES`, `:31`).
+Both live in `_run_training` (`job_manager.py`), which holds the dataset list,
+the job id, and the live-job registry the sweep needs:
+
+- **On start:** `sweep_orphans` over the run's dataset folders, sparing files
+  owned by a live job.
+- **On end:** a `finally` fires on completion, failure and cancellation alike,
+  which is exactly the terminal set (`_TERMINAL_TRAINING_STATUSES`).
 
 ### The empty half
 
 A hybrid asset that has tags but no caption yet composes to `""` under
-`natural`. ai-toolkit's inline path skips its `default_caption` fallback, so
-that trains an empty caption.
+`natural`. What that means depends on the backend: ai-toolkit's inline path
+skips its `default_caption` fallback and trains an empty caption; sd-scripts
+warns and trains an empty caption; musubi drops the image from the dataset
+(images with no caption file don't survive its `glob_images` filter).
 
 **Warn, never block.** An empty caption is not automatically a mistake: style
 training on deliberately bare captions is a real workflow, and there is nothing
@@ -435,11 +490,13 @@ count in `isAssetTagless` / `selectHasTaglessAssets`
 
 Same reasoning as extra folders below: pass it through and say what you did.
 
-### Not covered
+### Verification
 
-There is no test suite in the repo, so verification is manual — the `verify`
-skill drives the browser surface, and a `mock`-provider run exercises the
-request path without a GPU.
+`training-sidecar/tests/test_composed_captions.py` covers the module (what is
+written, what is deliberately left alone, both cleanup paths, the
+single-suffix contract) and both providers' config generation. What it cannot
+cover is a real training run reading the files — that needs a GPU and is still
+owed for both backends.
 
 ### Extra folders
 
@@ -462,9 +519,18 @@ only part that can be skipped indefinitely if the runs that matter are on
 ai-toolkit.
 
 1. Wire field + `caption_compose.py` + inline manifest captions (ai-toolkit).
-2. Empty-half pre-flight.
+   **Done 2026-07-30.**
+2. Empty-half pre-flight. **Not done** — the count is reported at launch by the
+   sidecar, but there is still no pre-launch count in the form.
 3. Kohya composed sidecars, per-subset `caption_extension`, and cleanup — only
-   when a Kohya run actually needs it.
+   when a Kohya run actually needs it. **Done 2026-08-07**, extended to musubi
+   at the same time.
+
+The "only when a Kohya run needs it" deferral turned out to be the wrong shape:
+the emission control was never gated on the backend, so every hybrid dataset
+trained on Kohya or musubi in the meantime silently got the raw file. A control
+that is shown is a promise that it works — if a backend can't honour it, hide it
+or say so, rather than leaving the gap to the deferral list.
 
 ## Still open
 

@@ -6,14 +6,17 @@ import {
   type TrainingFieldName,
 } from '@/app/services/training/field-registry';
 import {
+  getMissingProviders,
   getModelComponents,
   getModelsByArchitecture,
   getSelectableProviders,
+  hasNoConfiguredProvider,
   type ModelComponentType,
   type ModelDefinition,
 } from '@/app/services/training/models';
 import {
   TRAINING_PROVIDER_LABELS,
+  TRAINING_PROVIDER_SHORT_LABELS,
   type TrainingProvider,
 } from '@/app/services/training/types';
 import { Checkbox } from '@/app/shared/checkbox';
@@ -22,6 +25,7 @@ import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { ModelPathField } from '@/app/shared/model-path-field/model-path-field';
 import { useEnsureModelStatuses } from '@/app/shared/model-path-field/use-ensure-model-statuses';
+import { useConfiguredBackends } from '@/app/shared/use-configured-backends';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   openModelManagerModal,
@@ -132,6 +136,67 @@ const ModelSelectSectionComponent = ({
     );
   }, [dispatch, currentModel.id]);
 
+  const handleOpenBackendSettings = useCallback(() => {
+    dispatch(openModelManagerModal({ tab: 'settings' }));
+  }, [dispatch]);
+
+  // Backends with no install folder saved are dropped from the list — there's
+  // nothing to train with. The exceptions are the current pick (a loaded
+  // config must render its own selection) and the case where *none* of this
+  // model's backends are installed, where an empty menu would help nobody.
+  const configuredBackends = useConfiguredBackends();
+
+  const missingProviders = useMemo(
+    () => getMissingProviders(currentModel, configuredBackends),
+    [currentModel, configuredBackends],
+  );
+  const noBackendConfigured = hasNoConfiguredProvider(
+    currentModel,
+    configuredBackends,
+  );
+  const selectedProviderMissing =
+    selectedProvider !== 'mock' && missingProviders.includes(selectedProvider);
+
+  const backendItems = useMemo(
+    () =>
+      getSelectableProviders(
+        currentModel,
+        selectedProvider,
+        configuredBackends,
+      ).map((p): DropdownItem<TrainingProvider> => ({
+        value: p,
+        label: (
+          <span className="flex items-center gap-1.5">
+            {TRAINING_PROVIDER_LABELS[p]}
+            {missingProviders.includes(p) && (
+              <span className="ml-auto text-xs text-slate-400">Not set up</span>
+            )}
+          </span>
+        ),
+      })),
+    [currentModel, selectedProvider, configuredBackends, missingProviders],
+  );
+
+  const backendWarning = useMemo(() => {
+    if (noBackendConfigured) {
+      const names = missingProviders
+        .map((p) => TRAINING_PROVIDER_SHORT_LABELS[p])
+        .join(' or ');
+      return missingProviders.length === 1
+        ? `${names} isn't set up — this model can't train until it is.`
+        : `No backend for this model is set up (${names}).`;
+    }
+    if (selectedProviderMissing) {
+      return `${TRAINING_PROVIDER_SHORT_LABELS[selectedProvider]} isn't set up — pick another backend, or set it up.`;
+    }
+    return null;
+  }, [
+    noBackendConfigured,
+    missingProviders,
+    selectedProviderMissing,
+    selectedProvider,
+  ]);
+
   const modelDefaults = appModelDefaults[currentModel.id];
 
   // Component tier logic:
@@ -186,7 +251,7 @@ const ModelSelectSectionComponent = ({
         onChange={handlePathChange(component.type)}
         browseTitle={component.label}
         downloadId={component.downloadId}
-        resetTo={modelDefaults?.[component.type]}
+        savedDefaultPath={modelDefaults?.[component.type]}
         setupModelId={currentModel.id}
       />
 
@@ -270,22 +335,30 @@ const ModelSelectSectionComponent = ({
                 )}
               </div>
 
-              {/* Backend — lists every provider this model supports */}
+              {/* Backend — every provider this model supports that's
+                  actually installed (plus the current pick, always). */}
               <div className="w-1/2">
                 <FormTitle>Backend</FormTitle>
 
                 <Dropdown
-                  items={getSelectableProviders(
-                    currentModel,
-                    selectedProvider,
-                  ).map((p): DropdownItem<TrainingProvider> => ({
-                    value: p,
-                    label: TRAINING_PROVIDER_LABELS[p],
-                  }))}
+                  items={backendItems}
                   selectedValue={selectedProvider}
                   onChange={onProviderChange}
                   aria-label="Training backend"
                 />
+
+                {backendWarning && (
+                  <p className="mt-1 text-sm text-amber-600 dark:text-amber-400">
+                    {backendWarning}{' '}
+                    <button
+                      type="button"
+                      onClick={handleOpenBackendSettings}
+                      className="cursor-pointer underline hover:text-amber-500"
+                    >
+                      Open Settings…
+                    </button>
+                  </p>
+                )}
               </div>
             </div>
           </div>

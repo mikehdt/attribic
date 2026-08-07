@@ -554,7 +554,7 @@ class AiToolkitUiProvider(TrainingProvider):
         return True, None
 
     async def generate_config(
-        self, request: StartJobRequest, config_dir: str
+        self, request: StartJobRequest, config_dir: str, job_id: str
     ) -> str:
         """Return the run's working directory.
 

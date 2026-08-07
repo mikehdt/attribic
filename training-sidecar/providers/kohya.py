@@ -341,13 +341,17 @@ class KohyaProvider(SdScriptsProvider):
         return True, None
 
     async def generate_config(
-        self, request: StartJobRequest, config_dir: str
+        self, request: StartJobRequest, config_dir: str, job_id: str
     ) -> str:
         """Write the sd-scripts dataset config TOML and return its path.
 
         sd-scripts takes datasets via a TOML file (`--dataset_config`) rather
         than CLI flags. The training-loop flags themselves are assembled in
         `_build_cli_args`.
+
+        This is also where a hybrid dataset's captions are composed for the run
+        (see `composed_captions`), because the subset that reads them is written
+        here.
         """
         model_def = _find_model(request.base_model)
         if model_def is None:
@@ -401,16 +405,28 @@ class KohyaProvider(SdScriptsProvider):
             lines.append(f"max_bucket_reso = {max_res}")
         lines.append("")
 
+        # Compose hybrid captions into run-scoped files beside the images, and
+        # point the subsets that got them at the extension they were written
+        # under. `caption_extension` is in DB_SUBSET_ASCENDABLE_SCHEMA
+        # (library/config_util.py:212) and our subsets are DreamBooth-shaped
+        # (image_dir + is_reg), so a per-subset override is valid; folders with
+        # no hybrid captions are absent from the mapping and inherit the
+        # `.txt` set under [general].
+        caption_extensions = self._compose_captions(request, job_id)
+
         # shuffle_caption / keep_tokens / caption_dropout_rate / flip_aug are
         # all "ascendable" subset params in sd-scripts (library/config_util.py
         # SUBSET_ASCENDABLE_SCHEMA / DO_SUBSET_ASCENDABLE_SCHEMA) — valid to set
         # per-[[datasets.subsets]] entry, which is what lets each dataset folder
         # carry its own augmentation settings. sd-scripts has no vertical-flip
         # augmentation, so ds.flip_v_augment is intentionally not used here.
-        for ds in request.datasets:
+        for index, ds in enumerate(request.datasets):
             lines.append("[[datasets.subsets]]")
             lines.append(f"image_dir = {_toml_str(ds.path)}")
             lines.append(f"num_repeats = {int(ds.num_repeats)}")
+            extension = caption_extensions.get(index)
+            if extension:
+                lines.append(f"caption_extension = {_toml_str(extension)}")
             if ds.is_regularization:
                 lines.append("is_reg = true")
             lines.append(f"shuffle_caption = {_toml_bool(ds.caption_shuffling)}")

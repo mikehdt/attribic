@@ -24,6 +24,7 @@ import {
 } from '@/app/services/training/field-registry';
 import {
   isModelConfigured,
+  normalizePathKey,
   resolveInstalledPath,
 } from '@/app/services/training/model-configured';
 import {
@@ -355,6 +356,20 @@ const trainingConfigSlice = createSlice({
 
     applyAppDefaults: (state, action: PayloadAction<ModelPaths>) => {
       fillEmptyModelPaths(state.form, action.payload);
+    },
+
+    /**
+     * Drop any component path pointing at one of these (now deleted) files.
+     * Keeps the form honest after a model is uninstalled — a path to bytes
+     * that aren't there would otherwise still read as a configured model.
+     */
+    forgetModelPaths: (state, action: PayloadAction<string[]>) => {
+      const gone = new Set(action.payload.map(normalizePathKey));
+      for (const [component, path] of Object.entries(state.form.modelPaths)) {
+        if (path && gone.has(normalizePathKey(path))) {
+          state.form.modelPaths[component as ModelComponentType] = '';
+        }
+      }
     },
 
     resetSection: (state, action: PayloadAction<SectionName>) => {
@@ -778,6 +793,7 @@ export const {
   setProvider,
   setModelPath,
   applyAppDefaults,
+  forgetModelPaths,
   resetSection,
   resetAll,
   resetToSuggestedDefaults,

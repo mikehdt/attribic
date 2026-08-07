@@ -27,6 +27,7 @@ import {
   startDownload,
 } from '@/app/store/jobs/download-runtime';
 import { setModelStatus } from '@/app/store/model-manager';
+import { forgetDeletedModelFiles } from '@/app/store/training-config/thunks';
 
 export function useDownloadActions() {
   const dispatch = useAppDispatch();
@@ -77,16 +78,24 @@ export function useDownloadActions() {
   /** Uninstall a fully-downloaded model — wipes the files on disk. */
   const uninstall = useCallback(
     async (modelId: string) => {
+      let deletedPaths: string[] = [];
       try {
-        await fetch('/api/model-manager/download', {
+        const res = await fetch('/api/model-manager/download', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ modelId }),
         });
+        const data = (await res.json().catch(() => ({}))) as {
+          deletedPaths?: string[];
+        };
+        deletedPaths = data.deletedPaths ?? [];
       } catch {
         // Best-effort cleanup
       }
       dispatch(setModelStatus({ modelId, status: 'not_installed' }));
+      // Anything still pointing at the wiped files has to let go of them,
+      // or the model keeps reading as ready.
+      void dispatch(forgetDeletedModelFiles(modelId, deletedPaths));
     },
     [dispatch],
   );

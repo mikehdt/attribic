@@ -19,6 +19,7 @@ import { fetchJson } from '@/app/utils/fetch-json';
 import type { AppThunk } from '../index';
 import { setModelStatus } from '../model-manager';
 import { addToast } from '../toasts/reducers';
+import { forgetDeletedModelFiles } from '../training-config/thunks';
 import {
   addJob,
   openPanel,
@@ -453,12 +454,16 @@ export function retryDownload(job: DownloadJob): AppThunk<Promise<void>> {
 /** Delete a download's partial files and forget the job entirely. */
 export function removeDownload(job: DownloadJob): AppThunk<Promise<void>> {
   return async (dispatch) => {
+    let deletedPaths: string[] = [];
     try {
-      await fetchJson('/api/model-manager/download', {
+      const { deletedPaths: deleted } = await fetchJson<{
+        deletedPaths?: string[];
+      }>('/api/model-manager/download', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modelId: job.modelId }),
       });
+      deletedPaths = deleted ?? [];
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Delete failed';
       dispatch(
@@ -471,6 +476,9 @@ export function removeDownload(job: DownloadJob): AppThunk<Promise<void>> {
     }
     await dispatch(clearDownload(job.id));
     dispatch(setModelStatus({ modelId: job.modelId, status: 'not_installed' }));
+    // Same cleanup as an uninstall: a default pointing at deleted bytes
+    // would leave the model claiming to be ready.
+    void dispatch(forgetDeletedModelFiles(job.modelId, deletedPaths));
   };
 }
 

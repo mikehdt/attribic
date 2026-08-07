@@ -23,10 +23,11 @@ import sys
 import time
 from abc import abstractmethod
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from composed_captions import compose_folder, extension_for_job
 from models import (
     JobProgress,
     JobStatus,
@@ -266,6 +267,10 @@ class SubprocessRun:
     # Set by cancel_training() so the run loop can distinguish a
     # user-initiated stop from a genuine non-zero exit and stay quiet.
     cancelled: bool = False
+    # Lines to head every log tail this run reports — currently what caption
+    # composition did (see `_compose_captions`), which is the only thing the
+    # user is told before the backend itself starts talking.
+    log_prelude: list[str] = field(default_factory=list)
 
 
 class SdScriptsProvider(TrainingProvider):
@@ -297,6 +302,66 @@ class SdScriptsProvider(TrainingProvider):
     def __init__(self, scripts_path: str):
         self._scripts_path = Path(scripts_path)
         self._runs: dict[str, SubprocessRun] = {}
+        # What caption composition did for a job, written during
+        # generate_config and read once when its run starts (see
+        # `_compose_captions`). Keyed by job id because the provider is a
+        # singleton and two runs can be composing at the same time.
+        self._caption_notes: dict[str, list[str]] = {}
+
+    # --- Caption composition ---
+
+    def _compose_captions(
+        self, request: StartJobRequest, job_id: str
+    ) -> dict[int, str]:
+        """Write this run's composed caption files for every hybrid dataset.
+
+        Returns `{dataset index: caption_extension}` for the folders that got
+        them — index-aligned with `request.datasets` and sparse, since a folder
+        with no hybrid captions in it is left alone entirely. Subclasses write
+        those extensions into their own dataset config; a folder missing from
+        the mapping keeps the inherited `.txt`.
+
+        Called from `generate_config` rather than the run itself because the
+        config has to name the extension, and it is the same file the composed
+        captions are written for.
+        """
+        if not job_id:
+            return {}
+
+        extensions: dict[int, str] = {}
+        notes: list[str] = []
+        for index, ds in enumerate(request.datasets):
+            result = compose_folder(ds.path, ds.caption_emission, job_id)
+            if result is None:
+                continue
+            extensions[index] = extension_for_job(job_id)
+            if result.changed:
+                notes.append(
+                    f"Composed {result.changed} caption(s) in {ds.path} "
+                    f"as {ds.caption_emission}"
+                )
+            # Not a failure — style training on bare captions is a real
+            # workflow — but it changes what trains, so it is worth seeing
+            # before the run rather than after.
+            if result.emptied:
+                notes.append(
+                    f"Warning: {result.emptied} image(s) in {ds.path} have no "
+                    f"{ds.caption_emission} half and will train without a "
+                    "caption"
+                )
+
+        if notes:
+            self._caption_notes[job_id] = notes
+        return extensions
+
+    def _caption_prelude(self, job_id: str) -> list[str]:
+        """This run's composition notes, consumed once.
+
+        Popped rather than read so a re-run under a recycled id can't inherit
+        the previous run's notes, and so the dict doesn't grow for the life of
+        the sidecar.
+        """
+        return self._caption_notes.pop(job_id, [])
 
     # --- Subclass hooks ---
 
@@ -351,6 +416,9 @@ class SdScriptsProvider(TrainingProvider):
         finally:
             await inner.aclose()
             self._runs.pop(job_id, None)
+            # Normally consumed by `_run`; this covers a job cancelled between
+            # generate_config and here, which never reaches that.
+            self._caption_notes.pop(job_id, None)
 
     async def _run(
         self,
@@ -361,6 +429,17 @@ class SdScriptsProvider(TrainingProvider):
         run: SubprocessRun,
     ) -> AsyncGenerator[JobProgress, None]:
         """The run itself — see `start_training`, which owns `run`'s lifetime."""
+        # What caption composition did, said once up front and then carried as
+        # the head of every log tail this run produces — the empty-half warning
+        # in particular explains a step count the user may be about to query.
+        run.log_prelude = self._caption_prelude(job_id)
+        if run.log_prelude:
+            yield JobProgress(
+                job_id=job_id,
+                status=JobStatus.PREPARING,
+                log_lines=list(run.log_prelude),
+            )
+
         async for progress in self._pre_train(
             job_id, request, config_path, gpu_id, run
         ):
@@ -543,7 +622,7 @@ class SdScriptsProvider(TrainingProvider):
         proc,
     ) -> AsyncGenerator[JobProgress, None]:
         """Read the trainer's merged output and yield JobProgress from it."""
-        log_lines: list[str] = []
+        log_lines: list[str] = list(run.log_prelude)
         stderr_lines: list[str] = []
         # Sample collection: scan-diff `<output_path>/sample/` (shared across
         # runs) against a seen-set seeded now, so pre-existing files from
@@ -999,7 +1078,7 @@ class SdScriptsProvider(TrainingProvider):
         )
         run.process = proc
 
-        log_lines: list[str] = []
+        log_lines: list[str] = list(run.log_prelude)
         stderr_lines: list[str] = []
         line_queue, drain_tasks = _merge_output(proc)
 

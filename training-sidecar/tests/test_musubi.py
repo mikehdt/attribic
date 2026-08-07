@@ -54,10 +54,14 @@ def make_request(
     )
 
 
-def generate_toml(provider, request, tmp_path: Path) -> str:
+def generate_toml(
+    provider, request, tmp_path: Path, job_id: str = "job0"
+) -> str:
     config_dir = tmp_path / "config"
     config_dir.mkdir(exist_ok=True)
-    path = asyncio.run(provider.generate_config(request, str(config_dir)))
+    path = asyncio.run(
+        provider.generate_config(request, str(config_dir), job_id)
+    )
     return Path(path).read_text(encoding="utf-8")
 
 

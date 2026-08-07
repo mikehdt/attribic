@@ -36,6 +36,10 @@ SEPARATOR = ", "
 
 CaptionEmission = Literal["tags", "both", "natural"]
 
+# The same three as a runtime tuple, for the "did the client send us something
+# we understand?" check both composers make.
+EMISSIONS = ("tags", "both", "natural")
+
 
 def split_hybrid(raw: str) -> tuple[str, Optional[str]]:
     """Split a raw caption into `(tag_block, caption)`.
@@ -75,7 +79,7 @@ def compose(raw: str, emission: Optional[str]) -> str:
     are joined by a single `, ` with no doubled or dangling comma. An emission
     of None (or an unrecognised one) leaves the file untouched.
     """
-    if emission not in ("tags", "both", "natural"):
+    if emission not in EMISSIONS:
         return raw
 
     tag_block, caption = split_hybrid(raw)

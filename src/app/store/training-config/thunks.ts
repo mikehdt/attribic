@@ -6,6 +6,8 @@
  * project pointer, baseline snapshot for dirty tracking, etc.).
  */
 
+import { normalizePathKey } from '@/app/services/training/model-configured';
+import type { ModelComponentType } from '@/app/services/training/models';
 import type {
   TrainingProjectMeta,
   TrainingProjectSummary,
@@ -21,13 +23,15 @@ import type { AppThunk } from '../index';
 import { addToast } from '../toasts';
 import {
   clearLoadedProject,
+  forgetModelPaths,
   hydrateFromProject,
   reconcileDatasetFolders,
+  setAppModelDefaults,
   setDatasetHistogram,
   stampSaved,
 } from './index';
 import { forgetRecentProject, recordRecentProject } from './recent-projects';
-import type { FormState, LoadedProject } from './types';
+import type { AppModelDefaults, FormState, LoadedProject } from './types';
 
 type ProjectResponse = {
   meta: TrainingProjectMeta;
@@ -129,6 +133,76 @@ export const refreshDatasetScans =
     await Promise.all(
       datasets.map((ds) => dispatch(scanDataset(ds.folderName))),
     );
+  };
+
+// --- Deleted model files ---
+
+/**
+ * Forget every saved default and form path that pointed at files a model
+ * uninstall has just wiped.
+ *
+ * Without this a deleted model keeps reading as ready: the saved default is
+ * still a path, `getModelReadiness` only asks whether one is set, and the
+ * training form happily submits a checkpoint that no longer exists.
+ *
+ * Matching is by path rather than by download ID because that's the only
+ * thing the two sides share — the default may have been typed, browsed to,
+ * or filled in from the download, and several models live in one folder, so
+ * the folder alone would over-clear.
+ */
+export const forgetDeletedModelFiles =
+  (modelId: string, deletedPaths: string[]): AppThunk =>
+  async (dispatch, getState) => {
+    const state = getState();
+    // A multi-file bundle resolves to its directory, which no individual
+    // deleted file path would match.
+    const bundleDir = state.modelManager.models[modelId]?.resolvedPath;
+    const gone = new Set(
+      [...deletedPaths, ...(bundleDir ? [bundleDir] : [])].map(
+        normalizePathKey,
+      ),
+    );
+    if (gone.size === 0) return;
+
+    // Empty strings are how the defaults API spells "remove this component".
+    const patch: AppModelDefaults = {};
+    for (const [id, paths] of Object.entries(
+      state.trainingConfig.appModelDefaults,
+    )) {
+      for (const [component, path] of Object.entries(paths)) {
+        if (path && gone.has(normalizePathKey(path))) {
+          patch[id] = {
+            ...patch[id],
+            [component as ModelComponentType]: '',
+          };
+        }
+      }
+    }
+    // The saved defaults go first: the form refills empty component paths
+    // from them, so clearing the form while a stale default is still in the
+    // store would just put the dead path straight back.
+    if (Object.keys(patch).length > 0) {
+      try {
+        const saved = await fetchJson<AppModelDefaults>(
+          '/api/config/model-defaults',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch),
+          },
+        );
+        dispatch(setAppModelDefaults(saved));
+      } catch (error) {
+        dispatch(
+          addToast({
+            variant: 'error',
+            children: `Deleted the files, but couldn't clear the saved model path: ${errorMessage(error)}`,
+          }),
+        );
+      }
+    }
+
+    dispatch(forgetModelPaths([...gone]));
   };
 
 // --- List (not a thunk — plain fetch for UI consumption) ---

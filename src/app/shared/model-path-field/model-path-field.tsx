@@ -1,7 +1,12 @@
 'use client';
 
-import { FolderOpenIcon, RotateCcwIcon, WrenchIcon } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import {
+  CheckIcon,
+  FolderOpenIcon,
+  RotateCcwIcon,
+  WrenchIcon,
+} from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { resolveInstalledPath } from '@/app/services/training/model-configured';
 import { Button } from '@/app/shared/button';
@@ -23,11 +28,18 @@ type ModelPathFieldProps = {
   /** Registry ID of the downloadable model backing this component (if any). */
   downloadId?: string;
   /**
-   * Explicit path the reset button should restore. Typically the last
-   * saved default for this component. When omitted, the component falls
-   * back to the system-downloaded path (if the download status is ready).
+   * The saved default for this component, if the surface has one. Takes
+   * precedence over the installed download as the path this field falls back
+   * to when the user hasn't overridden anything.
    */
-  resetTo?: string;
+  savedDefaultPath?: string;
+  /**
+   * What "stop overriding" means here. `fill` writes the fallback path back
+   * into the field (the training form, whose values are submitted verbatim);
+   * `clear` empties it (the model defaults editor, where empty already means
+   * "use the downloaded model").
+   */
+  revertMode?: 'fill' | 'clear';
   /**
    * When set, an unresolved downloadable component offers a "Set up…"
    * action that opens the Model Setup modal preselected on this model.
@@ -36,17 +48,32 @@ type ModelPathFieldProps = {
   setupModelId?: string;
 };
 
+/** Last path segment — the bit that identifies a file at a glance. */
+function basename(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+/**
+ * Path picker for one model component.
+ *
+ * A component that already resolves on its own — a downloaded model, or a
+ * saved default — renders as a one-line "it's set" readout rather than a text
+ * box repeating a path the user never typed. The box is for *overrides*: files
+ * that differ from what the app resolves by itself.
+ */
 export function ModelPathField({
   value,
   onChange,
   browseTitle,
   placeholder,
   downloadId,
-  resetTo,
+  savedDefaultPath,
+  revertMode = 'fill',
   setupModelId,
 }: ModelPathFieldProps) {
   const dispatch = useAppDispatch();
   const statuses = useAppSelector(selectAllModelStatuses);
+  const [isOverriding, setIsOverriding] = useState(false);
 
   const downloadedPath = useMemo(
     () => resolveInstalledPath(downloadId, statuses),
@@ -54,20 +81,35 @@ export function ModelPathField({
   );
 
   const trimmedValue = value.trim();
-  const trimmedResetTo = resetTo?.trim() ?? '';
-  // Explicit resetTo wins; fall back to the system-downloaded path
-  // so the button still works for downloadable models with no saved default.
-  const resetTarget = trimmedResetTo !== '' ? trimmedResetTo : downloadedPath;
-  const canReset =
-    resetTarget !== null && resetTarget !== '' && trimmedValue !== resetTarget;
+  const savedDefault = savedDefaultPath?.trim() ?? '';
+  // What this component resolves to with no override in play. An explicit
+  // saved default beats the download it may or may not have come from.
+  const fallbackPath =
+    savedDefault !== '' ? savedDefault : (downloadedPath ?? '');
+  const usesDownload = savedDefault === '';
+  const fallbackLabel = usesDownload
+    ? 'Using downloaded model'
+    : 'Using saved model file';
+  const hasFallback = fallbackPath !== '';
+  const isOverridden =
+    hasFallback && trimmedValue !== '' && trimmedValue !== fallbackPath;
+
+  // Override mode is per component, and these fields are keyed by component
+  // type — switching model reuses the instance, so a field left in override
+  // mode would greet the next model with an open text box.
+  const [syncedFallback, setSyncedFallback] = useState(fallbackPath);
+  if (fallbackPath !== syncedFallback) {
+    setSyncedFallback(fallbackPath);
+    setIsOverriding(false);
+  }
+
   const entry = downloadId ? statuses[downloadId] : undefined;
+  const isDownloading = entry?.status === 'downloading';
   const canOfferSetup =
     setupModelId !== undefined &&
     downloadId !== undefined &&
-    downloadedPath === null &&
-    trimmedValue === '' &&
-    !canReset;
-  const isDownloading = entry?.status === 'downloading';
+    !hasFallback &&
+    trimmedValue === '';
 
   const handleBrowse = useCallback(async () => {
     try {
@@ -83,9 +125,10 @@ export function ModelPathField({
     }
   }, [browseTitle, onChange]);
 
-  const handleReset = useCallback(() => {
-    if (resetTarget) onChange(resetTarget);
-  }, [resetTarget, onChange]);
+  const handleRevert = useCallback(() => {
+    onChange(revertMode === 'clear' ? '' : fallbackPath);
+    setIsOverriding(false);
+  }, [onChange, revertMode, fallbackPath]);
 
   // Hand acquisition off to Model Setup rather than downloading inline —
   // gives the user variant/precision choice, progress visibility, and a
@@ -94,7 +137,38 @@ export function ModelPathField({
     dispatch(openModelManagerModal({ tab: 'training', modelId: setupModelId }));
   }, [dispatch, setupModelId]);
 
-  const hasExtra = canReset || (canOfferSetup && !isDownloading);
+  // Resolved and untouched: say so, and offer the override rather than
+  // pre-filling a path the user would only have to recognise and ignore.
+  if (hasFallback && !isOverridden && !isOverriding) {
+    return (
+      <InputTray size="md" tone="deep">
+        <div className="flex w-full items-center gap-2 rounded-sm border border-slate-300 bg-white py-1.5 pl-2 dark:border-slate-700 dark:bg-slate-800">
+          <CheckIcon className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+          <span className="shrink-0 text-sm text-slate-500 dark:text-slate-400">
+            {fallbackLabel}
+          </span>
+          <span
+            className="min-w-0 flex-1 truncate text-sm font-medium"
+            title={fallbackPath}
+          >
+            {basename(fallbackPath)}
+          </span>
+        </div>
+        <Button
+          onClick={() => setIsOverriding(true)}
+          variant="ghost"
+          size="md"
+          color="indigo"
+          title={`Use a different file for ${browseTitle}`}
+        >
+          Override…
+        </Button>
+      </InputTray>
+    );
+  }
+
+  const canRevert = hasFallback;
+  const hasExtra = canRevert || (canOfferSetup && !isDownloading);
 
   return (
     <InputTray size="md" width="full" tone="deep">
@@ -122,14 +196,16 @@ export function ModelPathField({
         </div>
       )}
 
-      {canReset && (
+      {canRevert && (
         <Button
-          onClick={handleReset}
+          onClick={handleRevert}
           variant="ghost"
           size="md"
           width="md"
           color="indigo"
-          title={`Reset to default (${resetTarget})`}
+          title={`Go back to the ${
+            usesDownload ? 'downloaded model' : 'saved model file'
+          } (${fallbackPath})`}
         >
           <RotateCcwIcon />
         </Button>

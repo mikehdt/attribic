@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from composed_captions import cleanup_run, sweep_orphans
 from job_registry import JobKind, JobRegistry, LifecycleStatus
 import re
 
@@ -505,10 +506,25 @@ class JobManager:
         gpu_id: int = 0,
     ):
         """Runner invoked by the worker when this job reaches the front of the queue."""
+        dataset_folders = [ds.path for ds in request.datasets]
         try:
             config_dir = str(self._jobs_dir / job_id)
             Path(config_dir).mkdir(parents=True, exist_ok=True)
-            config_path = await provider.generate_config(request, config_dir)
+
+            # Composed caption files are deleted when their run ends, so any
+            # still lying about belong to a run that never got to end — the
+            # sidecar was killed mid-training. Keyed on the live job set, since
+            # a concurrent run's files are indistinguishable otherwise.
+            orphans = sweep_orphans(dataset_folders, self._live_job_ids())
+            if orphans:
+                print(
+                    f"[jobs] Removed {orphans} composed caption file(s) left "
+                    "behind by an earlier run"
+                )
+
+            config_path = await provider.generate_config(
+                request, config_dir, job_id
+            )
 
             # A cancel that landed between the worker dequeuing this job and
             # here (generate_config awaits) has already terminalised the record,
@@ -538,6 +554,19 @@ class JobManager:
                     error=str(e),
                 )
             )
+        finally:
+            # This run's composed captions are garbage the moment it stops, and
+            # they live in the user's dataset folder. `finally` covers the whole
+            # terminal set — completed, failed and cancelled alike.
+            cleanup_run(dataset_folders, job_id)
+
+    def _live_job_ids(self) -> set[str]:
+        """Ids of jobs that could still be using run-scoped files on disk."""
+        return {
+            job_id
+            for job_id, job in self._jobs.items()
+            if job.status not in _TERMINAL_TRAINING_STATUSES
+        }
 
     def _accumulate_progress(self, job: JobState, progress: JobProgress) -> None:
         """Fold central loss history + checkpoint tracking into `progress`.

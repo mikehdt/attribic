@@ -704,11 +704,11 @@ async def _collect(gen, out):
 # --------------------------------------------------------------------------
 
 
-def generate_config(tmp_path, hyperparameters) -> str:
+def generate_config(tmp_path, hyperparameters, job_id: str = "job0") -> str:
     request = make_request(tmp_path)
     request.hyperparameters = hyperparameters
     provider = KohyaProvider("nonexistent-scripts-path")
-    path = asyncio.run(provider.generate_config(request, str(tmp_path)))
+    path = asyncio.run(provider.generate_config(request, str(tmp_path), job_id))
     return Path(path).read_text(encoding="utf-8")
 
 

@@ -111,8 +111,9 @@ class DatasetEntry(BaseModel):
     # Resolved on the Node side from the dataset's pin and the model's
     # preference. None leaves every caption exactly as it is on disk; any value
     # is still a no-op for files with no hybrid delimiter, so this is safe to
-    # set regardless of how the project captions its images. Kohya ignores it
-    # for now — see docs/caption-composition-design.md.
+    # set regardless of how the project captions its images. ai-toolkit applies
+    # it inline in the dataset manifest; the sd-scripts-lineage backends write
+    # run-scoped caption files (see `composed_captions`).
     caption_emission: Optional[str] = None
 
 

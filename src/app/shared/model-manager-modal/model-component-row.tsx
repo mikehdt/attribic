@@ -3,7 +3,10 @@
 import { useCallback, useMemo, useState } from 'react';
 
 import { getTrainingDownloadable } from '@/app/services/model-manager/registries/training-models';
-import { resolveInstalledPath } from '@/app/services/training/model-configured';
+import {
+  normalizePathKey,
+  resolveInstalledPath,
+} from '@/app/services/training/model-configured';
 import type { ModelComponent } from '@/app/services/training/models';
 import { ModelPathField } from '@/app/shared/model-path-field/model-path-field';
 import { useAppSelector } from '@/app/store/hooks';
@@ -102,8 +105,19 @@ export function ModelComponentRow({
   }, [start, downloadable, selectedVariantId]);
 
   const handleUninstall = useCallback(() => {
-    if (downloadable) uninstall(downloadable.id);
-  }, [uninstall, downloadable]);
+    if (!downloadable) return;
+    // The persisted default is cleared by the uninstall itself; this drops
+    // the tab's own draft copy so the row doesn't keep showing a path to
+    // files that are on their way out.
+    if (
+      installedPath &&
+      value.trim() &&
+      normalizePathKey(value) === normalizePathKey(installedPath)
+    ) {
+      onChange('');
+    }
+    uninstall(downloadable.id);
+  }, [uninstall, downloadable, installedPath, value, onChange]);
 
   const hasPath = value.trim() !== '';
 
@@ -236,16 +250,14 @@ export function ModelComponentRow({
         )}
       </div>
 
+      {/* Empty means "use the downloaded model" here, so reverting an
+          override clears the field rather than pinning the path into it. */}
       <ModelPathField
         value={value}
         onChange={onChange}
         browseTitle={component.label}
         downloadId={component.downloadId}
-        placeholder={
-          installedPath && !hasPath
-            ? `Using installed download — ${installedPath}`
-            : undefined
-        }
+        revertMode="clear"
       />
 
       {component.hint && (

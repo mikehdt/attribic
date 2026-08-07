@@ -21,6 +21,7 @@ import {
   type ModelDefinition,
 } from '@/app/services/training/models';
 import type { TrainingProvider } from '@/app/services/training/types';
+import { useConfiguredBackends } from '@/app/shared/use-configured-backends';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   selectAllModelStatuses,
@@ -32,6 +33,9 @@ import type { AppModelDefaults } from '@/app/store/training-config/types';
 
 const SAVE_DEBOUNCE_MS = 600;
 
+/** Backends that need an install folder before they can train anything. */
+const REAL_PROVIDERS: TrainingProvider[] = ['kohya', 'ai-toolkit', 'musubi'];
+
 export function useTrainingTab() {
   const dispatch = useAppDispatch();
   const statuses = useAppSelector(selectAllModelStatuses);
@@ -41,38 +45,18 @@ export function useTrainingTab() {
   const firstModelId = groups[0]?.models[0]?.id;
 
   // Which backends have a location saved in config.json `trainingBackends`.
-  // Null until the config loads so the component groups don't flash
-  // "not set up" notes for backends that turn out to be configured.
-  const [backendPaths, setBackendPaths] = useState<Record<
-    string,
-    string
-  > | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/config')
-      .then((r) => r.json())
-      .then((data: { trainingBackends?: Record<string, string> }) => {
-        if (!cancelled) setBackendPaths(data.trainingBackends ?? {});
-      })
-      .catch(() => {
-        // Leave null — every backend renders as configured rather than
-        // wrongly steering the user to Settings.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Null until the config loads, which reads as "all configured" so the
+  // component groups don't flash "not set up" notes for backends that turn
+  // out to be fine.
+  const backendStatus = useConfiguredBackends();
 
   const configuredBackends = useMemo(() => {
-    const real: TrainingProvider[] = ['kohya', 'ai-toolkit', 'musubi'];
     const map: Record<string, boolean> = {};
-    for (const provider of real) {
-      map[provider] =
-        backendPaths === null || Boolean(backendPaths[provider]?.trim());
+    for (const provider of REAL_PROVIDERS) {
+      map[provider] = backendStatus === null || backendStatus[provider];
     }
     return map;
-  }, [backendPaths]);
+  }, [backendStatus]);
 
   // Selected model, re-derived when the modal is reopened deep-linked to a
   // specific model (same sync-on-change pattern as the modal's tab state).
