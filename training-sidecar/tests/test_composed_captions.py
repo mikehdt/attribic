@@ -231,6 +231,23 @@ class TestKohyaConfig:
         assert toml.count("caption_extension") == 1
         assert 'caption_extension = ".txt"' in toml
 
+    def test_empty_half_warning_says_what_sd_scripts_actually_does(self, tmp_path):
+        folder = write_dataset(
+            tmp_path / "hybrid", {"a": HYBRID, "b": "1girl, solo, __, "}
+        )
+        provider = KohyaProvider("nonexistent-scripts-path")
+        request = make_request(
+            tmp_path,
+            ProviderType.KOHYA,
+            [DatasetEntry(path=str(folder), caption_emission="natural")],
+        )
+        asyncio.run(provider.generate_config(request, str(tmp_path), "job1"))
+
+        warning = next(
+            n for n in provider._caption_notes["job1"] if n.startswith("Warning")
+        )
+        assert "train without a caption" in warning
+
     def test_only_the_hybrid_subset_is_overridden(self, tmp_path):
         hybrid = write_dataset(tmp_path / "hybrid", {"a": HYBRID})
         plain = write_dataset(tmp_path / "plain", {"b": TAGS_ONLY})
@@ -299,6 +316,24 @@ class TestMusubiConfig:
             return line.split("=", 1)[1].strip()
 
         assert cache_dir(natural) != cache_dir(tags)
+
+    def test_empty_half_warning_says_what_musubi_actually_does(
+        self, provider, tmp_path
+    ):
+        """Blank captions don't train blank here — the image is dropped."""
+        folder = write_dataset(
+            tmp_path / "hybrid", {"a": HYBRID, "b": "1girl, solo, __, "}
+        )
+        self.generate(
+            provider,
+            tmp_path,
+            [DatasetEntry(path=str(folder), caption_emission="natural")],
+        )
+
+        warning = next(
+            n for n in provider._caption_notes["job1"] if n.startswith("Warning")
+        )
+        assert "left out of the dataset" in warning
 
     def test_non_hybrid_dataset_keeps_its_existing_cache(
         self, provider, tmp_path

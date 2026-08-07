@@ -294,6 +294,13 @@ class SdScriptsProvider(TrainingProvider):
     # uses `--l` (from "guidance_scaLe"); musubi-tuner uses `--g`.
     sample_guidance_flag: str = "l"
 
+    # What this backend does with an image that has no caption file. sd-scripts
+    # warns and trains an empty caption; musubi's caption-file filter drops the
+    # image from the dataset instead. Only surfaces when the chosen half of a
+    # hybrid caption is empty, which is the one case that leaves an image
+    # without a composed caption (see `composed_captions`).
+    no_caption_outcome: str = "will train without a caption"
+
     # How the training-time marker file is located for resume carry-forward.
     # Declared here so a backend that names its state dirs differently can say
     # so; consumed by the training-time accounting (see `training_time`).
@@ -346,8 +353,7 @@ class SdScriptsProvider(TrainingProvider):
             if result.emptied:
                 notes.append(
                     f"Warning: {result.emptied} image(s) in {ds.path} have no "
-                    f"{ds.caption_emission} half and will train without a "
-                    "caption"
+                    f"{ds.caption_emission} half and {self.no_caption_outcome}"
                 )
 
         if notes:

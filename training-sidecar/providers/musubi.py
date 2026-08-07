@@ -328,6 +328,11 @@ class MusubiProvider(SdScriptsProvider):
     parser's CFG default of 4.0, which happened to match the app's default.
     """
 
+    # musubi filters its image list down to images that have a caption file
+    # (`dataset/media_utils.py:glob_images`), so an image we couldn't compose a
+    # caption for doesn't train blank — it isn't trained at all.
+    no_caption_outcome = "will be left out of the dataset"
+
     def __init__(self, scripts_path: str):
         super().__init__(scripts_path)
         # Latent/TE caches are keyed by dataset+settings, not by job, so they

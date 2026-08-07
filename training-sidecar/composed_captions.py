@@ -117,8 +117,12 @@ def compose_folder(
 
     # Read once: the delimiter check and the composition both need the text, and
     # a dataset folder is re-read often enough already.
-    raw_by_path = {p: _read(p) for p in sidecars}
-    raw_by_path = {p: raw for p, raw in raw_by_path.items() if raw is not None}
+    raw_by_path: dict[Path, str] = {}
+    for path in sidecars:
+        raw = _read(path)
+        if raw is not None:
+            raw_by_path[path] = raw
+
     if not any(split_hybrid(raw)[1] is not None for raw in raw_by_path.values()):
         # Not a hybrid folder. Every emission would return the file itself, so
         # writing companions would be pure churn in the user's dataset folder.
