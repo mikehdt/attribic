@@ -21,6 +21,7 @@ import {
   noSortingStrategy,
   useTagDrag,
 } from './use-tag-drag';
+import { useTagKeyboardNav } from './use-tag-keyboard-nav';
 
 const noop = () => {};
 
@@ -79,6 +80,8 @@ const TagsDisplayComponent = ({
     handleDragEnd,
     handleDragCancel,
   } = useTagDrag({ tags, onReorder });
+
+  const handleChipArrowNav = useTagKeyboardNav(activeTag !== null);
 
   // Fade logic: when editing or when add input matches an existing tag,
   // fade all tags except the one being edited and the one that matches
@@ -153,7 +156,7 @@ const TagsDisplayComponent = ({
   // work only happen during a drag. Non-draggable chips (editing, faded,
   // duplicate-matched) are disabled per-chip inside SortableTag.
   return (
-    <div className="flex flex-wrap">
+    <div className="flex flex-wrap" onKeyDown={handleChipArrowNav}>
       {sortable ? (
         <DndContext
           sensors={sensors}

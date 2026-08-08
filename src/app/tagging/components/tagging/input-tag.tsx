@@ -328,6 +328,7 @@ const InputTagComponent = ({
         placeholder={placeholder}
         disabled={disabled}
         tabIndex={disabled ? -1 : 0}
+        data-tag-input={mode}
         {...suggestionsInputProps}
         className={`${inputWidth} rounded-2xl border py-1 ps-4 pe-14 transition-all ${borderColor} ${disabled ? 'pointer-events-none opacity-50' : 'bg-white dark:bg-slate-800'} ${duplicateFlash ? `inset-shadow-sm ${shadowColor} ring-2 ring-rose-500` : isFocused ? `inset-shadow-sm ${shadowColor} ring-2 ring-sky-500` : ''}`}
       />

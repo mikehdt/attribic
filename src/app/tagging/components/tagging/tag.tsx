@@ -169,6 +169,7 @@ export const Tag = ({
 
   return (
     <div
+      data-tag-chip
       className={`inline-flex items-center rounded-2xl border py-1 pr-2 pl-4 transition-all ${getStateStyles()} ${getInteractionStyles()} ${isTriggerMatch && !isMarkedForDeletion ? 'shadow-sm inset-shadow-sm shadow-green-500/50 inset-shadow-green-500/50 dark:shadow-green-500 dark:inset-shadow-green-500' : ''}`}
       onClick={handleClick}
       onKeyDown={handleKeyDown}

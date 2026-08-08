@@ -13,6 +13,7 @@ import { TagEditMode } from '@/app/store/preferences';
 import { InputTag } from '../input-tag';
 import { TagsDisplay } from './tags-display';
 import { TagData } from './types';
+import { handleAddInputArrowNav } from './use-tag-keyboard-nav';
 import { useTagList } from './use-tag-list';
 
 type TagListProps = {
@@ -69,7 +70,11 @@ const TagListComponent = ({
   const tagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
 
   return (
-    <div className="flex h-full w-full flex-col gap-y-2">
+    <div
+      data-tag-list
+      onKeyDown={handleAddInputArrowNav}
+      className="flex h-full w-full flex-col gap-y-2"
+    >
       <TagsDisplay
         tags={tags}
         sortable={sortable}

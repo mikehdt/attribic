@@ -77,6 +77,25 @@ const scrollCellIntoView = (assetId: string) => {
 };
 
 /**
+ * Focus the inspector's primary control: the add-tag input when present
+ * (tag/hybrid modes), else the first focusable control (caption mode).
+ * Returns false when the inspector is hidden (narrow viewports) or has no
+ * asset loaded, so the caller can let native Tab proceed.
+ */
+const focusInspector = (): boolean => {
+  const panel = document.querySelector<HTMLElement>('[data-grid-inspector]');
+  if (!panel || panel.offsetWidth === 0) return false;
+  const target =
+    panel.querySelector<HTMLElement>('[data-tag-input="add"]:not(:disabled)') ??
+    panel.querySelector<HTMLElement>(
+      'button:not(:disabled):not([data-inspector-close]), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+    );
+  if (!target) return false;
+  target.focus();
+  return true;
+};
+
+/**
  * Keyboard navigation for the grid view's current asset.
  *
  * - Left/right step linearly through display order (crossing row and
@@ -86,17 +105,27 @@ const scrollCellIntoView = (assetId: string) => {
  * - Home/End jump to the first/last asset on the page.
  * - Space and Enter toggle selection of the current asset (with Shift they
  *   extend the range from the last click, same as shift-clicking it).
- * - Escape clears the current asset.
+ * - Escape clears the current asset (after first closing the narrow-viewport
+ *   inspector overlay, when it's open).
+ * - Tab (with an asset inspected, no control focused) crosses to the
+ *   inspector's tag input; Escape from the inspector crosses back (handled in
+ *   GridSidebar). Shift+Tab and Tab from a focused control stay native. At
+ *   widths where the inspector column is hidden, Tab first opens it as an
+ *   overlay via the passed controls.
  *
- * Inert while focus is in an input-like element or any dialog is open, so it
- * never fights local keyboard handling.
+ * Inert while focus is in an input-like element or the inspector sidebar, or
+ * while any dialog is open, so it never fights local keyboard handling.
  */
 export const useGridKeyboardNav = (
   orderedAssetIds: string[],
   currentPage: number,
+  overlay: { isOpen: boolean; setOpen: (open: boolean) => void },
 ) => {
   const dispatch = useAppDispatch();
   const currentAssetId = useAppSelector(selectCurrentAssetId);
+  // Destructured so the effect re-binds on state changes, not on the
+  // per-render identity of the controls object
+  const { isOpen: isOverlayOpen, setOpen: setOverlayOpen } = overlay;
 
   // Refs so the window listener binds once and always sees fresh values
   const currentRef = useRef(currentAssetId);
@@ -119,6 +148,10 @@ export const useGridKeyboardNav = (
       ) {
         return;
       }
+      // The inspector owns all keys while focus is inside it — its widgets
+      // (tag chips, dnd-kit reorder, autocomplete) use the same arrows and
+      // Enter/Space/Escape this hook binds
+      if (target?.closest('[data-grid-inspector]')) return;
       if (document.querySelector('[role="dialog"]')) return;
 
       // A control that genuinely holds focus (shelf button, view toggle,
@@ -183,8 +216,25 @@ export const useGridKeyboardNav = (
           }
           return;
         case 'Escape':
+          // Back out one layer at a time: overlay first, then the highlight
+          if (isOverlayOpen) {
+            setOverlayOpen(false);
+            return;
+          }
           if (current) {
             dispatch(setCurrentAsset(null));
+          }
+          return;
+        case 'Tab':
+          // Bridge to the inspector so tagging the inspected asset is one
+          // keystroke away; from a focused control, Tab keeps native order
+          if (e.shiftKey || interactiveFocus || !current) return;
+          e.preventDefault();
+          if (!focusInspector()) {
+            // Hidden inspector column (narrow viewport): summon the overlay,
+            // then focus once it has rendered
+            setOverlayOpen(true);
+            requestAnimationFrame(() => focusInspector());
           }
           return;
         default:
@@ -193,6 +243,10 @@ export const useGridKeyboardNav = (
 
       if (nextIndex !== null) {
         e.preventDefault();
+        // Keyboard navigation reclaims the grid: drop focus from whatever
+        // control Tab wandered onto (shelf buttons etc.), so the next Tab
+        // bridges to the inspector rather than resuming shelf tab order
+        (document.activeElement as HTMLElement | null)?.blur();
         const nextId = ids[nextIndex];
         dispatch(setCurrentAsset(nextId));
         scrollCellIntoView(nextId);
@@ -201,5 +255,5 @@ export const useGridKeyboardNav = (
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dispatch, currentPage]);
+  }, [dispatch, currentPage, isOverlayOpen, setOverlayOpen]);
 };

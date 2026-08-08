@@ -1,5 +1,6 @@
-import { ImageIcon } from 'lucide-react';
+import { ImageIcon, XIcon } from 'lucide-react';
 import Image from 'next/image';
+import { KeyboardEvent } from 'react';
 
 import { isSupportedVideoExtension } from '@/app/constants';
 import { type ImageAsset,selectAssetById } from '@/app/store/assets';
@@ -119,24 +120,77 @@ const InspectorContent = ({ asset }: { asset: ImageAsset }) => {
 };
 
 /**
+ * Escape hands keyboard control back to the grid: blurring the focused widget
+ * makes the grid's window-level nav active again (it only needs focus to be
+ * outside the inspector). Widgets with an Escape meaning of their own win
+ * first — the autocomplete preventDefaults its dismiss, the caption editor
+ * blurs itself, and a text field keeps Escape while it still has content to
+ * clear — so backing out is repeated Escapes, never a lost edit.
+ */
+const handleEscapeToGrid = (e: KeyboardEvent<HTMLDivElement>) => {
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  const target = e.target as HTMLElement;
+  if (
+    (target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement) &&
+    target.value
+  ) {
+    return;
+  }
+  target.blur();
+  e.preventDefault();
+};
+
+type GridSidebarProps = {
+  isOverlayOpen: boolean;
+  onOverlayClose: () => void;
+};
+
+/**
  * The inspector column for the grid view. The outer div is an in-flow spacer
  * that reserves the column's width; the inner panel is fixed so it can never
  * scroll off between the shelves — with no left/right offsets a fixed element
  * keeps its static horizontal position, so it stays aligned with the spacer
  * at every viewport width. Content taller than the gap scrolls internally.
  *
+ * Below lg the column disappears; Tab summons the same panel as a floating
+ * overlay instead (opened by the grid keyboard nav). It stays non-modal — no
+ * dialog role, no scrim — so arrow keys keep driving the grid underneath and
+ * the panel live-updates, same as the desktop flow. The spacer collapses to
+ * zero width (absolute + w-0) rather than hiding, since display:none would
+ * take the fixed panel down with it; the panel re-anchors to the viewport's
+ * right edge, which overrides the static-position trick at those widths.
+ *
  * Layout: fixed-height image preview, then the mode-aware tag editor, then
  * the metadata strip pinned to the bottom.
  */
-export const GridSidebar = () => {
+export const GridSidebar = ({
+  isOverlayOpen,
+  onOverlayClose,
+}: GridSidebarProps) => {
   const currentAssetId = useAppSelector(selectCurrentAssetId);
   const asset = useAppSelector((state) =>
     currentAssetId ? selectAssetById(state, currentAssetId) : undefined,
   );
 
   return (
-    <div className="w-90 shrink-0 max-lg:hidden">
-      <div className="fixed top-24 bottom-14 flex w-90 flex-col overflow-y-auto rounded-lg border border-(--border) bg-slate-50 dark:bg-slate-900">
+    <div
+      className={`w-90 shrink-0 ${isOverlayOpen ? 'max-lg:absolute max-lg:w-0' : 'max-lg:hidden'}`}
+    >
+      <div
+        data-grid-inspector
+        onKeyDown={handleEscapeToGrid}
+        className="fixed top-24 bottom-14 flex w-90 flex-col overflow-y-auto rounded-lg border border-(--border) bg-slate-50 max-lg:right-4 max-lg:z-30 max-lg:max-w-[calc(100vw-2rem)] max-lg:shadow-xl dark:bg-slate-900"
+      >
+        <button
+          data-inspector-close
+          className="absolute top-2 right-2 z-10 rounded-md bg-white/80 p-1 text-slate-500 transition-colors hover:text-slate-700 lg:hidden dark:bg-slate-900/70 dark:text-slate-400 dark:hover:text-slate-200"
+          onClick={onOverlayClose}
+          title="Close inspector"
+          aria-label="Close inspector"
+        >
+          <XIcon className="h-4 w-4" />
+        </button>
         {asset ? (
           <InspectorContent asset={asset} />
         ) : (
@@ -144,6 +198,7 @@ export const GridSidebar = () => {
             <ImageIcon className="h-10 w-10" />
             <p className="text-sm">
               Click an image to inspect it, or use the arrow keys to navigate.
+              Tab jumps into this panel; Escape returns to the grid.
             </p>
           </div>
         )}

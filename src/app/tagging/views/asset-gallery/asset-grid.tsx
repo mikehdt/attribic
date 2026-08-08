@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { CategoryHeader } from './category-header';
 import { GridCell } from './grid-cell';
@@ -29,7 +29,18 @@ export const AssetGrid = ({
   shiftHoverPreview,
   onAssetHover,
 }: AssetGridProps) => {
-  useGridKeyboardNav(paginatedAssetIds, currentPage);
+  // Below lg the inspector column is gone; Tab summons it as an overlay
+  // instead (no dialog semantics, so grid navigation keeps working under it)
+  const [isInspectorOverlayOpen, setInspectorOverlayOpen] = useState(false);
+  const closeInspectorOverlay = useCallback(
+    () => setInspectorOverlayOpen(false),
+    [],
+  );
+
+  useGridKeyboardNav(paginatedAssetIds, currentPage, {
+    isOpen: isInspectorOverlayOpen,
+    setOpen: setInspectorOverlayOpen,
+  });
 
   const renderedGroups = useMemo(
     () =>
@@ -75,7 +86,10 @@ export const AssetGrid = ({
   return (
     <div className="flex gap-4">
       <div className="min-w-0 flex-1">{renderedGroups}</div>
-      <GridSidebar />
+      <GridSidebar
+        isOverlayOpen={isInspectorOverlayOpen}
+        onOverlayClose={closeInspectorOverlay}
+      />
     </div>
   );
 };
