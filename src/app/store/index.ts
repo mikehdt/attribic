@@ -52,7 +52,24 @@ export const makeStore = (preloadedState?: Partial<RootState>) => {
     reducer: rootReducer,
     preloadedState,
     middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware()
+      getDefaultMiddleware({
+        // RTK's two dev-only invariant checks deep-walk the *entire* root
+        // state on every dispatch, not just what the action touched. A live
+        // training run dispatches a progress tick about once a second, and
+        // each of those ticks re-walks every archived run's loss and speed
+        // series (1,000 points apiece, per the sidecar's cap) alongside the
+        // live one — work that scales with how much history is loaded rather
+        // than with what changed, and what trips the 32ms warning on longer
+        // runs. Both subtrees are JSON straight off the sidecar wire, so
+        // there is nothing in them for either check to find.
+        serializableCheck: {
+          ignoredPaths: ['jobs.jobs', 'trainingHistory.entries'],
+          ignoredActions: ['jobs/updateTrainingProgress'],
+        },
+        immutableCheck: {
+          ignoredPaths: ['jobs.jobs', 'trainingHistory.entries'],
+        },
+      })
         .concat(filterManagerMiddleware.middleware)
         .concat(jobPersistenceMiddleware.middleware),
   });

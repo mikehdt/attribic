@@ -24,6 +24,20 @@ const nextConfig: NextConfig = {
     unoptimized: true, // Disable Next.js image optimization for local files
     // writeToCacheDir: false,
   },
+
+  // Silence info logs; keeps console.error and console.warn
+  compiler: {
+    removeConsole: {
+      exclude: ['error', 'warn'],
+    },
+  },
+
+  logging: {
+    incomingRequests: {
+      // Ignore stats calls which fill up the terminal
+      ignore: [/^\/api\/training\/sidecar\/stats/],
+    },
+  },
 };
 
 export default nextConfig;
