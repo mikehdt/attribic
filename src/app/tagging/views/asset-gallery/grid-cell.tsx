@@ -27,6 +27,7 @@ type GridCellProps = {
   currentPage: number;
   previewState?: PreviewState;
   onHover?: (assetId: string | null) => void;
+  onActivate?: () => void;
 };
 
 const GridCellComponent = ({
@@ -39,6 +40,7 @@ const GridCellComponent = ({
   currentPage,
   previewState,
   onHover,
+  onActivate,
 }: GridCellProps) => {
   const dispatch = useAppDispatch();
   const isSelected = useAppSelector((state) =>
@@ -58,16 +60,23 @@ const GridCellComponent = ({
   // Plain click inspects; shift-click is a selection gesture (range extend).
   // Selection and inspection stay separate: current = "what am I looking at",
   // selection = "what will batch operations apply to".
+  //
+  // Clicking the already-inspected cell toggles the tagging UI — the mouse
+  // equivalent of Tab, then Escape. Deliberately not a dblclick listener: the
+  // two clicks can be any distance apart, so a genuine double-click works but
+  // so does looking first and editing later.
   const onCellClick = useCallback(
     (e: MouseEvent) => {
       if (e.shiftKey) {
         e.preventDefault(); // no text selection on shift-click
         dispatch(handleAssetClick({ assetId, isShiftHeld: true, currentPage }));
+      } else if (isCurrent) {
+        onActivate?.();
       } else {
         dispatch(setCurrentAsset(assetId));
       }
     },
-    [assetId, currentPage, dispatch],
+    [assetId, currentPage, dispatch, isCurrent, onActivate],
   );
 
   const onToggleSelection = useCallback(
@@ -199,6 +208,7 @@ const gridCellPropsAreEqual = (
   prevProps.currentPage === nextProps.currentPage &&
   prevProps.previewState === nextProps.previewState &&
   prevProps.onHover === nextProps.onHover &&
+  prevProps.onActivate === nextProps.onActivate &&
   prevProps.dimensions.width === nextProps.dimensions.width &&
   prevProps.dimensions.height === nextProps.dimensions.height;
 

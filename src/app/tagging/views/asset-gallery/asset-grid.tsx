@@ -1,6 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CategoryHeader } from './category-header';
+import {
+  isGridInspectorFocused,
+  revealGridInspector,
+} from './focus-grid-inspector';
 import { GridCell } from './grid-cell';
 import { GridSidebar } from './grid-sidebar';
 import type { GroupedAssets, ShiftHoverPreview } from './use-asset-gallery';
@@ -29,13 +33,38 @@ export const AssetGrid = ({
   shiftHoverPreview,
   onAssetHover,
 }: AssetGridProps) => {
-  // Below lg the inspector column is gone; Tab summons it as an overlay
-  // instead (no dialog semantics, so grid navigation keeps working under it)
+  // Below lg the inspector column is gone; Tab (or a second click on the
+  // inspected cell) summons it as an overlay instead — no dialog semantics,
+  // so grid navigation keeps working under it
   const [isInspectorOverlayOpen, setInspectorOverlayOpen] = useState(false);
   const closeInspectorOverlay = useCallback(
     () => setInspectorOverlayOpen(false),
     [],
   );
+
+  // Clicking a cell blurs the inspector as part of the pointer-down's default
+  // action, before any click handler runs — so pointer-down is the last moment
+  // the toggle below can tell whether the tagging UI was in use
+  const wasInspectorFocusedRef = useRef(false);
+  useEffect(() => {
+    const trackInspectorFocus = () => {
+      wasInspectorFocusedRef.current = isGridInspectorFocused();
+    };
+    window.addEventListener('mousedown', trackInspectorFocus, true);
+    return () =>
+      window.removeEventListener('mousedown', trackInspectorFocus, true);
+  }, []);
+
+  // Backing out only has to close the narrow-viewport overlay: the
+  // pointer-down already took focus off the panel, which is all "out" means
+  // at widths where the column is permanently visible
+  const toggleInspector = useCallback(() => {
+    if (wasInspectorFocusedRef.current) {
+      setInspectorOverlayOpen(false);
+      return;
+    }
+    revealGridInspector(setInspectorOverlayOpen);
+  }, []);
 
   useGridKeyboardNav(paginatedAssetIds, currentPage, {
     isOpen: isInspectorOverlayOpen,
@@ -68,6 +97,7 @@ export const AssetGrid = ({
                   currentPage={currentPage}
                   previewState={previewState}
                   onHover={onAssetHover}
+                  onActivate={toggleInspector}
                 />
               );
             })}
@@ -80,6 +110,7 @@ export const AssetGrid = ({
       currentPage,
       shiftHoverPreview,
       onAssetHover,
+      toggleInspector,
     ],
   );
 

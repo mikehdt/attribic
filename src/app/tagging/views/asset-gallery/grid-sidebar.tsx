@@ -175,8 +175,9 @@ type GridSidebarProps = {
  * keeps its static horizontal position, so it stays aligned with the spacer
  * at every viewport width. Content taller than the gap scrolls internally.
  *
- * Below lg the column disappears; Tab summons the same panel as a floating
- * overlay instead (opened by the grid keyboard nav). It stays non-modal — no
+ * Below lg the column disappears; Tab (or a second click on the inspected
+ * cell) summons the same panel as a floating overlay instead. It stays
+ * non-modal — no
  * dialog role, no scrim — so arrow keys keep driving the grid underneath and
  * the panel live-updates, same as the desktop flow. The spacer collapses to
  * zero width (absolute + w-0) rather than hiding, since display:none would
@@ -208,7 +209,7 @@ export const GridSidebar = ({
       >
         <button
           data-inspector-close
-          className="absolute top-2 right-2 z-10 rounded-md bg-white/80 p-1 text-slate-500 transition-colors hover:text-slate-700 lg:hidden dark:bg-slate-900/70 dark:text-slate-400 dark:hover:text-slate-200"
+          className="absolute top-3 right-3 z-1 cursor-pointer rounded-full border border-slate-300/0 bg-white p-1 text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:outline-none lg:hidden dark:border-slate-600/0 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
           onClick={onOverlayClose}
           title="Close inspector"
           aria-label="Close inspector"
@@ -231,8 +232,8 @@ export const GridSidebar = ({
                 <ImageIcon className="h-10 w-10" />
                 <p className="text-sm">
                   Click an image to inspect it, or use the arrow keys to
-                  navigate. Tab jumps into this panel; Escape returns to the
-                  grid.
+                  navigate. Clicking it again — or pressing Tab — jumps into
+                  this panel; Escape returns to the grid.
                 </p>
               </div>
             )}
