@@ -2,6 +2,7 @@ import {
   ArrowUpFromLineIcon,
   ChevronsDownIcon,
   CopyIcon,
+  ReplaceIcon,
   SparklesIcon,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
@@ -19,12 +20,15 @@ import { AutoTaggerModal } from '@/app/tagging/components/auto-tagger/auto-tagge
 import { useAutoTaggerLaunch } from '@/app/tagging/components/auto-tagger/use-auto-tagger-launch';
 
 import { CopyTagsModal } from './copy-tags-modal/copy-tags-modal';
+import { SearchReplaceModal } from './search-replace-modal/search-replace-modal';
 
 export const TagActionsMenu = () => {
   const dispatch = useAppDispatch();
   const store = useAppStore();
 
   const [isCopyTagsModalOpen, setIsCopyTagsModalOpen] = useState(false);
+  const [isSearchReplaceModalOpen, setIsSearchReplaceModalOpen] =
+    useState(false);
 
   const filterTags = useAppSelector(selectFilterTags);
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
@@ -33,6 +37,15 @@ export const TagActionsMenu = () => {
   const openCopyTagsModal = useCallback(() => setIsCopyTagsModalOpen(true), []);
   const closeCopyTagsModal = useCallback(
     () => setIsCopyTagsModalOpen(false),
+    [],
+  );
+
+  const openSearchReplaceModal = useCallback(
+    () => setIsSearchReplaceModalOpen(true),
+    [],
+  );
+  const closeSearchReplaceModal = useCallback(
+    () => setIsSearchReplaceModalOpen(false),
     [],
   );
 
@@ -72,6 +85,11 @@ export const TagActionsMenu = () => {
         disabled: filterTags.length < 2,
       },
       {
+        label: 'Search & Replace',
+        icon: <ReplaceIcon />,
+        onClick: openSearchReplaceModal,
+      },
+      {
         label: 'Auto Tagger',
         icon: <SparklesIcon />,
         onClick: openTaggerModal,
@@ -84,6 +102,7 @@ export const TagActionsMenu = () => {
       noSelectedAssetHasTags,
       handleGatherTags,
       filterTags.length,
+      openSearchReplaceModal,
       openTaggerModal,
       canAutoTag,
     ],
@@ -101,6 +120,11 @@ export const TagActionsMenu = () => {
       <CopyTagsModal
         isOpen={isCopyTagsModalOpen}
         onClose={closeCopyTagsModal}
+      />
+
+      <SearchReplaceModal
+        isOpen={isSearchReplaceModalOpen}
+        onClose={closeSearchReplaceModal}
       />
 
       <AutoTaggerModal

@@ -70,7 +70,7 @@ export const highlightText = (
   return result;
 };
 
-type HighlightRange = { start: number; end: number };
+export type HighlightRange = { start: number; end: number };
 
 /**
  * Computes merged, sorted highlight ranges for multiple patterns in text.
@@ -115,19 +115,17 @@ const computeHighlightRanges = (
 };
 
 /**
- * Highlights matching segments of text for multiple patterns
+ * Highlights pre-computed ranges of text (sorted, non-overlapping)
  * @param text - The text to highlight
- * @param patterns - Array of patterns to highlight (case-insensitive)
+ * @param ranges - Character ranges to wrap in highlight spans
  * @param highlightClassName - CSS class for highlight spans (default: font-bold)
- * @returns Array of React elements with highlighted matches
+ * @returns Array of React elements with highlighted ranges
  */
-export const highlightPatterns = (
+export const highlightRanges = (
   text: string,
-  patterns: string[],
+  ranges: HighlightRange[],
   highlightClassName = 'font-bold',
 ): React.ReactNode => {
-  const ranges = computeHighlightRanges(text, patterns);
-
   if (ranges.length === 0) return text;
 
   const result: React.ReactNode[] = [];
@@ -161,6 +159,24 @@ export const highlightPatterns = (
 
   return result;
 };
+
+/**
+ * Highlights matching segments of text for multiple patterns
+ * @param text - The text to highlight
+ * @param patterns - Array of patterns to highlight (case-insensitive)
+ * @param highlightClassName - CSS class for highlight spans (default: font-bold)
+ * @returns Array of React elements with highlighted matches
+ */
+export const highlightPatterns = (
+  text: string,
+  patterns: string[],
+  highlightClassName = 'font-bold',
+): React.ReactNode =>
+  highlightRanges(
+    text,
+    computeHighlightRanges(text, patterns),
+    highlightClassName,
+  );
 
 /**
  * Highlights trigger phrases in caption text with a background highlight

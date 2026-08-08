@@ -1,6 +1,11 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
 
 import { groupAssetsByCategory } from '@/app/tagging/utils/category-utils';
+import {
+  compileSearch,
+  prepareReplacement,
+  replaceText,
+} from '@/app/utils/text-replace';
 
 import {
   addMultipleTags,
@@ -10,6 +15,7 @@ import {
   selectFilteredAssets,
   selectSortDirection,
   selectSortType,
+  setCaptionText,
   SortType,
 } from '../assets';
 import { updateTagFilters } from '../filters';
@@ -83,16 +89,20 @@ export const editTagsAcrossAssets = createAsyncThunk(
 
     // Process each tag update
     tagUpdates.forEach(({ oldTagName, newTagName, operation }) => {
-      // Skip empty or unchanged tags
-      if (!newTagName.trim() || oldTagName === newTagName) {
+      // Skip empty or unchanged renames. DELETE ops pass through — a plain
+      // delete carries an empty newTagName by design.
+      if (
+        operation !== 'DELETE' &&
+        (!newTagName.trim() || oldTagName === newTagName)
+      ) {
         return;
       }
 
       if (operation === 'DELETE') {
         // For DELETE operations, check if this is a duplicate prevention delete
-        // (when newTagName != oldTagName, it means this tag was intended to be renamed
-        // but is being deleted due to duplicate detection)
-        if (newTagName.trim() !== oldTagName) {
+        // (when a different newTagName is present, it means this tag was intended
+        // to be renamed but is being deleted due to duplicate detection)
+        if (newTagName.trim() && newTagName.trim() !== oldTagName) {
           // This is a duplicate prevention delete - handle it like a rename that creates duplicates
           candidateAssets.forEach((asset) => {
             if (asset.tagList.includes(oldTagName)) {
@@ -199,6 +209,76 @@ export const editTagsAcrossAssets = createAsyncThunk(
         totalChangedTags > 0
           ? `Updated ${totalChangedTags} tags across ${totalChangedAssets} assets`
           : 'No tags were changed',
+    };
+  },
+);
+
+/**
+ * Thunk action to run a search/replace over caption text across assets.
+ * Edits land dirty in the staging model and persist via Save All, like every
+ * other bulk edit. Pattern/flags arrive as primitives (a RegExp isn't
+ * serialisable) and are compiled here with the same util the preview uses.
+ */
+export const replaceCaptionsAcrossAssets = createAsyncThunk(
+  'selection/replaceCaptionsAcrossAssets',
+  async (
+    {
+      pattern,
+      replacement,
+      useRegex = false,
+      matchCase = false,
+      onlyFilteredAssets = false,
+      onlySelectedAssets = false,
+    }: {
+      pattern: string;
+      replacement: string;
+      useRegex?: boolean;
+      matchCase?: boolean;
+      onlyFilteredAssets?: boolean;
+      onlySelectedAssets?: boolean;
+    },
+    { getState, dispatch },
+  ) => {
+    const state = getState() as RootState;
+
+    let candidateAssets = onlyFilteredAssets
+      ? selectFilteredAssets(state)
+      : state.assets.images;
+
+    if (onlySelectedAssets) {
+      const selectedAssetIds = new Set(state.selection.selectedAssets);
+      candidateAssets = candidateAssets.filter((asset) =>
+        selectedAssetIds.has(asset.fileId),
+      );
+    }
+
+    const { regex, error } = compileSearch(pattern, useRegex, matchCase);
+    if (!regex) {
+      return { success: false, message: error ?? 'No search pattern provided' };
+    }
+
+    const preparedReplacement = prepareReplacement(replacement, useRegex);
+    let changedCount = 0;
+
+    candidateAssets.forEach((asset) => {
+      const nextText = replaceText(
+        asset.captionText,
+        regex,
+        preparedReplacement,
+      );
+      if (nextText !== asset.captionText) {
+        dispatch(setCaptionText({ assetId: asset.fileId, text: nextText }));
+        changedCount++;
+      }
+    });
+
+    return {
+      success: changedCount > 0,
+      count: changedCount,
+      message:
+        changedCount > 0
+          ? `Updated captions on ${changedCount} ${changedCount === 1 ? 'asset' : 'assets'}`
+          : 'No captions matched',
     };
   },
 );
