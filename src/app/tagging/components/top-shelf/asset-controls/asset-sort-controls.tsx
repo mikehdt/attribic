@@ -34,6 +34,8 @@ const getSortDirectionLabel = (
   switch (sortType) {
     case SortType.NAME:
       return isAsc ? 'A-Z' : 'Z-A';
+    case SortType.INDEX:
+      return isAsc ? '1-n' : 'n-1';
     case SortType.IMAGE_SIZE:
     case SortType.BUCKET_SIZE:
       return isAsc ? '0-9' : '9-0';
@@ -106,6 +108,10 @@ export const AssetSortControls = () => {
       {
         value: SortType.NAME,
         label: 'Name',
+      },
+      {
+        value: SortType.INDEX,
+        label: 'Index',
       },
       {
         value: SortType.IMAGE_SIZE,

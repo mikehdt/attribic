@@ -1,5 +1,19 @@
 import { type ImageAsset, SortDirection, SortType } from '@/app/store/assets';
-import { parseSubfolder } from '@/app/utils/subfolder-utils';
+import { getAssetFileName, parseSubfolder } from '@/app/utils/subfolder-utils';
+
+// The single category used by sorts that deliberately don't group. One group
+// means no headers render, so the gallery reads as one continuous run.
+const UNGROUPED_CATEGORY = 'All Assets';
+
+/**
+ * True for sorts that intentionally produce no sections. Grouping code still
+ * runs (everything lands in `UNGROUPED_CATEGORY`, which keeps one code path for
+ * ordering), but anything user-facing about sections has to opt out explicitly —
+ * a lone category still spans multiple pages, and the jump menu lists one entry
+ * per page, so "only one category" isn't enough to make it disable itself.
+ */
+export const isUngroupedSortType = (sortType: SortType): boolean =>
+  sortType === SortType.INDEX;
 
 // Constants for sort category names
 const SCALED_CATEGORIES = {
@@ -33,16 +47,14 @@ export const getSortCategory = (
   selectedAssets: string[],
 ): string => {
   switch (sortType) {
+    case SortType.INDEX:
+      // Ungrouped by design — Index exists to give the grid a pure grid
+      return UNGROUPED_CATEGORY;
+
     case SortType.NAME:
-      // Extract filename without subfolder prefix for categorization
-      // If asset is in a subfolder (e.g., "2_sonic/abc_image"), use only "abc_image"
-      let filename = asset.fileId;
-      if (asset.subfolder) {
-        const slashIndex = asset.fileId.indexOf('/');
-        if (slashIndex !== -1) {
-          filename = asset.fileId.substring(slashIndex + 1);
-        }
-      }
+      // Categorise on the bare filename, so a subfolder asset lands under its
+      // own initial rather than the folder's
+      const filename = getAssetFileName(asset.fileId, asset.subfolder);
 
       const firstChar = filename.charAt(0).toLowerCase();
       if (firstChar >= '0' && firstChar <= '9') {
@@ -104,7 +116,7 @@ export const getSortCategory = (
       return 'Root';
 
     default:
-      return 'All Assets';
+      return UNGROUPED_CATEGORY;
   }
 };
 
@@ -276,6 +288,10 @@ export const getCategoriesWithPageInfo = (
   selectedAssets: string[],
   paginationSize: number,
 ): CategoryInfo[] => {
+  // Ungrouped sorts have nothing to jump to — an "All Assets" entry per page
+  // would be noise, and an empty list is what disables the nav button
+  if (isUngroupedSortType(sortType)) return [];
+
   // If showing all on one page, use the simpler original logic
   if (paginationSize === -1) {
     return getSimpleCategoriesWithPageInfo(

@@ -14,6 +14,21 @@ export const isValidRepeatFolder = (folderName: string): boolean => {
 };
 
 /**
+ * Filename portion of a `fileId`, with any subfolder prefix stripped
+ * (`2_sonic/abc_image` → `abc_image`). Anything ordering or grouping assets
+ * "by name" uses this, so an asset sits where its own name puts it rather than
+ * where its folder does.
+ */
+export const getAssetFileName = (
+  fileId: string,
+  subfolder?: string,
+): string => {
+  if (!subfolder) return fileId;
+  const slashIndex = fileId.indexOf('/');
+  return slashIndex === -1 ? fileId : fileId.substring(slashIndex + 1);
+};
+
+/**
  * Parse a subfolder name into its repeat count and label components
  * @param subfolder - Folder name (e.g., "2_sonic")
  * @returns Object with repeatCount and label, or null if invalid

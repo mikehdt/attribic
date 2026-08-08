@@ -9,6 +9,7 @@ import { hasState } from '../store/assets/utils';
 import { ClassFilterMode, type VisibilitySettings } from '../store/filters';
 import type { CaptionMode } from '../store/project/types';
 import { composeDimensions, naturalCompare } from './helpers';
+import { getAssetFileName } from './subfolder-utils';
 
 /**
  * Apply visibility-based filtering using per-class modes.
@@ -312,6 +313,16 @@ const applySorting = (
     switch (sortType) {
       case SortType.NAME:
         comparison = naturalCompare(a.fileId, b.fileId);
+        break;
+
+      case SortType.INDEX:
+        // Same alphabetical intent as NAME, but on the bare filename: with no
+        // categories to fall back on, the subfolder prefix would otherwise
+        // clump folders together and defeat the flat 1..n ordering
+        comparison = naturalCompare(
+          getAssetFileName(a.fileId, a.subfolder),
+          getAssetFileName(b.fileId, b.subfolder),
+        );
         break;
 
       case SortType.IMAGE_SIZE:

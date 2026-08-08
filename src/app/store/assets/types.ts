@@ -18,6 +18,8 @@ export enum TagState {
 
 export enum SortType {
   NAME = 'Name',
+  // Name order with no grouping at all — a flat 1..n run of every asset
+  INDEX = 'Index',
   IMAGE_SIZE = 'ImageSize',
   BUCKET_SIZE = 'BucketSize',
   SCALED = 'Scaled',
