@@ -3,6 +3,7 @@ import { createSlice } from '@reduxjs/toolkit';
 
 import { coreReducers } from './reducers';
 import {
+  ArchiveViewMode,
   ClassFilterMode,
   FilterMode,
   Filters,
@@ -21,6 +22,7 @@ const initialVisibility: VisibilitySettings = {
   scopeTagless: false,
   scopeSelected: false,
   showModified: false,
+  archiveView: ArchiveViewMode.HIDDEN,
 };
 
 const initialState: Filters = {
@@ -79,6 +81,7 @@ export const {
   addFilenamePattern,
   removeFilenamePattern,
   setVisibilityClassMode,
+  setVisibilityArchiveView,
   toggleVisibilityScopeTagless,
   toggleVisibilityScopeSelected,
   toggleVisibilityModified,

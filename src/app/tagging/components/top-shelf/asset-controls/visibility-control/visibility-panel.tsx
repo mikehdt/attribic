@@ -5,7 +5,7 @@ import { Checkbox } from '@/app/shared/checkbox';
 import { FormTitle } from '@/app/shared/form-title/form-title';
 import { SectionDivider } from '@/app/shared/section-divider/section-divider';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
-import { ClassFilterMode } from '@/app/store/filters';
+import { ArchiveViewMode, ClassFilterMode } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
 import { selectCaptionMode } from '@/app/store/project';
 
@@ -19,6 +19,12 @@ const CLASS_MODES: Array<{ value: ClassFilterMode; label: string }> = [
   { value: ClassFilterMode.ANY, label: 'Any' },
   { value: ClassFilterMode.ALL, label: 'All' },
   { value: ClassFilterMode.INVERSE, label: 'Inverse' },
+];
+
+const ARCHIVE_VIEW_OPTIONS: Array<{ value: ArchiveViewMode; label: string }> = [
+  { value: ArchiveViewMode.HIDDEN, label: 'Hidden' },
+  { value: ArchiveViewMode.MIXED, label: 'Mixed in' },
+  { value: ArchiveViewMode.ONLY, label: 'Archive only' },
 ];
 
 const formatCategoryList = (categories: string[]) => {
@@ -38,10 +44,12 @@ export const VisibilityPanel = () => {
     selectedAssetsCount,
     hasTaglessAssets,
     hasModifiedAssets,
+    hasArchivedAssets,
     handleSetClassMode,
     handleToggleScopeTagless,
     handleToggleScopeSelected,
     handleToggleModified,
+    handleSetArchiveView,
   } = useVisibilityControl();
 
   const captionMode = useAppSelector(selectCaptionMode);
@@ -90,6 +98,20 @@ export const VisibilityPanel = () => {
           onChange={handleToggleModified}
           label="Show modified assets only"
         />
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            Archived assets
+          </span>
+          <SegmentedControl
+            options={ARCHIVE_VIEW_OPTIONS}
+            value={visibility.archiveView}
+            disabled={!hasArchivedAssets}
+            width="full"
+            size="sm"
+            onChange={handleSetArchiveView}
+          />
+        </div>
       </div>
 
       {/* Class filter sections */}

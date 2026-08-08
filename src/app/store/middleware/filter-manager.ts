@@ -13,6 +13,7 @@ import {
   editTag,
   resetAllModifiedTags,
   resetTags,
+  selectHasArchivedAssets,
   selectHasModifiedAssets,
   selectHasTaglessAssets,
 } from '../assets';
@@ -25,6 +26,7 @@ import {
 import { IoState } from '../assets/types';
 import {
   addFilenamePattern,
+  ArchiveViewMode,
   batchCleanupVisibility,
   ClassFilterMode,
   clearBucketFilters,
@@ -192,6 +194,10 @@ const cleanupVisibilityBatch = (
     visibility.scopeSelected && state.selection.selectedAssets.length === 0;
   const clearShowModified =
     visibility.showModified && !selectHasModifiedAssets(state);
+  // Restoring the last archived asset drops the view back to the default
+  const resetArchiveView =
+    visibility.archiveView !== ArchiveViewMode.HIDDEN &&
+    !selectHasArchivedAssets(state);
 
   // Class modes — collect those that should reset to OFF
   const classSelections: Array<{
@@ -218,6 +224,7 @@ const cleanupVisibilityBatch = (
     clearScopeTagless ||
     clearScopeSelected ||
     clearShowModified ||
+    resetArchiveView ||
     resetClassModes.length > 0
   ) {
     dispatch(
@@ -225,6 +232,7 @@ const cleanupVisibilityBatch = (
         clearScopeTagless,
         clearScopeSelected,
         clearShowModified,
+        resetArchiveView,
         resetClassModes,
       }),
     );

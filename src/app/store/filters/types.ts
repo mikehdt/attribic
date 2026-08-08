@@ -25,6 +25,18 @@ export enum ClassFilterMode {
 }
 
 /**
+ * How archived assets participate in the gallery view.
+ * - HIDDEN: excluded entirely (default)
+ * - MIXED: shown alongside normal assets, dimmed and badged
+ * - ONLY: exclusively archived assets
+ */
+export enum ArchiveViewMode {
+  HIDDEN = 'Hidden',
+  MIXED = 'Mixed',
+  ONLY = 'Only',
+}
+
+/**
  * Per-class visibility settings. Between classes, logic is always AND.
  * Each class can be OFF (no filtering), or set to ANY/ALL/INVERSE.
  */
@@ -41,6 +53,7 @@ export type VisibilitySettings = {
   scopeSelected: boolean;
   // Modified — boolean on/off
   showModified: boolean;
+  archiveView: ArchiveViewMode;
 };
 
 export enum PaginationSize {

@@ -12,13 +12,16 @@ import { useCallback, useMemo } from 'react';
 
 import { type ColorScheme } from '@/app/shared/section-divider/section-divider';
 import {
+  selectHasArchivedAssets,
   selectHasModifiedAssets,
   selectHasTaglessAssets,
 } from '@/app/store/assets';
 import {
+  ArchiveViewMode,
   ClassFilterMode,
   selectFilterCount,
   selectVisibility,
+  setVisibilityArchiveView,
   setVisibilityClassMode,
   toggleVisibilityModified,
   toggleVisibilityScopeSelected,
@@ -57,6 +60,7 @@ export const useVisibilityControl = () => {
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
   const hasTaglessAssets = useAppSelector(selectHasTaglessAssets);
   const hasModifiedAssets = useAppSelector(selectHasModifiedAssets);
+  const hasArchivedAssets = useAppSelector(selectHasArchivedAssets);
   const triggerPhrases = useAppSelector(selectTriggerPhrases);
 
   const sections: SectionConfig[] = useMemo(() => {
@@ -157,6 +161,11 @@ export const useVisibilityControl = () => {
     [dispatch],
   );
 
+  const handleSetArchiveView = useCallback(
+    (mode: ArchiveViewMode) => dispatch(setVisibilityArchiveView(mode)),
+    [dispatch],
+  );
+
   // Count how many classes/scopes are actively filtering
   // A class only counts if it has both a non-OFF mode AND selections to filter with
   const activeCount = useMemo(() => {
@@ -167,12 +176,14 @@ export const useVisibilityControl = () => {
     if (visibility.scopeTagless) count++;
     if (visibility.scopeSelected) count++;
     if (visibility.showModified) count++;
+    if (visibility.archiveView !== ArchiveViewMode.HIDDEN) count++;
     return count;
   }, [
     sections,
     visibility.scopeTagless,
     visibility.scopeSelected,
     visibility.showModified,
+    visibility.archiveView,
   ]);
 
   return {
@@ -182,9 +193,11 @@ export const useVisibilityControl = () => {
     selectedAssetsCount,
     hasTaglessAssets,
     hasModifiedAssets,
+    hasArchivedAssets,
     handleSetClassMode,
     handleToggleScopeTagless,
     handleToggleScopeSelected,
     handleToggleModified,
+    handleSetArchiveView,
   };
 };

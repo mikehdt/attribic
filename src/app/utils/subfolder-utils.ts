@@ -7,6 +7,16 @@
 const REPEAT_FOLDER_PATTERN = /^(\d+)_([a-zA-Z0-9-]+)$/;
 
 /**
+ * App-managed folder holding archived assets. Not a repeat folder — excluded
+ * from training datasets, project counts, and import dedupe by the
+ * repeat-folder allowlists.
+ */
+export const ARCHIVE_FOLDER = '.archive';
+
+export const isArchiveSubfolder = (subfolder?: string): boolean =>
+  subfolder === ARCHIVE_FOLDER;
+
+/**
  * Check if a folder name matches the repeat folder pattern
  */
 export const isValidRepeatFolder = (folderName: string): boolean => {

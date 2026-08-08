@@ -2,7 +2,7 @@
 import { createSelector } from '@reduxjs/toolkit';
 
 import type { RootState } from '../';
-import { ClassFilterMode, FilterCount } from './types';
+import { ArchiveViewMode, ClassFilterMode, FilterCount } from './types';
 
 // Base selectors that extract filter state from RootState
 // Note: These are local versions to avoid circular dependency with index.ts
@@ -67,6 +67,7 @@ export const selectHasActiveVisibility = createSelector(
     visibility.scopeTagless ||
     visibility.scopeSelected ||
     visibility.showModified ||
+    visibility.archiveView !== ArchiveViewMode.HIDDEN ||
     (visibility.tags !== ClassFilterMode.OFF && filterTags.length > 0) ||
     (visibility.nameSearch !== ClassFilterMode.OFF &&
       filenamePatterns.length > 0) ||
@@ -91,6 +92,7 @@ export const selectHasVisibilitySettings = createSelector(
     visibility.scopeTagless ||
     visibility.scopeSelected ||
     visibility.showModified ||
+    visibility.archiveView !== ArchiveViewMode.HIDDEN ||
     visibility.tags !== ClassFilterMode.OFF ||
     visibility.nameSearch !== ClassFilterMode.OFF ||
     visibility.sizes !== ClassFilterMode.OFF ||

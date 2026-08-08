@@ -1,5 +1,9 @@
 import { type ImageAsset, SortDirection, SortType } from '@/app/store/assets';
-import { getAssetFileName, parseSubfolder } from '@/app/utils/subfolder-utils';
+import {
+  getAssetFileName,
+  isArchiveSubfolder,
+  parseSubfolder,
+} from '@/app/utils/subfolder-utils';
 
 // The single category used by sorts that deliberately don't group. One group
 // means no headers render, so the gallery reads as one continuous run.
@@ -104,6 +108,9 @@ export const getSortCategory = (
     case SortType.FOLDER:
       // If asset is in a subfolder, use the parsed label as category
       // Otherwise, use "Root" as category
+      if (isArchiveSubfolder(asset.subfolder)) {
+        return 'Archived';
+      }
       if (asset.subfolder) {
         const parsed = parseSubfolder(asset.subfolder);
         if (parsed) {
@@ -165,8 +172,15 @@ export const sortCategories = (
         break;
 
       case SortType.FOLDER:
-        // Subfolders always come first, Root always last (regardless of direction)
+        // Subfolders always come first, then Root, then Archived (regardless
+        // of direction) — the archive is meta, so it always trails.
         // Primary: repeat count (0-9 ASC, 9-0 DESC), tiebreak: label (always a-z)
+        const aIsArchived = a === 'Archived';
+        const bIsArchived = b === 'Archived';
+        if (aIsArchived || bIsArchived) {
+          return aIsArchived === bIsArchived ? 0 : aIsArchived ? 1 : -1;
+        }
+
         const aIsRoot = a === 'Root';
         const bIsRoot = b === 'Root';
 

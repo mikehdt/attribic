@@ -1,4 +1,4 @@
-import { FilmIcon } from 'lucide-react';
+import { ArchiveIcon, FilmIcon } from 'lucide-react';
 import Image from 'next/image';
 import { memo, MouseEvent, useCallback } from 'react';
 
@@ -14,12 +14,14 @@ import {
   setCurrentAsset,
 } from '@/app/store/selection';
 import { getImageUrl } from '@/app/utils/image-utils';
+import { isArchiveSubfolder } from '@/app/utils/subfolder-utils';
 
 type PreviewState = 'select' | 'deselect' | null;
 
 type GridCellProps = {
   assetId: string;
   fileExtension: string;
+  subfolder?: string;
   filteredIndex: number;
   dimensions: ImageDimensions;
   lastModified: number;
@@ -33,6 +35,7 @@ type GridCellProps = {
 const GridCellComponent = ({
   assetId,
   fileExtension,
+  subfolder,
   filteredIndex,
   dimensions,
   lastModified,
@@ -52,6 +55,7 @@ const GridCellComponent = ({
   const projectName = useAppSelector(selectProjectFolderName);
 
   const isVideo = isSupportedVideoExtension(`.${fileExtension}`);
+  const isArchived = isArchiveSubfolder(subfolder);
 
   const fileName = `${assetId}.${fileExtension}`;
   const baseUrl = getImageUrl(fileName, projectName || undefined);
@@ -142,7 +146,7 @@ const GridCellComponent = ({
     >
       {isVideo ? (
         <video
-          className="pointer-events-none h-full w-full object-contain"
+          className={`pointer-events-none h-full w-full object-contain ${isArchived ? 'opacity-50' : ''}`}
           src={imageUrl}
           muted
           playsInline
@@ -150,7 +154,7 @@ const GridCellComponent = ({
         />
       ) : (
         <Image
-          className="object-contain"
+          className={`object-contain ${isArchived ? 'opacity-50' : ''}`}
           src={imageUrl}
           alt=""
           fill
@@ -185,6 +189,15 @@ const GridCellComponent = ({
         </span>
       )}
 
+      {isArchived && (
+        <span
+          className={`absolute top-1.5 rounded bg-black/50 p-0.5 text-white ${isVideo ? 'right-8' : 'right-1.5'}`}
+          title="Archived"
+        >
+          <ArchiveIcon className="h-3.5 w-3.5" />
+        </span>
+      )}
+
       <span
         className="absolute bottom-1 left-1 rounded bg-black/50 px-1 text-xs font-medium text-white tabular-nums"
         title={`${dimensions.width} × ${dimensions.height}`}
@@ -202,6 +215,7 @@ const gridCellPropsAreEqual = (
 ): boolean =>
   prevProps.assetId === nextProps.assetId &&
   prevProps.fileExtension === nextProps.fileExtension &&
+  prevProps.subfolder === nextProps.subfolder &&
   prevProps.filteredIndex === nextProps.filteredIndex &&
   prevProps.lastModified === nextProps.lastModified &&
   prevProps.blurDataUrl === nextProps.blurDataUrl &&

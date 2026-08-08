@@ -1,4 +1,5 @@
 // Utility functions for tag state management
+import { isArchiveSubfolder } from '../../utils/subfolder-utils';
 import { ImageAsset, TagState } from './types';
 
 // Bitwise & 0 would always return 0 so let's check it specifically
@@ -83,13 +84,15 @@ export const buildImageIndexMap = (
 
 /**
  * Build a cached map of tag counts across all assets.
- * Only counts tags that aren't marked for deletion.
+ * Only counts tags that aren't marked for deletion. Archived assets are
+ * excluded so their tags don't surface in autocomplete or the Tags view.
  */
 export const buildTagCountsCache = (
   images: ImageAsset[],
 ): { [tag: string]: number } => {
   const tagCounts: { [tag: string]: number } = {};
   for (const asset of images) {
+    if (isArchiveSubfolder(asset.subfolder)) continue;
     for (const tag of asset.tagList) {
       // Only count tags that aren't marked for deletion
       if (!hasState(asset.tagStatus[tag], TagState.TO_DELETE)) {

@@ -2,6 +2,7 @@
 import { PayloadAction } from '@reduxjs/toolkit';
 
 import {
+  ArchiveViewMode,
   ClassFilterMode,
   FilterArrayKey,
   FilterMode,
@@ -40,6 +41,7 @@ const resetVisibility = (state: Filters) => {
   state.visibility.scopeTagless = false;
   state.visibility.scopeSelected = false;
   state.visibility.showModified = false;
+  state.visibility.archiveView = ArchiveViewMode.HIDDEN;
 };
 
 export const coreReducers = {
@@ -256,6 +258,13 @@ export const coreReducers = {
     state.visibility.showModified = !state.visibility.showModified;
   },
 
+  setVisibilityArchiveView: (
+    state: Filters,
+    { payload }: PayloadAction<ArchiveViewMode>,
+  ) => {
+    state.visibility.archiveView = payload;
+  },
+
   /**
    * Batch cleanup for visibility settings — applies multiple scope clears and
    * class mode resets in a single state transition instead of N separate dispatches.
@@ -269,6 +278,7 @@ export const coreReducers = {
       clearScopeTagless?: boolean;
       clearScopeSelected?: boolean;
       clearShowModified?: boolean;
+      resetArchiveView?: boolean;
       resetClassModes?: (
         | 'tags'
         | 'nameSearch'
@@ -283,6 +293,8 @@ export const coreReducers = {
     if (payload.clearScopeTagless) state.visibility.scopeTagless = false;
     if (payload.clearScopeSelected) state.visibility.scopeSelected = false;
     if (payload.clearShowModified) state.visibility.showModified = false;
+    if (payload.resetArchiveView)
+      state.visibility.archiveView = ArchiveViewMode.HIDDEN;
     if (payload.resetClassModes) {
       for (const key of payload.resetClassModes) {
         state.visibility[key] = ClassFilterMode.OFF;

@@ -20,10 +20,11 @@ import {
   selectSelectedAssets,
   selectSelectedAssetsCount,
 } from '@/app/store/selection';
-import { parseSubfolder } from '@/app/utils/subfolder-utils';
+import { ARCHIVE_FOLDER, parseSubfolder } from '@/app/utils/subfolder-utils';
 
 const DESTINATION_ROOT = '__root__';
 const DESTINATION_NEW = '__new__';
+const DESTINATION_ARCHIVE = '__archive__';
 
 // Regex for the label portion of a repeat folder name
 const LABEL_PATTERN = /^[a-zA-Z0-9-]+$/;
@@ -217,6 +218,36 @@ export const useMoveToFolderModal = ({
     projectInfo.projectFolderName,
   ]);
 
+  // Archiving is a selected-assets-only operation — the filtered scope can
+  // sweep in assets the user never chose, which archive must not do.
+  const isSelectedOnlyScope =
+    hasSelectedAssets &&
+    (!hasActiveFilters ||
+      (applyToSelectedAssets && !applyToAssetsWithActiveFilters));
+
+  // The archive is a meta destination, kept out of folderOptions so the
+  // rename/count machinery never sees it
+  const archiveOption = useMemo(() => {
+    const archivedInScope = sourceFolderSummary[ARCHIVE_FOLDER] ?? 0;
+    const disabledByScope = !isSelectedOnlyScope;
+    return {
+      count: folderTotals[ARCHIVE_FOLDER] ?? 0,
+      isSource: archivedInScope > 0,
+      disabledByScope,
+      disabled:
+        disabledByScope ||
+        (resolvedAssetIds.length > 0 &&
+          archivedInScope === resolvedAssetIds.length),
+    };
+  }, [
+    sourceFolderSummary,
+    folderTotals,
+    isSelectedOnlyScope,
+    resolvedAssetIds.length,
+  ]);
+
+  const isArchiveMode = selectedDestination === DESTINATION_ARCHIVE;
+
   // Picking the folder the assets already sit in renames it rather than moving
   // them anywhere — the move itself carries every asset across to the new name
   const isRenameMode = folderOptions.some(
@@ -239,6 +270,7 @@ export const useMoveToFolderModal = ({
 
   // Resolved destination folder name (null = root)
   const resolvedDestination = useMemo((): string | null => {
+    if (selectedDestination === DESTINATION_ARCHIVE) return ARCHIVE_FOLDER;
     if (selectedDestination === DESTINATION_ROOT) return null;
     if (selectedDestination === DESTINATION_NEW) {
       if (!newLabel.trim() || newRepeatCount < 1) return null;
@@ -290,9 +322,11 @@ export const useMoveToFolderModal = ({
   const isSelectedDestinationDisabled = useMemo(() => {
     if (!selectedDestination) return true;
     if (selectedDestination === DESTINATION_NEW) return false;
+    if (selectedDestination === DESTINATION_ARCHIVE)
+      return archiveOption.disabled;
     const option = folderOptions.find((o) => o.value === selectedDestination);
     return option?.disabled ?? false;
-  }, [selectedDestination, folderOptions]);
+  }, [selectedDestination, folderOptions, archiveOption.disabled]);
 
   // Scoping validation (same as add-tags-modal)
   const hasInvalidConstraints =
@@ -345,6 +379,10 @@ export const useMoveToFolderModal = ({
   // already in, or to a new folder when that folder isn't renameable.
   useEffect(() => {
     if (!isOpen || selectedDestination === DESTINATION_NEW) return;
+    // A valid archive choice survives; a scope-disabled one falls through to
+    // the fallback below
+    if (selectedDestination === DESTINATION_ARCHIVE && !archiveOption.disabled)
+      return;
 
     const selected = folderOptions.find((o) => o.value === selectedDestination);
     if (selected && !selected.disabled) return;
@@ -352,7 +390,7 @@ export const useMoveToFolderModal = ({
     const renameable = folderOptions.find((o) => o.isCurrent);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional default when no valid destination is selected
     setSelectedDestination(renameable ? renameable.value : DESTINATION_NEW);
-  }, [isOpen, folderOptions, selectedDestination]);
+  }, [isOpen, folderOptions, selectedDestination, archiveOption.disabled]);
 
   // Seed the rename fields from the folder being renamed
   useEffect(() => {
@@ -386,13 +424,15 @@ export const useMoveToFolderModal = ({
 
     try {
       const dest =
-        selectedDestination === DESTINATION_ROOT
-          ? null
-          : selectedDestination === DESTINATION_NEW
-            ? `${newRepeatCount}_${newLabel.trim()}`
-            : isRenameMode
-              ? renameFolderName
-              : selectedDestination;
+        selectedDestination === DESTINATION_ARCHIVE
+          ? ARCHIVE_FOLDER
+          : selectedDestination === DESTINATION_ROOT
+            ? null
+            : selectedDestination === DESTINATION_NEW
+              ? `${newRepeatCount}_${newLabel.trim()}`
+              : isRenameMode
+                ? renameFolderName
+                : selectedDestination;
 
       const result = await dispatch(
         moveAssetsToFolderThunk({
@@ -446,6 +486,16 @@ export const useMoveToFolderModal = ({
       return `Renaming ${selectedDestination} — all ${count} ${assetWord} in it move to the new name.`;
     }
 
+    if (isArchiveMode) {
+      if (effectiveMoveCount === 0) {
+        return `All assets are already archived.`;
+      }
+      if (effectiveMoveCount < count) {
+        return `${effectiveMoveCount} of ${count} ${assetWord} will be archived (${count - effectiveMoveCount} already archived).`;
+      }
+      return `${count} ${assetWord} will be archived. Empty folders will be deleted.`;
+    }
+
     // A half-typed new folder isn't a destination yet, so the counts below
     // would read as "nothing to move" rather than "nothing chosen"
     const hasDestination =
@@ -463,6 +513,7 @@ export const useMoveToFolderModal = ({
     sourceFolderCount,
     effectiveMoveCount,
     isRenameMode,
+    isArchiveMode,
     selectedDestination,
     resolvedDestination,
   ]);
@@ -483,6 +534,8 @@ export const useMoveToFolderModal = ({
     selectedDestination,
     setSelectedDestination,
     folderOptions,
+    archiveOption,
+    isArchiveMode,
     isNewFolderMode,
     newRepeatCount,
     setNewRepeatCount,
@@ -526,5 +579,6 @@ export const useMoveToFolderModal = ({
     // Constants for destination values
     DESTINATION_ROOT,
     DESTINATION_NEW,
+    DESTINATION_ARCHIVE,
   };
 };

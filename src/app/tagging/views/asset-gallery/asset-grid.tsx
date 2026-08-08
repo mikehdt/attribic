@@ -91,6 +91,7 @@ export const AssetGrid = ({
                   assetId={asset.fileId}
                   filteredIndex={asset.filteredIndex}
                   fileExtension={asset.fileExtension}
+                  subfolder={asset.subfolder}
                   dimensions={asset.dimensions}
                   lastModified={asset.lastModified}
                   blurDataUrl={asset.blurDataUrl}

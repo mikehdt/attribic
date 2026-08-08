@@ -6,10 +6,14 @@ import {
 } from '../store/assets';
 import { isAssetDirty } from '../store/assets/helpers';
 import { hasState } from '../store/assets/utils';
-import { ClassFilterMode, type VisibilitySettings } from '../store/filters';
+import {
+  ArchiveViewMode,
+  ClassFilterMode,
+  type VisibilitySettings,
+} from '../store/filters';
 import type { CaptionMode } from '../store/project/types';
 import { composeDimensions, naturalCompare } from './helpers';
-import { getAssetFileName } from './subfolder-utils';
+import { getAssetFileName, isArchiveSubfolder } from './subfolder-utils';
 
 /**
  * Apply visibility-based filtering using per-class modes.
@@ -100,6 +104,21 @@ export const applyVisibilityFilters = ({
   };
 
   const filteredAssets = sortedAssets.filter((img: ImageAsset) => {
+    // Archive view gates everything downstream — hidden archived assets are
+    // invisible to counts, pagination, select-all and scoping alike.
+    if (
+      visibility.archiveView === ArchiveViewMode.HIDDEN &&
+      isArchiveSubfolder(img.subfolder)
+    ) {
+      return false;
+    }
+    if (
+      visibility.archiveView === ArchiveViewMode.ONLY &&
+      !isArchiveSubfolder(img.subfolder)
+    ) {
+      return false;
+    }
+
     // --- Scope filters (ANDed with everything) ---
 
     // Scope: tagless/uncaptioned — only assets with no persisted tags (or empty caption)

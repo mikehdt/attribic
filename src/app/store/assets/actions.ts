@@ -31,6 +31,7 @@ import {
   saveAssetTags,
   saveMultipleAssetTags,
 } from '@/app/utils/asset-actions';
+import { ARCHIVE_FOLDER } from '@/app/utils/subfolder-utils';
 
 import type { ProjectState } from '../project/types';
 import { addToast } from '../toasts';
@@ -417,10 +418,13 @@ export const moveAssetsToFolderThunk = createAsyncThunk<
         });
       }
 
-      const destLabel = destination ?? 'root';
+      const assetWord = result.moved.length !== 1 ? 'assets' : 'asset';
       dispatch(
         addToast({
-          children: `Moved ${result.moved.length} ${result.moved.length !== 1 ? 'assets' : 'asset'} to ${destLabel}`,
+          children:
+            destination === ARCHIVE_FOLDER
+              ? `Archived ${result.moved.length} ${assetWord}`
+              : `Moved ${result.moved.length} ${assetWord} to ${destination ?? 'root'}`,
         }),
       );
     }

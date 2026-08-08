@@ -4,6 +4,7 @@ import { createSelector, weakMapMemoize } from '@reduxjs/toolkit';
 import { applyVisibilityFilters } from '../../utils/filter-actions';
 import { composeDimensions } from '../../utils/helpers';
 import { wrapSelector } from '../../utils/selector-perf';
+import { isArchiveSubfolder } from '../../utils/subfolder-utils';
 import type { RootState } from '../';
 import { TagSortDirection, TagSortType } from '../project';
 import type { CaptionMode } from '../project/types';
@@ -194,9 +195,17 @@ export const selectAllAssetsTagless = createSelector(
 export const selectHasSubfolderAssets = createSelector(
   [selectAllImages],
   (images) => {
-    // Check if any asset is in a subfolder
-    return images.some((asset) => asset.subfolder !== undefined);
+    // Check if any asset is in a subfolder (the archive isn't one)
+    return images.some(
+      (asset) =>
+        asset.subfolder !== undefined && !isArchiveSubfolder(asset.subfolder),
+    );
   },
+);
+
+export const selectHasArchivedAssets = createSelector(
+  [selectAllImages],
+  (images) => images.some((asset) => isArchiveSubfolder(asset.subfolder)),
 );
 
 // Using selectSaveProgress and selectLoadProgress from the slice
@@ -242,10 +251,10 @@ export const selectAllSubfolders = createSelector(
   (images) => {
     if (!images.length) return {};
 
-    // Group by subfolder
+    // Group by subfolder — the archive is a meta folder, not a filterable one
     const subfolderCounts: KeyedCountList = {};
     for (const item of images) {
-      if (item.subfolder) {
+      if (item.subfolder && !isArchiveSubfolder(item.subfolder)) {
         subfolderCounts[item.subfolder] =
           (subfolderCounts[item.subfolder] || 0) + 1;
       }

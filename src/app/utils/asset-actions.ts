@@ -22,7 +22,7 @@ import type { CaptionMode } from '../store/project/types';
 import { calculateKohyaBucket, KOHYA_CONFIGS } from './image-utils';
 import { getProjectCaptionMode } from './project-actions';
 import { sharp } from './sharp';
-import { isValidRepeatFolder } from './subfolder-utils';
+import { ARCHIVE_FOLDER, isValidRepeatFolder } from './subfolder-utils';
 
 /**
  * Get the current data path - either from provided project path or default
@@ -201,8 +201,8 @@ export const getImageFileList = async (
   for (const subdir of subdirectories) {
     const subdirName = subdir.name;
 
-    // Check if this is a valid repeat folder
-    if (!isValidRepeatFolder(subdirName)) {
+    // Only repeat folders and the archive are part of the asset set
+    if (!isValidRepeatFolder(subdirName) && subdirName !== ARCHIVE_FOLDER) {
       // Skip invalid folders silently
       continue;
     }
@@ -792,7 +792,11 @@ export const moveAssetsToFolder = async (
   const dir = path.isAbsolute(dataPath) ? dataPath : path.resolve(dataPath);
 
   // Validate destination folder name
-  if (destination !== null && !isValidRepeatFolder(destination)) {
+  if (
+    destination !== null &&
+    destination !== ARCHIVE_FOLDER &&
+    !isValidRepeatFolder(destination)
+  ) {
     return {
       success: false,
       moved: [],

@@ -15,6 +15,7 @@ import {
 import { handleAssetClick, selectAssetIsSelected } from '@/app/store/selection';
 import { composeDimensions, getAspectRatio } from '@/app/utils/helpers';
 import { getImageUrl } from '@/app/utils/image-utils';
+import { isArchiveSubfolder } from '@/app/utils/subfolder-utils';
 
 import { CaptionManager } from '../tagging/caption-manager';
 import { HybridManager } from '../tagging/hybrid-manager';
@@ -162,9 +163,11 @@ const AssetComponent = ({
         : 'bg-(--unselected-bg) text-(--unselected-text)' // Normal unselected
   }`;
 
+  const isArchived = isArchiveSubfolder(subfolder);
+
   return (
     <div
-      className={`my-2 flex w-full overflow-hidden rounded-lg border transition-shadow max-md:flex-col ${isSelected ? 'border-(--border-selected) shadow-sm shadow-purple-200 dark:shadow-purple-700' : 'border-(--border)'}`}
+      className={`my-2 flex w-full overflow-hidden rounded-lg border transition-shadow max-md:flex-col ${isSelected ? 'border-(--border-selected) shadow-sm shadow-purple-200 dark:shadow-purple-700' : 'border-(--border)'} ${isArchived ? 'opacity-60' : ''}`}
     >
       <div
         className={selectionPanelClasses}

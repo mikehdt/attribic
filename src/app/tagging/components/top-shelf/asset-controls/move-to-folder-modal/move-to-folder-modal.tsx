@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ArchiveIcon,
   FolderInputIcon,
   FolderOpenIcon,
   FolderPenIcon,
@@ -41,6 +42,8 @@ export const MoveToFolderModal = ({
     selectedDestination,
     setSelectedDestination,
     folderOptions,
+    archiveOption,
+    isArchiveMode,
     isNewFolderMode,
     newRepeatCount,
     setNewRepeatCount,
@@ -75,6 +78,7 @@ export const MoveToFolderModal = ({
 
     DESTINATION_ROOT,
     DESTINATION_NEW,
+    DESTINATION_ARCHIVE,
   } = useMoveToFolderModal({ isOpen, onClose });
 
   return (
@@ -287,6 +291,68 @@ export const MoveToFolderModal = ({
                 }
               />
             )}
+
+            {/* Archive — a meta destination, set apart from the real folders */}
+            <div className="mt-1 border-t border-t-slate-300 pt-1 dark:border-t-slate-600">
+              <label
+                className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                  archiveOption.disabled
+                    ? 'cursor-not-allowed opacity-40'
+                    : isArchiveMode
+                      ? 'cursor-pointer bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                      : 'cursor-pointer text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/50'
+                }`}
+              >
+                <div
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-all ${
+                    archiveOption.disabled
+                      ? 'border-slate-300 bg-slate-50'
+                      : isArchiveMode
+                        ? 'border-amber-700 bg-linear-to-t from-amber-600 to-amber-500 inset-shadow-xs inset-shadow-amber-300'
+                        : 'border-slate-400 bg-linear-to-t from-slate-100 to-white inset-shadow-xs inset-shadow-slate-300'
+                  }`}
+                >
+                  {isArchiveMode && (
+                    <div className="h-1.5 w-1.5 rounded-full bg-white shadow-sm shadow-amber-800" />
+                  )}
+                </div>
+                <input
+                  type="radio"
+                  name="destination"
+                  value={DESTINATION_ARCHIVE}
+                  checked={isArchiveMode}
+                  disabled={archiveOption.disabled}
+                  onChange={() => setSelectedDestination(DESTINATION_ARCHIVE)}
+                  className="sr-only"
+                />
+
+                <ArchiveIcon
+                  className={`h-4 w-4 shrink-0 ${
+                    archiveOption.isSource
+                      ? 'text-indigo-400'
+                      : 'text-slate-400'
+                  }`}
+                />
+                <span className="flex-1">Archive</span>
+
+                {archiveOption.isSource && (
+                  <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    source
+                  </span>
+                )}
+
+                <span className="text-xs text-slate-400 tabular-nums">
+                  {archiveOption.count}
+                </span>
+              </label>
+
+              {archiveOption.disabledByScope && (
+                <p className="px-2 text-xs text-slate-400">
+                  Only selected assets can be archived — untick the filtered
+                  scope.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -364,22 +430,28 @@ export const MoveToFolderModal = ({
             onClick={handleSubmit}
             disabled={!isFormValid || isMoving}
             neutralDisabled
-            color="sky"
+            color={isArchiveMode ? 'amber' : 'sky'}
             size="md"
             width="lg"
           >
-            {isRenameMode ? (
+            {isArchiveMode ? (
+              <ArchiveIcon className="mr-1 h-4 w-4" />
+            ) : isRenameMode ? (
               <FolderPenIcon className="mr-1 h-4 w-4" />
             ) : (
               <FolderInputIcon className="mr-1 h-4 w-4" />
             )}
-            {isRenameMode
+            {isArchiveMode
               ? isMoving
-                ? 'Renaming...'
-                : 'Rename'
-              : isMoving
-                ? 'Moving...'
-                : 'Move'}
+                ? 'Archiving...'
+                : 'Archive'
+              : isRenameMode
+                ? isMoving
+                  ? 'Renaming...'
+                  : 'Rename'
+                : isMoving
+                  ? 'Moving...'
+                  : 'Move'}
           </Button>
         </div>
       </div>

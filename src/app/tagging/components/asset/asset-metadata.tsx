@@ -29,7 +29,10 @@ import {
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectProjectFolderName } from '@/app/store/project';
-import { parseSubfolder } from '@/app/utils/subfolder-utils';
+import {
+  isArchiveSubfolder,
+  parseSubfolder,
+} from '@/app/utils/subfolder-utils';
 
 // Individual selectors for metadata - avoids creating new object references
 const selectFilenamePatterns = (state: RootState) =>
@@ -221,6 +224,14 @@ const AssetMetadataComponent = ({
             <FolderOpenIcon />
             {subfolderDisplay}
           </Button>
+        )}
+
+        {/* The archive is not a filterable subfolder, so this is a plain chip */}
+        {isArchiveSubfolder(subfolder) && (
+          <span className="flex items-center gap-1 self-center rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+            <ArchiveIcon className="h-3.5 w-3.5" />
+            Archived
+          </span>
         )}
       </span>
 
