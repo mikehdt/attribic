@@ -122,7 +122,9 @@ const GridCellComponent = ({
   return (
     <div
       data-asset-id={assetId}
-      className={`group relative aspect-square cursor-pointer scroll-mt-36 scroll-mb-4 overflow-hidden rounded-lg border bg-(--surface-muted) transition-shadow select-none ${borderClasses} ${currentClasses}`}
+      // scroll-mb clears the fixed bottom shelf (h-12) with the same 1rem
+      // breathing room the top margin allows past the shelf + sticky header
+      className={`group relative aspect-square cursor-pointer scroll-mt-36 scroll-mb-16 overflow-hidden rounded-lg border bg-(--surface-muted) transition-shadow select-none ${borderClasses} ${currentClasses}`}
       onClick={onCellClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
