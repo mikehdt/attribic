@@ -62,9 +62,7 @@ const GridCellComponent = ({
     (e: MouseEvent) => {
       if (e.shiftKey) {
         e.preventDefault(); // no text selection on shift-click
-        dispatch(
-          handleAssetClick({ assetId, isShiftHeld: true, currentPage }),
-        );
+        dispatch(handleAssetClick({ assetId, isShiftHeld: true, currentPage }));
       } else {
         dispatch(setCurrentAsset(assetId));
       }
@@ -124,7 +122,7 @@ const GridCellComponent = ({
   return (
     <div
       data-asset-id={assetId}
-      className={`group relative aspect-square scroll-mt-36 scroll-mb-4 cursor-pointer overflow-hidden rounded-lg border bg-(--surface-muted) transition-shadow select-none ${borderClasses} ${currentClasses}`}
+      className={`group relative aspect-square cursor-pointer scroll-mt-36 scroll-mb-4 overflow-hidden rounded-lg border bg-(--surface-muted) transition-shadow select-none ${borderClasses} ${currentClasses}`}
       onClick={onCellClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
@@ -150,14 +148,12 @@ const GridCellComponent = ({
       )}
 
       <div
-        className={`absolute top-1 left-1 z-10 rounded-md bg-white/80 p-1 transition-opacity dark:bg-slate-900/70 ${
+        className={`absolute top-1 left-1 z-10 flex rounded-md bg-white/80 p-1 transition-opacity dark:bg-slate-900/70 ${
           showAsSelected || isPreview
             ? 'opacity-100'
             : 'opacity-0 group-hover:opacity-100'
         }`}
       >
-        {/* Not tabbable: the grid's keyboard surface is the roving current
-            asset (arrows + Space/Enter), not a tab stop per cell */}
         <Checkbox
           isSelected={isSelected}
           onChange={onToggleSelection}
