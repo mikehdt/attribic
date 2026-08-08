@@ -181,9 +181,12 @@ const CaptionEditorComponent = ({
     if (!isFocused) setIsActive(false);
   }, [isFocused]);
 
-  // Shared text styles — must be identical on backdrop and textarea
+  // Shared text styles — must be identical on backdrop and textarea. Font
+  // size is deliberately unset: both layers inherit it (preflight gives the
+  // textarea `font: inherit`), so a container can scale the editor — e.g. the
+  // grid inspector's text-sm — without the layers drifting apart.
   const textStyles =
-    'text-base leading-relaxed whitespace-pre-wrap break-words font-[inherit]';
+    'leading-relaxed whitespace-pre-wrap break-words font-[inherit]';
 
   return (
     <div className="flex h-full w-full flex-col">

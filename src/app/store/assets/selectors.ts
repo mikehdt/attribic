@@ -54,6 +54,17 @@ export const selectAssetHasModifiedTags = (
   return isAssetDirty(asset, captionMode);
 };
 
+// Plain O(1) lookup — returns the stored asset reference, so useSelector's
+// equality check only fails when this asset's record actually changes
+export const selectAssetById = (
+  state: RootState,
+  assetId: string,
+): ImageAsset | undefined => {
+  const images = selectAllImages(state);
+  const indexById = selectImageIndexById(state);
+  return images[indexById[assetId]];
+};
+
 // Plain selector for caption text — returns primitive string so useSelector handles equality
 export const selectAssetCaptionText = (
   state: RootState,

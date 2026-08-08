@@ -69,30 +69,33 @@ const TagListComponent = ({
   const tagNames = useMemo(() => tags.map((tag) => tag.name), [tags]);
 
   return (
-    <div className="flex h-full w-full">
-      <div className="flex flex-1 flex-col">
-        <TagsDisplay
-          tags={tags}
-          sortable={sortable}
-          tagEditMode={tagEditMode}
-          assetId={assetId}
-          sensors={sensors}
-          onReorder={onReorder}
-          editingTagName={editingTagName}
-          editValue={editValue}
-          isDuplicateEdit={isDuplicateEdit}
-          matchingTagName={matchingTagName}
-          suggestionsExclude={tagNames}
-          onToggleTag={handleToggleTag}
-          onEditTag={handleStartEditWithCancel}
-          onDeleteTag={onDeleteTag}
-          onEditChange={handleEditChange}
-          onEditSubmit={handleEditSubmit}
-          onEditCancel={handleEditCancel}
-          onEditSelect={handleEditSelect}
-        />
+    <div className="flex h-full w-full flex-col gap-y-2">
+      <TagsDisplay
+        tags={tags}
+        sortable={sortable}
+        tagEditMode={tagEditMode}
+        assetId={assetId}
+        sensors={sensors}
+        onReorder={onReorder}
+        editingTagName={editingTagName}
+        editValue={editValue}
+        isDuplicateEdit={isDuplicateEdit}
+        matchingTagName={matchingTagName}
+        suggestionsExclude={tagNames}
+        onToggleTag={handleToggleTag}
+        onEditTag={handleStartEditWithCancel}
+        onDeleteTag={onDeleteTag}
+        onEditChange={handleEditChange}
+        onEditSubmit={handleEditSubmit}
+        onEditCancel={handleEditCancel}
+        onEditSelect={handleEditSelect}
+      />
 
-        <div className="mt-2">
+      {/* Copy shares the add-tag row rather than owning a column: the input
+          wrapper absorbs the spare width, which pushes the button to the
+          lower-right corner it has always occupied */}
+      <div className="flex h-full items-start gap-2">
+        <div className="min-w-0 flex-1">
           <InputTag
             mode="add"
             value={inputValue}
@@ -107,29 +110,29 @@ const TagListComponent = ({
             onSuggestionSelect={handleSuggestionAdd}
           />
         </div>
-      </div>
 
-      {tags.length > 0 && (
-        <div className="self-end">
-          <Button
-            onClick={handleCopyTags}
-            variant="ghost"
-            size="xs"
-            color={copyInfo.isPartialCopy ? 'teal' : 'slate'}
-            title={
-              copyInfo.isPartialCopy
-                ? `Copy ${copyInfo.selectedCount} selected ${copyInfo.selectedCount === 1 ? 'tag' : 'tags'} as comma-separated list`
-                : 'Copy all tags as comma-separated list'
-            }
-          >
-            {copyInfo.isPartialCopy ? (
-              <ClipboardListIcon className="h-4 w-4 opacity-50" />
-            ) : (
-              <ClipboardIcon className="h-4 w-4 opacity-50" />
-            )}
-          </Button>
-        </div>
-      )}
+        {tags.length > 0 && (
+          <div className="self-end">
+            <Button
+              onClick={handleCopyTags}
+              variant="ghost"
+              size="xs"
+              color={copyInfo.isPartialCopy ? 'teal' : 'slate'}
+              title={
+                copyInfo.isPartialCopy
+                  ? `Copy ${copyInfo.selectedCount} selected ${copyInfo.selectedCount === 1 ? 'tag' : 'tags'} as comma-separated list`
+                  : 'Copy all tags as comma-separated list'
+              }
+            >
+              {copyInfo.isPartialCopy ? (
+                <ClipboardListIcon />
+              ) : (
+                <ClipboardIcon />
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
