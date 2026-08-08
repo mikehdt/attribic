@@ -74,7 +74,7 @@ export const AssetGrid = ({
   const renderedGroups = useMemo(
     () =>
       groupedAssets.map(({ category, assets }) => (
-        <div key={category} className="asset-group">
+        <div key={category} className="asset-group mb-6">
           <CategoryHeader category={category} visible={showCategoryHeaders} />
 
           <div className="my-2 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2">

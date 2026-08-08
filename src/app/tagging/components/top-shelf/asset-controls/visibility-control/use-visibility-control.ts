@@ -123,13 +123,13 @@ export const useVisibilityControl = () => {
       },
       {
         key: 'triggerPhrases',
-        label: 'Trigger words',
+        label: 'Trigger phrases',
         icon: HighlighterIcon,
         color: 'green',
         count: triggerPhrases.length,
         mode: visibility.triggerPhrases,
         available: triggerPhrases.length > 0,
-        emptyCategory: 'trigger word',
+        emptyCategory: 'trigger phrase',
       },
     ];
     return all;

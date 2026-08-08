@@ -25,7 +25,7 @@ export const AssetList = ({
   const renderedAssets = useMemo(
     () =>
       groupedAssets.map(({ category, assets }) => (
-        <div key={category} className="asset-group">
+        <div key={category} className="asset-group mb-6">
           <CategoryHeader category={category} visible={showCategoryHeaders} />
 
           {assets.map((asset) => {
@@ -56,7 +56,13 @@ export const AssetList = ({
           })}
         </div>
       )),
-    [groupedAssets, showCategoryHeaders, currentPage, shiftHoverPreview, onAssetHover],
+    [
+      groupedAssets,
+      showCategoryHeaders,
+      currentPage,
+      shiftHoverPreview,
+      onAssetHover,
+    ],
   );
 
   return <>{renderedAssets}</>;
