@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { KeyboardEvent } from 'react';
 
 import { isSupportedVideoExtension } from '@/app/constants';
-import { type ImageAsset,selectAssetById } from '@/app/store/assets';
+import { type ImageAsset, selectAssetById } from '@/app/store/assets';
 import { useAppSelector } from '@/app/store/hooks';
 import {
   selectCaptionMode,
@@ -18,6 +18,8 @@ import { HybridManager } from '@/app/tagging/components/tagging/hybrid-manager';
 import { TaggingManager } from '@/app/tagging/components/tagging/tagging-manager';
 import { composeDimensions, getAspectRatio } from '@/app/utils/helpers';
 import { getImageUrl } from '@/app/utils/image-utils';
+
+import { useScrollFade } from './use-scroll-fade';
 
 // Preview letterbox height; the width calc below must use the same value so
 // the contain box (and therefore the crop overlay) is sized exactly
@@ -120,6 +122,26 @@ const InspectorContent = ({ asset }: { asset: ImageAsset }) => {
 };
 
 /**
+ * Overlay hinting that the panel continues past this edge. It matches the
+ * panel's own background so the content appears to dissolve into it, and it
+ * eases out once that edge is reached.
+ */
+const ScrollFade = ({
+  edge,
+  isVisible,
+}: {
+  edge: 'top' | 'bottom';
+  isVisible: boolean;
+}) => (
+  <div
+    aria-hidden
+    className={`pointer-events-none absolute inset-x-0 h-8 from-slate-200 to-transparent transition-opacity duration-200 dark:from-slate-900 ${
+      edge === 'top' ? 'top-0 bg-linear-to-b' : 'bottom-0 bg-linear-to-t'
+    } ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+  />
+);
+
+/**
  * Escape hands keyboard control back to the grid: blurring the focused widget
  * makes the grid's window-level nav active again (it only needs focus to be
  * outside the inspector). Widgets with an Escape meaning of their own win
@@ -172,6 +194,8 @@ export const GridSidebar = ({
   const asset = useAppSelector((state) =>
     currentAssetId ? selectAssetById(state, currentAssetId) : undefined,
   );
+  const { scrollRef, contentRef, hasScrollAbove, hasScrollBelow } =
+    useScrollFade();
 
   return (
     <div
@@ -180,7 +204,7 @@ export const GridSidebar = ({
       <div
         data-grid-inspector
         onKeyDown={handleEscapeToGrid}
-        className="fixed top-24 bottom-14 flex w-90 flex-col overflow-y-auto rounded-lg border border-(--border) bg-slate-50 max-lg:right-4 max-lg:z-30 max-lg:max-w-[calc(100vw-2rem)] max-lg:shadow-xl dark:bg-slate-900"
+        className="fixed top-24 bottom-14 flex w-90 flex-col overflow-hidden rounded-lg border border-(--border) bg-slate-50 max-lg:right-4 max-lg:z-30 max-lg:max-w-[calc(100vw-2rem)] max-lg:shadow-xl dark:bg-slate-900"
       >
         <button
           data-inspector-close
@@ -191,17 +215,32 @@ export const GridSidebar = ({
         >
           <XIcon className="h-4 w-4" />
         </button>
-        {asset ? (
-          <InspectorContent asset={asset} />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center text-slate-400 dark:text-slate-500">
-            <ImageIcon className="h-10 w-10" />
-            <p className="text-sm">
-              Click an image to inspect it, or use the arrow keys to navigate.
-              Tab jumps into this panel; Escape returns to the grid.
-            </p>
+
+        <div
+          ref={scrollRef}
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+        >
+          {/* Single wrapper so the fade hook has one element to measure the
+              content against, and so the metadata's mt-auto still resolves
+              against the full panel height when the content is short */}
+          <div ref={contentRef} className="flex flex-1 flex-col">
+            {asset ? (
+              <InspectorContent asset={asset} />
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center text-slate-400 dark:text-slate-500">
+                <ImageIcon className="h-10 w-10" />
+                <p className="text-sm">
+                  Click an image to inspect it, or use the arrow keys to
+                  navigate. Tab jumps into this panel; Escape returns to the
+                  grid.
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        <ScrollFade edge="top" isVisible={hasScrollAbove} />
+        <ScrollFade edge="bottom" isVisible={hasScrollBelow} />
       </div>
     </div>
   );
