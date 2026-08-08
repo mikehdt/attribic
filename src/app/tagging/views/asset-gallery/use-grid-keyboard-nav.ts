@@ -77,15 +77,17 @@ const scrollCellIntoView = (assetId: string) => {
 };
 
 /**
- * Focus the inspector's primary control: the add-tag input when present
- * (tag/hybrid modes), else the first focusable control (caption mode).
- * Returns false when the inspector is hidden (narrow viewports) or has no
- * asset loaded, so the caller can let native Tab proceed.
+ * Focus the inspector's primary control: the first tag chip when the asset
+ * has tags (arrows take over from there), else the add-tag input, else the
+ * first focusable control (caption mode). Returns false when the inspector
+ * is hidden (narrow viewports) or has no asset loaded, so the caller can
+ * summon the overlay or let native Tab proceed.
  */
 const focusInspector = (): boolean => {
   const panel = document.querySelector<HTMLElement>('[data-grid-inspector]');
   if (!panel || panel.offsetWidth === 0) return false;
   const target =
+    panel.querySelector<HTMLElement>('[data-tag-chip][tabindex="0"]') ??
     panel.querySelector<HTMLElement>('[data-tag-input="add"]:not(:disabled)') ??
     panel.querySelector<HTMLElement>(
       'button:not(:disabled):not([data-inspector-close]), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
@@ -108,8 +110,9 @@ const focusInspector = (): boolean => {
  * - Escape clears the current asset (after first closing the narrow-viewport
  *   inspector overlay, when it's open).
  * - Tab (with an asset inspected, no control focused) crosses to the
- *   inspector's tag input; Escape from the inspector crosses back (handled in
- *   GridSidebar). Shift+Tab and Tab from a focused control stay native. At
+ *   inspector's first tag — or its add-tag input when untagged; Escape from
+ *   the inspector crosses back (handled in GridSidebar). Shift+Tab and Tab
+ *   from a focused control stay native. At
  *   widths where the inspector column is hidden, Tab first opens it as an
  *   overlay via the passed controls.
  *
