@@ -252,7 +252,7 @@ const AssetComponent = ({
         </div>
 
         <div
-          className={`min-h-40 bg-slate-50 p-4 max-md:p-2 ${imageZoom ? 'md:w-1/4' : 'md:w-3/4'} dark:bg-slate-900`}
+          className={`min-h-40 w-full bg-slate-50 p-4 max-md:p-2 ${imageZoom ? 'md:w-1/4' : 'md:w-3/4'} dark:bg-slate-900`}
         >
           {captionMode === 'caption' ? (
             <CaptionManager assetId={assetId} />

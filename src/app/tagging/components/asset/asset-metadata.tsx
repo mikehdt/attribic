@@ -160,7 +160,7 @@ const AssetMetadataComponent = ({
 
   return (
     <div
-      className={`flex w-full items-end gap-2 border-t px-2 py-1 text-sm inset-shadow-sm transition-colors ${
+      className={`flex w-full flex-wrap items-center gap-2 border-t px-2 py-1 text-sm tabular-nums inset-shadow-sm transition-colors ${
         saveFailed
           ? 'border-t-rose-300 bg-rose-100 inset-shadow-white dark:border-t-rose-600 dark:bg-rose-900 dark:inset-shadow-rose-700'
           : hasModifiedTags
@@ -168,7 +168,7 @@ const AssetMetadataComponent = ({
             : 'border-t-(--border) bg-(--surface) inset-shadow-white dark:inset-shadow-slate-700'
       }`}
     >
-      <span className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-2 py-0.5 tabular-nums">
+      <span className="flex flex-wrap gap-2 py-0.5">
         <Button
           type="button"
           color="sky"
@@ -222,20 +222,20 @@ const AssetMetadataComponent = ({
             {subfolderDisplay}
           </Button>
         )}
+      </span>
 
-        <span
-          className="ml-2 cursor-pointer self-center truncate text-(--unselected-text) transition-colors hover:text-(--foreground) max-sm:order-1 max-sm:w-full max-sm:pt-2"
-          style={{ textShadow: 'var(--surface-elevated) 0 1px 0' }}
-          onClick={handleCopyAssetPath}
-          title="Click to copy the full filename"
-        >
-          {highlightPatterns(displayFilename, filenamePatterns)}
-        </span>
+      <span
+        className="cursor-pointer self-center truncate py-1 text-(--unselected-text) transition-colors hover:text-(--foreground) max-sm:order-1 max-sm:w-full"
+        style={{ textShadow: 'var(--surface-elevated) 0 1px 0' }}
+        onClick={handleCopyAssetPath}
+        title="Click to copy the full filename"
+      >
+        {highlightPatterns(displayFilename, filenamePatterns)}
       </span>
 
       {saveFailed ? (
         <span
-          className="flex shrink-0 items-center gap-1 self-center pl-2 text-rose-700 dark:text-rose-300"
+          className="flex shrink-0 items-center gap-1 self-center text-rose-700 dark:text-rose-300"
           title="The tag file could not be written — check the file isn't locked, then save again"
         >
           <TriangleAlertIcon className="h-4 w-4" />
@@ -244,7 +244,7 @@ const AssetMetadataComponent = ({
       ) : null}
 
       {hasModifiedTags ? (
-        <span className="-my-0.5 flex shrink-0 gap-2 pl-2">
+        <span className="-my-0.5 ml-auto flex shrink-0 gap-2">
           <Button
             color="stone"
             size="sm"
