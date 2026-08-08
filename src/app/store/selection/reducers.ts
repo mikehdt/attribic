@@ -72,6 +72,10 @@ const selectionSlice = createSlice({
     setShiftHoverAssetId: (state, action: PayloadAction<string | null>) => {
       state.shiftHoverAssetId = action.payload;
     },
+    // Set the asset under inspection (null clears it)
+    setCurrentAsset: (state, action: PayloadAction<string | null>) => {
+      state.currentAssetId = action.payload;
+    },
     // Remap fileIds after assets are moved between folders
     remapSelectedAssets: (
       state,
@@ -81,6 +85,9 @@ const selectionSlice = createSlice({
       state.selectedAssets = state.selectedAssets.map((id) => remaps[id] ?? id);
       if (state.lastClickedAssetId && remaps[state.lastClickedAssetId]) {
         state.lastClickedAssetId = remaps[state.lastClickedAssetId];
+      }
+      if (state.currentAssetId && remaps[state.currentAssetId]) {
+        state.currentAssetId = remaps[state.currentAssetId];
       }
     },
   },
@@ -94,6 +101,7 @@ export const {
   trackAssetClick,
   clearClickTracking,
   setShiftHoverAssetId,
+  setCurrentAsset,
 } = selectionSlice.actions;
 
 export const selectionReducer = selectionSlice.reducer;

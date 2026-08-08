@@ -15,6 +15,14 @@ export const selectLastClickAction = (state: RootState) =>
 const selectShiftHoverAssetId = (state: RootState) =>
   state.selection.shiftHoverAssetId;
 
+export const selectCurrentAssetId = (state: RootState) =>
+  state.selection.currentAssetId;
+
+// Plain function returning a boolean primitive — cells subscribe to this so
+// moving the current asset re-renders two cells, not the whole page
+export const selectAssetIsCurrent = (state: RootState, assetId: string) =>
+  state.selection.currentAssetId === assetId;
+
 // Memoized Set for O(1) selection lookups — rebuilt only when selectedAssets changes
 export const selectSelectedAssetsSet = createSelector(
   [selectSelectedAssets],

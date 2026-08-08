@@ -3,6 +3,7 @@ import { PayloadAction } from '@reduxjs/toolkit';
 import {
   PreferencesState,
   TagEditMode,
+  TaggingViewMode,
   ThemeMode,
   TrainingViewMode,
 } from './types';
@@ -27,6 +28,13 @@ export const coreReducers = {
     { payload }: PayloadAction<TrainingViewMode>,
   ) => {
     state.trainingViewMode = payload;
+  },
+
+  setTaggingViewMode: (
+    state: PreferencesState,
+    { payload }: PayloadAction<TaggingViewMode>,
+  ) => {
+    state.taggingViewMode = payload;
   },
 
   setKeepTaggerModelInMemory: (

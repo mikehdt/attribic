@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { AssetList } from '../../views/asset-list';
+import { AssetGallery } from '../../views/asset-gallery/asset-gallery';
 
 export default function TaggingPage() {
   const params = useParams();
@@ -14,5 +14,5 @@ export default function TaggingPage() {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [currentPage]);
 
-  return <AssetList currentPage={currentPage} />;
+  return <AssetGallery currentPage={currentPage} />;
 }

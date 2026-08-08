@@ -23,6 +23,7 @@ const preferencesSlice = createSlice({
     selectTheme: (state) => state.theme,
     selectTagEditMode: (state) => state.tagEditMode,
     selectTrainingViewMode: (state) => state.trainingViewMode,
+    selectTaggingViewMode: (state) => state.taggingViewMode,
     selectKeepTaggerModelInMemory: (state) => state.keepTaggerModelInMemory,
     selectLastTrainingModelId: (state) => state.lastTrainingModelId,
   },
@@ -33,6 +34,7 @@ export const {
   setTheme,
   setTagEditMode,
   setTrainingViewMode,
+  setTaggingViewMode,
   setKeepTaggerModelInMemory,
   setLastTrainingModelId,
   hydratePreferences,
@@ -41,6 +43,7 @@ export const {
   selectTheme,
   selectTagEditMode,
   selectTrainingViewMode,
+  selectTaggingViewMode,
   selectKeepTaggerModelInMemory,
   selectLastTrainingModelId,
 } = preferencesSlice.selectors;
@@ -63,5 +66,5 @@ export const subscribePreferencesPersistence = (store: {
   });
 };
 
-export type { ThemeMode, TrainingViewMode } from './types';
+export type { TaggingViewMode, ThemeMode, TrainingViewMode } from './types';
 export { TagEditMode } from './types';

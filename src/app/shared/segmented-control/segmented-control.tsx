@@ -19,6 +19,8 @@ type SegmentedControlProps<T extends string> = {
   width?: 'inline' | 'full';
   /** Shadow tone. 'default' is subtler for page backgrounds; 'surface' is brighter for menus/cards. */
   tone?: SegmentedControlTone;
+  /** Render only each option's icon; the label still serves as title/aria-label. */
+  iconOnly?: boolean;
   className?: string;
 };
 
@@ -67,6 +69,7 @@ export function SegmentedControl<T extends string>({
   size = 'md',
   width = 'inline',
   tone = 'default',
+  iconOnly = false,
   className = '',
 }: SegmentedControlProps<T>) {
   const sizes = sizeClasses[size];
@@ -92,6 +95,7 @@ export function SegmentedControl<T extends string>({
             type="button"
             disabled={disabled}
             aria-pressed={isSelected}
+            aria-label={iconOnly ? option.label : undefined}
             onClick={() => onChange(option.value)}
             title={option.label}
             className={`flex flex-auto cursor-pointer items-center justify-center gap-1 transition-colors ${sizes.button} ${roundedClasses} ${
@@ -101,7 +105,7 @@ export function SegmentedControl<T extends string>({
             }`}
           >
             {option.icon}
-            {option.label}
+            {!iconOnly && option.label}
           </button>
         );
       })}

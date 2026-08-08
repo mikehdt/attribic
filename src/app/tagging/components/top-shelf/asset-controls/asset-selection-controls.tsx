@@ -4,6 +4,7 @@ import { memo } from 'react';
 import { ResponsiveToolbarGroup } from '@/app/shared/responsive-toolbar-group';
 import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 
+import { ViewModeToggle } from '../view-mode-toggle';
 import { AssetSortControls } from './asset-sort-controls';
 import { ClearFiltersButton } from './clear-filters-button';
 import { ClearSelectionButton } from './clear-selection-button';
@@ -20,9 +21,11 @@ const AssetSelectionControlsComponent = () => {
       position="left"
       breakpoint="lg"
     >
-      <VisibilityControl />
+      <ViewModeToggle />
 
       <ToolbarDivider />
+
+      <VisibilityControl />
 
       <span className="mx-0.5 cursor-default text-xs text-slate-500 max-xl:hidden">
         by

@@ -1,4 +1,8 @@
-import type { PreferencesState, TrainingViewMode } from './types';
+import type {
+  PreferencesState,
+  TaggingViewMode,
+  TrainingViewMode,
+} from './types';
 import { TagEditMode, type ThemeMode } from './types';
 
 const STORAGE_KEY = 'preferences';
@@ -21,6 +25,7 @@ const VALID_VIEW_MODES: TrainingViewMode[] = [
   'advanced',
   'expert',
 ];
+const VALID_TAGGING_VIEW_MODES: TaggingViewMode[] = ['list', 'grid'];
 
 /**
  * Deterministic default preferences. Used as the Redux initial state on BOTH
@@ -33,6 +38,7 @@ export const preferenceDefaults: PreferencesState = {
   theme: 'auto',
   tagEditMode: TagEditMode.BUTTON,
   trainingViewMode: 'intermediate',
+  taggingViewMode: 'list',
   keepTaggerModelInMemory: true,
   lastTrainingModelId: null,
 };
@@ -56,6 +62,11 @@ const sanitisePreferences = (parsed: unknown): PreferencesState => {
     )
       ? (o.trainingViewMode as TrainingViewMode)
       : preferenceDefaults.trainingViewMode,
+    taggingViewMode: VALID_TAGGING_VIEW_MODES.includes(
+      o.taggingViewMode as TaggingViewMode,
+    )
+      ? (o.taggingViewMode as TaggingViewMode)
+      : preferenceDefaults.taggingViewMode,
     keepTaggerModelInMemory:
       typeof o.keepTaggerModelInMemory === 'boolean'
         ? o.keepTaggerModelInMemory

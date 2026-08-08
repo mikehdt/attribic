@@ -3,6 +3,8 @@ export type ThemeMode = 'light' | 'dark' | 'auto';
 export type TrainingViewMode =
   'simple' | 'intermediate' | 'advanced' | 'expert';
 
+export type TaggingViewMode = 'list' | 'grid';
+
 export enum TagEditMode {
   BUTTON = 'BUTTON',
   DOUBLE_CLICK = 'DOUBLE_CLICK',
@@ -12,6 +14,8 @@ export type PreferencesState = {
   theme: ThemeMode;
   tagEditMode: TagEditMode;
   trainingViewMode: TrainingViewMode;
+  /** Tagging gallery renderer: full-detail rows or a compact image grid. */
+  taggingViewMode: TaggingViewMode;
   /**
    * Whether to keep auto-tagger models loaded in GPU/CPU memory after a
    * batch completes. When false, the sidecar is asked to release the model
