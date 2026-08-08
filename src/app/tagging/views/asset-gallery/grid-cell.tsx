@@ -105,6 +105,8 @@ const GridCellComponent = ({
         : isSelected;
   const isPreview = previewState !== null && previewState !== undefined;
 
+  // Opacity and border colour are transitioned on the cell below, so the
+  // preview eases in and out rather than snapping as the range changes
   const borderClasses = showAsSelected
     ? isPreview
       ? 'border-(--border-selected) opacity-80'
@@ -124,7 +126,7 @@ const GridCellComponent = ({
       data-asset-id={assetId}
       // scroll-mb clears the fixed bottom shelf (h-12) with the same 1rem
       // breathing room the top margin allows past the shelf + sticky header
-      className={`group relative aspect-square cursor-pointer scroll-mt-36 scroll-mb-16 overflow-hidden rounded-lg border bg-(--surface-muted) transition-shadow select-none ${borderClasses} ${currentClasses}`}
+      className={`group relative aspect-square cursor-pointer scroll-mt-36 scroll-mb-16 overflow-hidden rounded-lg border bg-(--surface-muted) transition-[box-shadow,opacity,border-color] select-none ${borderClasses} ${currentClasses}`}
       onClick={onCellClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}

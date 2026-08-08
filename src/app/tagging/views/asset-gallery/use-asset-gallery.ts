@@ -34,6 +34,13 @@ export type GroupedAssets = {
 
 export type ShiftHoverPreview = ReturnType<typeof selectShiftHoverPreview>;
 
+// Moving between grid cells crosses the gutter, firing mouseleave before the
+// next mouseenter. Clearing the hover immediately would drop the whole range
+// preview for those few frames, which reads as a flicker. Holding the clear
+// briefly lets the re-enter cancel it, so the preview only ever fades out when
+// the pointer genuinely leaves the assets.
+const HOVER_CLEAR_DELAY_MS = 120;
+
 /**
  * All renderer-agnostic gallery state: filtering, pagination, category
  * grouping, shift-range tracking and hover preview. The list and grid views
@@ -52,6 +59,17 @@ export const useAssetGallery = (currentPage: number) => {
   const isShiftHeldRef = useRef(false);
   // Track currently hovered asset (using ref to avoid re-renders on hover)
   const hoveredAssetRef = useRef<string | null>(null);
+  // Pending gutter-crossing clear, see HOVER_CLEAR_DELAY_MS
+  const hoverClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const cancelPendingHoverClear = useCallback(() => {
+    if (hoverClearTimeoutRef.current !== null) {
+      clearTimeout(hoverClearTimeoutRef.current);
+      hoverClearTimeoutRef.current = null;
+    }
+  }, []);
 
   // Clear shift-click tracking when page changes
   useEffect(() => {
@@ -69,15 +87,18 @@ export const useAssetGallery = (currentPage: number) => {
         }
       }
     };
+    // Releasing shift is an explicit "stop previewing" — clear it at once
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
         isShiftHeldRef.current = false;
+        cancelPendingHoverClear();
         dispatch(setShiftHoverAssetId(null));
       }
     };
     // Also clear on blur (window loses focus)
     const handleBlur = () => {
       isShiftHeldRef.current = false;
+      cancelPendingHoverClear();
       dispatch(setShiftHoverAssetId(null));
     };
 
@@ -89,8 +110,9 @@ export const useAssetGallery = (currentPage: number) => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
+      cancelPendingHoverClear();
     };
-  }, [dispatch]);
+  }, [cancelPendingHoverClear, dispatch]);
 
   const paginationSize = useAppSelector(selectPaginationSize);
   const sortType = useAppSelector(selectSortType);
@@ -120,11 +142,21 @@ export const useAssetGallery = (currentPage: number) => {
   const handleAssetHover = useCallback(
     (assetId: string | null) => {
       hoveredAssetRef.current = assetId;
-      if (isShiftHeldRef.current) {
-        dispatch(setShiftHoverAssetId(assetId));
+      if (!isShiftHeldRef.current) return;
+
+      cancelPendingHoverClear();
+
+      if (assetId === null) {
+        hoverClearTimeoutRef.current = setTimeout(() => {
+          hoverClearTimeoutRef.current = null;
+          dispatch(setShiftHoverAssetId(null));
+        }, HOVER_CLEAR_DELAY_MS);
+        return;
       }
+
+      dispatch(setShiftHoverAssetId(assetId));
     },
-    [dispatch],
+    [cancelPendingHoverClear, dispatch],
   );
 
   // Group assets by sort category. The shared helper is the single source of
