@@ -211,10 +211,10 @@ function NavButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`absolute rounded-full border p-1.5 shadow-sm backdrop-blur-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+      className={`absolute rounded-full border p-1.5 backdrop-blur-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
         disabled
-          ? 'cursor-default border-slate-200/60 bg-white/20 text-slate-300/30 dark:border-slate-700/60 dark:bg-slate-900/20 dark:text-slate-600/30'
-          : 'cursor-pointer border-slate-300 bg-white/80 text-slate-600 hover:bg-white hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
+          ? 'cursor-default border-slate-200 bg-white/20 text-slate-300 opacity-30 shadow-none dark:border-slate-700 dark:bg-slate-900/20 dark:text-slate-600'
+          : 'cursor-pointer border-slate-300 bg-white/80 text-slate-600 shadow-sm hover:bg-white hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
       } ${className}`}
     >
       {children}
