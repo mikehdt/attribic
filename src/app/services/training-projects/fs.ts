@@ -320,7 +320,15 @@ export async function loadProject(
   const meta = await readMeta(id);
   if (!meta) return null;
   const target = version ?? meta.latestVersion;
-  const v = await readVersion(id, target);
+  // A version that isn't there falls back to the latest rather than reading as
+  // "no such project" — a bookmark, a Recent entry or a second tab can all be
+  // pointing at a version that has since been deleted, and evicting the user
+  // from a project that's sitting on disk is the worse answer of the two.
+  const v =
+    (await readVersion(id, target)) ??
+    (target === meta.latestVersion
+      ? null
+      : await readVersion(id, meta.latestVersion));
   if (!v) return null;
   return { meta, version: v };
 }
@@ -518,11 +526,15 @@ export async function deleteProject(id: string): Promise<boolean> {
  * Delete a single version file. Refuses to delete the last remaining
  * version — callers should delete the whole project instead.
  * If the deleted version was the latest, recomputes meta.latestVersion.
+ *
+ * `remaining` (ascending) is returned alongside the meta so the caller can
+ * pick which version to open next — the latest isn't always the one the user
+ * was standing next to.
  */
 export async function deleteVersion(
   id: string,
   version: number,
-): Promise<TrainingProjectMeta | null> {
+): Promise<{ meta: TrainingProjectMeta; remaining: number[] } | null> {
   const meta = await readMeta(id);
   if (!meta) return null;
 
@@ -539,5 +551,5 @@ export async function deleteVersion(
     updatedAt: new Date().toISOString(),
   };
   await writeMeta(updated);
-  return updated;
+  return { meta: updated, remaining };
 }

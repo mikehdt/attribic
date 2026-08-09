@@ -68,14 +68,14 @@ export async function DELETE(_request: Request, { params }: Params) {
       return NextResponse.json({ error: 'invalid version' }, { status: 400 });
     }
 
-    const meta = await deleteVersion(id, version);
-    if (!meta) {
+    const result = await deleteVersion(id, version);
+    if (!result) {
       return NextResponse.json(
         { error: 'cannot delete — last remaining version or not found' },
         { status: 400 },
       );
     }
-    return NextResponse.json({ meta });
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -22,10 +22,10 @@ import {
 import type { AppThunk } from '../index';
 import { addToast } from '../toasts';
 import {
-  clearLoadedProject,
   forgetModelPaths,
   hydrateFromProject,
   reconcileDatasetFolders,
+  resetToSuggestedDefaults,
   setAppModelDefaults,
   setDatasetHistogram,
   stampSaved,
@@ -491,9 +491,12 @@ export const deleteProject =
       );
       forgetRecentProject(id);
 
+      // Dropping the pointer isn't enough: the form would keep every setting
+      // of a project that no longer exists on disk, ready to be trained or
+      // saved back under a new name. Reset to the same state as New Project.
       const loaded = getState().trainingConfig.loadedProject;
       if (loaded && loaded.id === id) {
-        dispatch(clearLoadedProject());
+        dispatch(resetToSuggestedDefaults());
       }
       dispatch(addToast({ children: 'Project deleted' }));
     } catch (error) {
@@ -512,15 +515,26 @@ export const deleteVersion =
   (id: string, version: number): AppThunk =>
   async (dispatch, getState) => {
     try {
-      const { meta } = await fetchJson<{ meta: TrainingProjectMeta }>(
+      const { meta, remaining } = await fetchJson<{
+        meta: TrainingProjectMeta;
+        remaining: number[];
+      }>(
         `/api/training/projects/${encodeURIComponent(id)}/versions/${version}`,
         { method: 'DELETE' },
       );
 
-      // If we just deleted the loaded version, hop to the latest remaining.
+      // If we just deleted the loaded version, hop to its nearest neighbour in
+      // the same project rather than leaving the form showing settings that no
+      // longer exist. Unlike a project delete there's always somewhere to land:
+      // the last version can't be deleted.
       const loaded = getState().trainingConfig.loadedProject;
       if (loaded && loaded.id === id && loaded.version === version) {
-        dispatch(loadProject(id, meta.latestVersion));
+        dispatch(
+          loadProject(
+            id,
+            neighbourVersion(remaining, version) ?? meta.latestVersion,
+          ),
+        );
       }
       dispatch(addToast({ children: `Deleted v${version}` }));
     } catch (error) {
@@ -534,6 +548,22 @@ export const deleteVersion =
   };
 
 // --- Helpers ---
+
+/**
+ * The version to open after `deleted` goes: the closest one below it, or the
+ * closest above when it was the oldest. Keeps the user where they were in the
+ * project's history — jumping to the newest version after deleting v1 of five
+ * would look like the whole project had changed under them.
+ */
+function neighbourVersion(
+  remaining: number[],
+  deleted: number,
+): number | undefined {
+  const below = remaining.filter((v) => v < deleted);
+  if (below.length > 0) return Math.max(...below);
+  const above = remaining.filter((v) => v > deleted);
+  return above.length > 0 ? Math.min(...above) : undefined;
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
