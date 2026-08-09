@@ -52,6 +52,7 @@ const filtersSlice = createSlice({
     selectFilenamePatterns: (state) => state.filenamePatterns,
     selectPaginationSize: (state) => state.paginationSize,
     selectVisibility: (state) => state.visibility,
+    selectArchiveView: (state) => state.visibility.archiveView,
   },
 });
 
@@ -99,6 +100,7 @@ export const {
   selectFilenamePatterns,
   selectPaginationSize,
   selectVisibility,
+  selectArchiveView,
 } = filtersSlice.selectors;
 
 // Main exports for filters module

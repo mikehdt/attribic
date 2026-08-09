@@ -203,9 +203,25 @@ export const selectHasSubfolderAssets = createSelector(
   },
 );
 
-export const selectHasArchivedAssets = createSelector(
+export const selectArchivedCount = createSelector(
   [selectAllImages],
-  (images) => images.some((asset) => isArchiveSubfolder(asset.subfolder)),
+  (images) =>
+    images.reduce(
+      (count, asset) =>
+        isArchiveSubfolder(asset.subfolder) ? count + 1 : count,
+      0,
+    ),
+);
+
+export const selectHasArchivedAssets = createSelector(
+  [selectArchivedCount],
+  (archivedCount) => archivedCount > 0,
+);
+
+// The working-set total — archived assets sit outside it
+export const selectUnarchivedImageCount = createSelector(
+  [selectAllImages, selectArchivedCount],
+  (images, archivedCount) => images.length - archivedCount,
 );
 
 // Using selectSaveProgress and selectLoadProgress from the slice

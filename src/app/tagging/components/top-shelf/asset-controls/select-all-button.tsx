@@ -2,7 +2,10 @@ import { Grid2x2PlusIcon } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { Button } from '@/app/shared/button';
-import { selectFilteredAssets, selectImageCount } from '@/app/store/assets';
+import {
+  selectFilteredAssets,
+  selectUnarchivedImageCount,
+} from '@/app/store/assets';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   selectMultipleAssets,
@@ -14,7 +17,9 @@ export const SelectAllButton = () => {
 
   const selectedAssetsSet = useAppSelector(selectSelectedAssetsSet);
   const filteredAssets = useAppSelector(selectFilteredAssets);
-  const allAssetsCount = useAppSelector(selectImageCount);
+  // Archive-exclusive total: with the archive hidden (the default), showing
+  // every unarchived asset should still read as "Select All"
+  const allAssetsCount = useAppSelector(selectUnarchivedImageCount);
 
   // Ref for filteredAssets — keeps handleAddAllToSelection callback stable
   const filteredAssetsRef = useRef(filteredAssets);

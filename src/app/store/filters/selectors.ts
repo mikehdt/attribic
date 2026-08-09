@@ -45,7 +45,11 @@ const selectVisibility = (state: RootState) => state.filters.visibility;
 const selectProjectTriggerPhrases = (state: RootState) =>
   state.project.config.triggerPhrases;
 
-export const selectHasActiveVisibility = createSelector(
+/**
+ * Active visibility ignoring the archive view — the archive count has its own
+ * readout, so showing/hiding archives alone shouldn't light up "filtered".
+ */
+export const selectHasActiveNonArchiveVisibility = createSelector(
   selectVisibility,
   selectFilterTags,
   selectFilenamePatterns,
@@ -67,7 +71,6 @@ export const selectHasActiveVisibility = createSelector(
     visibility.scopeTagless ||
     visibility.scopeSelected ||
     visibility.showModified ||
-    visibility.archiveView !== ArchiveViewMode.HIDDEN ||
     (visibility.tags !== ClassFilterMode.OFF && filterTags.length > 0) ||
     (visibility.nameSearch !== ClassFilterMode.OFF &&
       filenamePatterns.length > 0) ||
@@ -79,6 +82,13 @@ export const selectHasActiveVisibility = createSelector(
       filterSubfolders.length > 0) ||
     (visibility.triggerPhrases !== ClassFilterMode.OFF &&
       triggerPhrases.length > 0),
+);
+
+export const selectHasActiveVisibility = createSelector(
+  selectHasActiveNonArchiveVisibility,
+  selectVisibility,
+  (hasNonArchive, visibility) =>
+    hasNonArchive || visibility.archiveView !== ArchiveViewMode.HIDDEN,
 );
 
 /**
