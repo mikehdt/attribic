@@ -76,7 +76,7 @@ export function SegmentedControl<T extends string>({
 
   return (
     <div
-      className={`${width === 'full' ? 'flex w-full' : 'inline-flex'} items-center rounded-sm border border-white/0 bg-slate-100 dark:border-slate-600 dark:bg-slate-700 ${toneClasses[tone]} ${sizes.container} ${disabled ? 'pointer-events-none opacity-40' : ''} ${className}`}
+      className={`${width === 'full' ? 'flex w-full' : 'inline-flex'} items-stretch rounded-sm border border-white/0 bg-slate-100 dark:border-slate-600 dark:bg-slate-700 ${toneClasses[tone]} ${sizes.container} ${disabled ? 'pointer-events-none opacity-40' : ''} ${className}`}
     >
       {options.map((option, index) => {
         const isSelected = value === option.value;

@@ -1,4 +1,4 @@
-import { InfoIcon, TriangleAlertIcon } from 'lucide-react';
+import { ArchiveIcon, InfoIcon, TriangleAlertIcon } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { Checkbox } from '@/app/shared/checkbox';
@@ -22,9 +22,9 @@ const CLASS_MODES: Array<{ value: ClassFilterMode; label: string }> = [
 ];
 
 const ARCHIVE_VIEW_OPTIONS: Array<{ value: ArchiveViewMode; label: string }> = [
-  { value: ArchiveViewMode.HIDDEN, label: 'Hidden' },
-  { value: ArchiveViewMode.MIXED, label: 'Mixed in' },
-  { value: ArchiveViewMode.ONLY, label: 'Archive only' },
+  { value: ArchiveViewMode.HIDDEN, label: 'Hide' },
+  { value: ArchiveViewMode.MIXED, label: 'Combined' },
+  { value: ArchiveViewMode.ONLY, label: 'Only' },
 ];
 
 const formatCategoryList = (categories: string[]) => {
@@ -73,6 +73,7 @@ export const VisibilityPanel = () => {
 
         <div className="flex items-center justify-between gap-1.5">
           <Checkbox
+            size="sm"
             isSelected={visibility.scopeTagless}
             disabled={!hasTaglessAssets || hasTagSelections}
             onChange={handleToggleScopeTagless}
@@ -86,6 +87,7 @@ export const VisibilityPanel = () => {
         </div>
 
         <Checkbox
+          size="sm"
           isSelected={visibility.scopeSelected}
           disabled={selectedAssetsCount === 0}
           onChange={handleToggleScopeSelected}
@@ -93,25 +95,12 @@ export const VisibilityPanel = () => {
         />
 
         <Checkbox
+          size="sm"
           isSelected={visibility.showModified}
           disabled={!hasModifiedAssets}
           onChange={handleToggleModified}
           label="Show modified assets only"
         />
-
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Archived assets
-          </span>
-          <SegmentedControl
-            options={ARCHIVE_VIEW_OPTIONS}
-            value={visibility.archiveView}
-            disabled={!hasArchivedAssets}
-            width="full"
-            size="sm"
-            onChange={handleSetArchiveView}
-          />
-        </div>
       </div>
 
       {/* Class filter sections */}
@@ -124,6 +113,23 @@ export const VisibilityPanel = () => {
       ))}
 
       <EmptyHint sections={sections} />
+
+      <div className="h-px bg-slate-200 shadow-2xs shadow-white dark:bg-slate-500 dark:shadow-slate-800" />
+
+      <div className="p-3 text-slate-500 dark:text-slate-400">
+        <div className="mb-2 flex gap-2">
+          <ArchiveIcon className="h-4 w-4" />
+          <span className="text-xs">Archived assets</span>
+        </div>
+        <SegmentedControl
+          options={ARCHIVE_VIEW_OPTIONS}
+          value={visibility.archiveView}
+          disabled={!hasArchivedAssets}
+          width="full"
+          size="sm"
+          onChange={handleSetArchiveView}
+        />
+      </div>
     </>
   );
 };
@@ -177,7 +183,7 @@ const EmptyHint = ({ sections }: { sections: SectionConfig[] }) => {
       <div className="mt-2 h-px bg-slate-200 shadow-2xs shadow-white dark:bg-slate-500 dark:shadow-slate-800" />
 
       <p className="flex cursor-default px-3 py-3 text-xs text-slate-400 dark:text-slate-500">
-        <InfoIcon className="h-5 w-5" />
+        <InfoIcon className="h-4 w-4" />
         <span className="ml-2 flex-1">
           Select a {formatCategoryList(emptyCategories)} to filter the assets
           list by them.
