@@ -17,6 +17,7 @@ import {
   writeConfig,
   writeThumbnail,
 } from '@/app/services/tagging-projects/fs';
+import { isProjectColor, type ProjectColor } from '@/app/shared/project-colors';
 import type { CaptionMode } from '@/app/store/project/types';
 
 import { validateProjectFolderName } from './project-folder-name';
@@ -37,7 +38,7 @@ export type Project = {
   path: string;
   imageCount?: number;
   title?: string;
-  color?: 'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
+  color?: ProjectColor;
   /** Whether a thumbnail exists; its path is derived from the project name. */
   thumbnail?: boolean;
   thumbnailVersion?: number;
@@ -320,19 +321,8 @@ export const updateProject = async (
       throw new Error('Title must be a string');
     }
 
-    if (updates.color !== undefined) {
-      const validColors = [
-        'slate',
-        'rose',
-        'amber',
-        'teal',
-        'sky',
-        'indigo',
-        'stone',
-      ];
-      if (!validColors.includes(updates.color)) {
-        throw new Error('Invalid color value');
-      }
+    if (updates.color !== undefined && !isProjectColor(updates.color)) {
+      throw new Error('Invalid color value');
     }
 
     // Update the config with new values

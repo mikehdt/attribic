@@ -1,4 +1,5 @@
 import type { TrainingProvider } from '@/app/services/training/types';
+import type { ProjectColor } from '@/app/shared/project-colors';
 import type { FormState } from '@/app/store/training-config/types';
 
 /** Per-project metadata. One of these per saved training project. */
@@ -8,6 +9,8 @@ export type TrainingProjectMeta = {
   createdAt: string;
   updatedAt: string;
   latestVersion: number;
+  /** Display colour for project lists; absent means the default (slate). */
+  color?: ProjectColor;
 };
 
 /** A single version snapshot. One of these per `v{N}.json` file. */

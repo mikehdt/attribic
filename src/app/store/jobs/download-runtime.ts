@@ -17,7 +17,7 @@
 import { fetchJson } from '@/app/utils/fetch-json';
 
 import type { AppThunk } from '../index';
-import { setModelStatus } from '../model-manager';
+import { fetchModelStatuses, setModelStatus } from '../model-manager';
 import { addToast } from '../toasts/reducers';
 import { forgetDeletedModelFiles } from '../training-config/thunks';
 import {
@@ -104,6 +104,10 @@ const ws: {
 function applyDownload(dispatch: ThunkDispatch, entry: SidecarDownload): void {
   const status = STATUS_MAP[entry.status];
 
+  // Before the store learns the new status — the completion check needs to
+  // see what the job was, not what it's about to become.
+  dispatch(reconcileCompletedDownload(entry));
+
   dispatch(
     addJobIfMissing({
       id: entry.job_id,
@@ -153,6 +157,36 @@ function applyDownload(dispatch: ThunkDispatch, entry: SidecarDownload): void {
       status: modelStatusFor(entry.status),
     }),
   );
+}
+
+/**
+ * Refetch model statuses when a download we were watching finishes.
+ *
+ * The sidecar's payload says a model is ready but not *where* — and
+ * `setModelStatus` without a path leaves `resolveInstalledPath` returning
+ * null, so the training form's component field stays empty as if nothing
+ * had downloaded. Only the status route can fill the gap: it reads the
+ * download manifest and computes the variant-aware resolved path (fp8 vs
+ * fp16 filename, single file vs bundle directory), which the client can't
+ * derive on its own.
+ *
+ * Gated on an observed transition out of a live status, not on the record
+ * being completed: resyncs replay every terminal record they find, and a
+ * page load already fetches statuses on its own.
+ */
+function reconcileCompletedDownload(entry: SidecarDownload): AppThunk {
+  return (dispatch, getState) => {
+    if (entry.status !== 'completed') return;
+    const previous = getState().jobs.jobs[entry.job_id]?.status;
+    if (
+      previous !== 'pending' &&
+      previous !== 'running' &&
+      previous !== 'interrupted'
+    ) {
+      return;
+    }
+    void dispatch(fetchModelStatuses());
+  };
 }
 
 /**

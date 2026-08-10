@@ -15,6 +15,7 @@ import { jobPersistenceMiddleware } from './middleware/job-persistence';
 import { modelManagerReducer } from './model-manager';
 import { preferencesReducer } from './preferences';
 import { projectReducer } from './project';
+import { projectListReducer } from './project-list';
 import { selectionReducer } from './selection';
 import { toastsReducer } from './toasts';
 import { trainingConfigReducer } from './training-config';
@@ -29,6 +30,7 @@ const rootReducer = combineReducers({
   modelManager: modelManagerReducer,
   preferences: preferencesReducer,
   project: projectReducer,
+  projectList: projectListReducer,
   selection: selectionReducer,
   toasts: toastsReducer,
   trainingConfig: trainingConfigReducer,

@@ -1,13 +1,14 @@
 import { useCallback, useState } from 'react';
 
 import type { ProjectConfig } from '@/app/services/tagging-projects/fs';
+import type { ProjectColor } from '@/app/shared/project-colors';
 import {
   createProjectThumbnail,
   removeProjectThumbnail,
   updateProject,
 } from '@/app/utils/project-actions';
 
-import type { Project, ProjectColor } from '../types';
+import type { Project } from '../types';
 
 type UseEditProjectOptions = {
   onError?: (message: string) => void;

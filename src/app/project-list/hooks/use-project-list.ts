@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useToast } from '@/app/shared/toast/hooks/use-toast';
 import { resetAssetsState } from '@/app/store/assets';
 import { clearFilters } from '@/app/store/filters';
-import { useAppDispatch } from '@/app/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   resetProjectState,
   setCaptionMode,
@@ -12,6 +12,14 @@ import {
   setProjectInfo,
   setTriggerPhrases,
 } from '@/app/store/project';
+import {
+  selectNewProjectOpen,
+  selectProjectListRefreshToken,
+  selectProjectsFolder,
+  selectShowHidden,
+  setNewProjectOpen,
+  setProjectsFolder,
+} from '@/app/store/project-list';
 import { clearSelection, clearSelectorCaches } from '@/app/store/selection';
 import { getProjectList } from '@/app/utils/project-actions';
 
@@ -24,9 +32,10 @@ export const useProjectList = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
-  const [projectsFolder, setProjectsFolder] = useState('');
-  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const showHidden = useAppSelector(selectShowHidden);
+  const projectsFolder = useAppSelector(selectProjectsFolder);
+  const isNewProjectOpen = useAppSelector(selectNewProjectOpen);
+  const refreshToken = useAppSelector(selectProjectListRefreshToken);
   const { showToast, showErrorToast } = useToast();
 
   const editActions = useEditProject(setProjects, { onError: showErrorToast });
@@ -40,7 +49,7 @@ export const useProjectList = () => {
       const configRes = await fetch('/api/config');
       if (configRes.ok) {
         const config = await configRes.json();
-        setProjectsFolder(config.projectsFolder ?? '');
+        dispatch(setProjectsFolder(config.projectsFolder ?? ''));
       }
 
       // Call server action to get project list (always include hidden, but not private)
@@ -58,38 +67,15 @@ export const useProjectList = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dispatch]);
 
-  const handleSaveProjectsFolder = useCallback(
-    async (folder: string): Promise<{ error?: string }> => {
-      try {
-        const res = await fetch('/api/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectsFolder: folder }),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          return { error: data.error || 'Failed to save' };
-        }
-
-        setProjectsFolder(folder);
-        // Reload projects from the new folder
-        loadProjects();
-        return {};
-      } catch {
-        return { error: 'Failed to save projects folder' };
-      }
-    },
-    [loadProjects],
+  const handleOpenNewProject = useCallback(
+    () => dispatch(setNewProjectOpen(true)),
+    [dispatch],
   );
-
-  const handleOpenNewProject = useCallback(() => setIsNewProjectOpen(true), []);
   const handleCloseNewProject = useCallback(
-    () => setIsNewProjectOpen(false),
-    [],
+    () => dispatch(setNewProjectOpen(false)),
+    [dispatch],
   );
 
   const handleProjectCreated = useCallback(
@@ -109,11 +95,14 @@ export const useProjectList = () => {
     dispatch(clearFilters());
     dispatch(clearSelection());
     clearSelectorCaches();
+  }, [dispatch]);
 
-    // Then load the project list
+  // Loads on mount and again whenever the shelf (folder picker, new-project
+  // creation) bumps the shared refresh token.
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional data fetch on mount; setState runs after the fetch resolves
     loadProjects();
-  }, [loadProjects, dispatch]);
+  }, [loadProjects, refreshToken]);
 
   const handleProjectSelect = useCallback(
     (projectPath: string) => {
@@ -167,9 +156,7 @@ export const useProjectList = () => {
     featuredProjects,
     regularProjects,
     showHidden,
-    setShowHidden,
     projectsFolder,
-    handleSaveProjectsFolder,
     handleProjectSelect,
     loadProjects,
     isNewProjectOpen,

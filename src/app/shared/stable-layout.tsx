@@ -1,11 +1,9 @@
 'use client';
 
-import { GpuIcon } from 'lucide-react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 
-import { GlobalMenu } from '@/app/shared/global-menu';
-import { ShelfInfoRow, TopShelfFrame } from '@/app/shared/shelf';
+import { ProjectListShelf } from '@/app/project-list/project-list-shelf';
 import { TaggingBottomShelf } from '@/app/tagging/components/bottom-shelf/tagging-bottom-shelf';
 import { TaggingTopShelf } from '@/app/tagging/components/top-shelf/tagging-top-shelf';
 import { TrainingTopShelf } from '@/app/training/components/training-top-shelf';
@@ -13,8 +11,6 @@ import { TrainingTopShelf } from '@/app/training/components/training-top-shelf';
 import { selectFilteredAssetsCount } from '../store/assets';
 import { selectPaginationSize } from '../store/filters';
 import { useAppSelector } from '../store/hooks';
-import { Button } from './button';
-import { ToolbarDivider } from './toolbar-divider';
 
 export const StableLayout = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
@@ -66,26 +62,7 @@ export const StableLayout = ({ children }: { children: React.ReactNode }) => {
     >
       {isTagging && <TaggingTopShelf currentPage={currentPage} />}
       {isTraining && <TrainingTopShelf />}
-      {isProjectList && (
-        <TopShelfFrame>
-          <ShelfInfoRow>
-            <GlobalMenu />
-
-            <ToolbarDivider />
-
-            <div className="mr-auto flex">
-              <Button
-                size="xs"
-                width="md"
-                variant="ghost"
-                onClick={() => router.push('/training')}
-              >
-                <GpuIcon /> Training
-              </Button>
-            </div>
-          </ShelfInfoRow>
-        </TopShelfFrame>
-      )}
+      {isProjectList && <ProjectListShelf />}
       {children}
       {isTagging && (
         <TaggingBottomShelf

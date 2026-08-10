@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { AutoTaggerSettings } from '@/app/services/auto-tagger';
 import { getProjectsFolderOrDefault } from '@/app/services/config/server-config';
+import type { ProjectColor } from '@/app/shared/project-colors';
 import type { CaptionMode } from '@/app/store/project/types';
 
 /**
@@ -17,7 +18,7 @@ const THUMBNAIL_FILE = 'project.png';
 
 export type ProjectConfig = {
   title?: string;
-  color?: 'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
+  color?: ProjectColor;
   thumbnail?: boolean;
   thumbnailVersion?: number;
   hidden?: boolean;

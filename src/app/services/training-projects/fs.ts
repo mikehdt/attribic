@@ -14,6 +14,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { getTrainingProjectsDir } from '@/app/services/training/training-root';
+import type { ProjectColor } from '@/app/shared/project-colors';
 import type {
   DatasetFolder,
   DatasetSource,
@@ -496,6 +497,25 @@ export async function renameProject(
     name: name.trim(),
     updatedAt: new Date().toISOString(),
   };
+  await writeMeta(updated);
+  return updated;
+}
+
+/**
+ * Set or clear the project's display colour. Deliberately does not bump
+ * `updatedAt` — the recent-sort in the load UI reads that as "content last
+ * touched", and a cosmetic recolour shouldn't reshuffle it.
+ */
+export async function setProjectColor(
+  id: string,
+  color: ProjectColor | null,
+): Promise<TrainingProjectMeta | null> {
+  const meta = await readMeta(id);
+  if (!meta) return null;
+
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- name binds only to drop the field */
+  const { color: _previous, ...rest } = meta;
+  const updated: TrainingProjectMeta = color ? { ...rest, color } : rest;
   await writeMeta(updated);
   return updated;
 }

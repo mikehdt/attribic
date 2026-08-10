@@ -1,7 +1,5 @@
+import type { ProjectColor } from '@/app/shared/project-colors';
 import type { CaptionMode } from '@/app/store/project/types';
-
-export type ProjectColor =
-  'slate' | 'rose' | 'amber' | 'teal' | 'sky' | 'indigo' | 'stone';
 
 export type Project = {
   name: string;

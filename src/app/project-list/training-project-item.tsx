@@ -1,92 +1,127 @@
-import { CheckIcon, PencilIcon, XIcon } from 'lucide-react';
-import { memo, useEffect, useRef } from 'react';
+import { CheckIcon, GpuIcon, PencilIcon, XIcon } from 'lucide-react';
+import Image from 'next/image';
+import { memo, useEffect, useRef, useState } from 'react';
 
+import { TRAINING_PROVIDER_SHORT_LABELS } from '@/app/services/training/types';
+import type {
+  TrainingProjectSummary,
+  TrainingProjectVersionSummary,
+} from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
-import { Checkbox } from '@/app/shared/checkbox';
 import { ColorSwatchRow } from '@/app/shared/color-swatch-row';
 import type { ProjectColor } from '@/app/shared/project-colors';
+import { modelLabel } from '@/app/training/components/project-toolbar/model-backend-badges';
+import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
-import { ProjectIcon } from './project-icon';
-import type { Project } from './types';
-
-export type ProjectItemActions = {
+export type TrainingProjectItemActions = {
   editColor: ProjectColor | undefined;
-  editTitle: string;
-  editHidden: boolean;
-  showHidden: boolean;
-  onSelect: (path: string) => void;
-  onStartEdit: (project: Project) => void;
+  editName: string;
+  onSelect: (project: TrainingProjectSummary) => void;
+  onStartEdit: (project: TrainingProjectSummary) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (projectName: string) => void;
-  onTitleChange: (title: string) => void;
+  onSaveEdit: (projectId: string) => void;
+  onNameChange: (name: string) => void;
   onColorChange: (color: ProjectColor | undefined) => void;
-  onHiddenChange: (hidden: boolean) => void;
-  onToggleFeatured: (projectName: string, currentFeatured: boolean) => void;
-  onThumbnailSelect: (projectName: string, file: File) => void;
-  onThumbnailRemove: (projectName: string) => void;
 };
 
-type ProjectItemProps = {
-  project: Project;
+type TrainingProjectItemProps = {
+  project: TrainingProjectSummary;
   isEditing: boolean;
   isDisabled: boolean;
-  actions: ProjectItemActions;
+  actions: TrainingProjectItemActions;
 };
 
-const ProjectItemComponent = ({
+/** Highest-numbered version — the one whose datasets represent the project. */
+const latestVersionOf = (
+  project: TrainingProjectSummary,
+): TrainingProjectVersionSummary | null =>
+  project.versions.reduce<TrainingProjectVersionSummary | null>(
+    (best, v) => (!best || v.version > best.version ? v : best),
+    null,
+  );
+
+/**
+ * A 40px circle matching ProjectIcon's footprint: the first dataset thumbnail
+ * of the latest version, or a GPU icon when no dataset has one.
+ */
+const TrainingProjectIcon = ({
+  project,
+}: {
+  project: TrainingProjectSummary;
+}) => {
+  // A saved summary can claim a thumbnail that has since been removed from the
+  // tagging project it borrows from — fall back to the icon on a failed load.
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const thumb = latestVersionOf(project)?.datasets.find(
+    (d) => d.thumbnail && d.folderName,
+  );
+
+  return (
+    <span className="mr-3 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white dark:bg-slate-600">
+      {thumb?.folderName && !thumbFailed ? (
+        <Image
+          src={projectThumbnailSrc(thumb.folderName, thumb.thumbnailVersion)}
+          alt={project.name}
+          width={40}
+          height={40}
+          className="h-full w-full object-cover"
+          onError={() => setThumbFailed(true)}
+        />
+      ) : (
+        <GpuIcon className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+      )}
+    </span>
+  );
+};
+
+const TrainingProjectItemComponent = ({
   project,
   isEditing,
   isDisabled,
   actions,
-}: ProjectItemProps) => {
-  const titleInputRef = useRef<HTMLInputElement>(null);
+}: TrainingProjectItemProps) => {
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isEditing && titleInputRef.current) {
-      titleInputRef.current.focus();
-      titleInputRef.current.select();
+    if (isEditing && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
     }
   }, [isEditing]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      actions.onSaveEdit(project.name);
+      actions.onSaveEdit(project.id);
     } else if (e.key === 'Escape') {
       actions.onCancelEdit();
     }
   };
 
+  const latest = latestVersionOf(project);
+
   return (
     <Button
-      onClick={() => actions.onSelect(project.path)}
+      onClick={() => actions.onSelect(project)}
       size="lg"
       width="lg"
       color={isEditing ? actions.editColor : project.color || 'slate'}
       inert={isEditing}
-      className={`group w-full justify-start p-4 text-left transition-opacity duration-200 ${actions.showHidden && project.hidden && !isEditing && !isDisabled ? 'opacity-50' : ''} ${isDisabled ? 'pointer-events-none opacity-35' : ''}`}
+      className={`group w-full justify-start p-4 text-left transition-opacity duration-200 ${isDisabled ? 'pointer-events-none opacity-35' : ''}`}
     >
       <div className="flex w-full items-center">
-        <ProjectIcon
-          project={project}
-          isEditing={isEditing}
-          onToggleFeatured={actions.onToggleFeatured}
-          onThumbnailSelect={(file) =>
-            actions.onThumbnailSelect(project.name, file)
-          }
-          onThumbnailRemove={() => actions.onThumbnailRemove(project.name)}
-        />
+        <TrainingProjectIcon project={project} />
 
         {isEditing ? (
           <div className="flex min-w-0 flex-1 items-center justify-between">
             <div className="flex min-w-0 flex-1 flex-col gap-2">
               <input
-                ref={titleInputRef}
+                ref={nameInputRef}
                 type="text"
-                value={actions.editTitle}
-                onChange={(e) => actions.onTitleChange(e.target.value)}
+                value={actions.editName}
+                onChange={(e) => actions.onNameChange(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none dark:border-slate-500 dark:bg-slate-600 dark:text-slate-100 dark:placeholder-slate-400"
-                placeholder={`Project title for ${project.name}`}
+                placeholder="Project name"
               />
 
               <div className="flex items-center gap-2">
@@ -98,14 +133,6 @@ const ProjectItemComponent = ({
                   onChange={actions.onColorChange}
                   className="mr-auto"
                 />
-
-                <Checkbox
-                  isSelected={actions.editHidden || false}
-                  onChange={() => actions.onHiddenChange(!actions.editHidden)}
-                  ariaLabel="Hide project from list"
-                  label="Hide"
-                  size="sm"
-                />
               </div>
             </div>
 
@@ -113,7 +140,7 @@ const ProjectItemComponent = ({
               <div
                 onClick={(e) => {
                   e.stopPropagation();
-                  actions.onSaveEdit(project.name);
+                  actions.onSaveEdit(project.id);
                 }}
                 className="cursor-pointer rounded border border-teal-300/0 p-1 text-teal-600 transition-colors hover:border-teal-300 hover:bg-teal-50 dark:text-teal-400 dark:hover:border-teal-500 dark:hover:bg-teal-900/50"
                 title="Save changes"
@@ -123,7 +150,7 @@ const ProjectItemComponent = ({
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     e.stopPropagation();
-                    actions.onSaveEdit(project.name);
+                    actions.onSaveEdit(project.id);
                   }
                 }}
               >
@@ -153,24 +180,21 @@ const ProjectItemComponent = ({
         ) : (
           <div className="flex min-w-0 flex-1 items-center justify-between">
             <div className="flex flex-wrap font-medium text-slate-900 dark:text-slate-100">
-              <span className="w-full truncate">
-                {project.title || project.name}
-              </span>
-              {project.title && (
+              <span className="w-full truncate">{project.name}</span>
+              {latest && (
                 <span className="w-full text-xs text-black/40 dark:text-white/40">
-                  {project.name}
+                  {modelLabel(latest.modelId)} ·{' '}
+                  {TRAINING_PROVIDER_SHORT_LABELS[latest.selectedProvider]}
                 </span>
               )}
             </div>
 
             <div className="relative flex items-center">
-              {project.imageCount !== undefined && (
-                <div className="text-sm text-slate-500 tabular-nums transition-transform duration-200 group-hover:-translate-x-8 dark:text-slate-300">
-                  {project.imageCount === 1
-                    ? `1 image`
-                    : `${project.imageCount} images`}
-                </div>
-              )}
+              <div className="text-sm text-slate-500 tabular-nums transition-transform duration-200 group-hover:-translate-x-8 dark:text-slate-300">
+                {project.versions.length === 1
+                  ? '1 version'
+                  : `${project.versions.length} versions`}
+              </div>
               <div
                 onClick={(e) => {
                   e.stopPropagation();
@@ -198,4 +222,4 @@ const ProjectItemComponent = ({
   );
 };
 
-export const ProjectItem = memo(ProjectItemComponent);
+export const TrainingProjectItem = memo(TrainingProjectItemComponent);

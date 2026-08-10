@@ -12,6 +12,7 @@ import { Dropdown, DropdownItem } from '@/app/shared/dropdown';
 import { Input } from '@/app/shared/input/input';
 import { InputTray } from '@/app/shared/input-tray/input-tray';
 import { Modal } from '@/app/shared/modal';
+import { PROJECT_COLOR_DOT_CLASSES } from '@/app/shared/project-colors';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectLoadedProject } from '@/app/store/training-config';
 import { loadProject } from '@/app/store/training-config/thunks';
@@ -304,7 +305,15 @@ export const LoadProjectModal = ({
                       datasets={latestVersionOf(p)?.datasets ?? []}
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate">{p.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        {p.color && (
+                          <span
+                            aria-hidden
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${PROJECT_COLOR_DOT_CLASSES[p.color]}`}
+                          />
+                        )}
+                        <span className="truncate">{p.name}</span>
+                      </span>
                       <ProjectSummaryBadges project={p} />
                       <span className="text-xs text-slate-500">
                         {p.versions.length}{' '}
