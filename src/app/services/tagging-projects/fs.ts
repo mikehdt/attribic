@@ -22,15 +22,6 @@ export type ProjectConfig = {
   thumbnail?: boolean;
   thumbnailVersion?: number;
   hidden?: boolean;
-  /** Never listed at all, as opposed to `hidden` which lists then filters. */
-  private?: boolean;
-  /**
-   * List the project even with no assets in it. The project list otherwise
-   * hides image-less folders, since the projects root usually holds unrelated
-   * folders too — but a folder created through the app is a deliberate project
-   * and has to survive the gap between creation and the first image landing.
-   */
-  showWhenEmpty?: boolean;
   featured?: boolean;
   autoTagger?: AutoTaggerSettings;
   captionMode?: CaptionMode;
@@ -86,9 +77,10 @@ export const readConfig = (projectName: string): ProjectConfig | null => {
 };
 
 /**
- * Write the config, or remove it when nothing is left to store. An emptied
- * config takes its `.tagging` folder with it so projects that were only ever
- * touched once don't leave a stray folder behind.
+ * Write the config, even when empty. The file's existence is what registers
+ * the folder as a tagging project — unregistered folders in the projects root
+ * are never listed — so an emptied config is written as `{}` rather than
+ * removed.
  */
 export const writeConfig = (
   projectName: string,
@@ -96,15 +88,6 @@ export const writeConfig = (
 ): void => {
   const dir = getTaggingDir(projectName);
   const configPath = getConfigPath(projectName);
-
-  if (Object.keys(config).length === 0) {
-    if (fs.existsSync(configPath)) fs.unlinkSync(configPath);
-    // Only prunes an empty folder; a surviving thumbnail keeps it alive.
-    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
-      fs.rmdirSync(dir);
-    }
-    return;
-  }
 
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));

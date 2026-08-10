@@ -23,8 +23,19 @@ import {
   type TrainingProjectItemActions,
 } from './training-project-item';
 
-const SECTION_HEADING_CLASS =
-  'mb-2 flex items-center border-b border-b-slate-200 pb-2 text-lg font-semibold text-slate-700 dark:border-b-slate-600 dark:text-slate-200';
+const COLUMN_HEADING_CLASS =
+  'mb-4 flex items-center border-b border-b-slate-200 pb-2 text-lg font-semibold text-slate-700 dark:border-b-slate-600 dark:text-slate-200';
+
+const SUBSECTION_HEADING_CLASS =
+  'mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-500 dark:text-slate-400';
+
+/** Star + "Favourites" — the per-column favourites subsection heading. */
+const FavouritesHeading = () => (
+  <h3 className={SUBSECTION_HEADING_CLASS}>
+    <StarIcon className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+    Favourites
+  </h3>
+);
 
 export const ProjectList = () => {
   const dispatch = useAppDispatch();
@@ -58,6 +69,8 @@ export const ProjectList = () => {
 
   const {
     trainingProjects,
+    featuredTrainingProjects,
+    regularTrainingProjects,
     trainingStatus,
     trainingError,
     editingId,
@@ -69,6 +82,7 @@ export const ProjectList = () => {
     handleStartEdit: handleTrainingStartEdit,
     handleCancelEdit: handleTrainingCancelEdit,
     handleSaveEdit: handleTrainingSaveEdit,
+    handleToggleFeatured: handleTrainingToggleFeatured,
   } = useTrainingProjects();
 
   const refreshAll = useCallback(
@@ -123,6 +137,7 @@ export const ProjectList = () => {
       onSaveEdit: handleTrainingSaveEdit,
       onNameChange: setEditName,
       onColorChange: setEditTrainingColor,
+      onToggleFeatured: handleTrainingToggleFeatured,
     }),
     [
       editTrainingColor,
@@ -133,7 +148,28 @@ export const ProjectList = () => {
       handleTrainingSaveEdit,
       setEditName,
       setEditTrainingColor,
+      handleTrainingToggleFeatured,
     ],
+  );
+
+  const renderTaggingItem = (project: (typeof projects)[number]) => (
+    <ProjectItem
+      key={project.path}
+      project={project}
+      isEditing={editingProject === project.name}
+      isDisabled={isAnyEditing && editingProject !== project.name}
+      actions={itemActions}
+    />
+  );
+
+  const renderTrainingItem = (project: (typeof trainingProjects)[number]) => (
+    <TrainingProjectItem
+      key={project.id}
+      project={project}
+      isEditing={editingId === project.id}
+      isDisabled={isAnyEditing && editingId !== project.id}
+      actions={trainingItemActions}
+    />
   );
 
   if (loading || (projects.length === 0 && trainingStatus === 'loading')) {
@@ -178,7 +214,7 @@ export const ProjectList = () => {
           No projects found
         </h1>
         <p className="mt-4 w-full text-slate-600 dark:text-slate-400">
-          No project folders were found in the configured projects directory
+          No registered projects were found in the configured projects folder
         </p>
         <ProjectsFolderInline />
         <p className="mt-4 flex w-full justify-center gap-3">
@@ -207,105 +243,115 @@ export const ProjectList = () => {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-120 min-w-80 flex-col items-center px-4 pt-16 pb-24">
+    <div className="mx-auto flex w-full max-w-5xl min-w-80 flex-col items-center px-4 pt-16 pb-24">
       <FolderClosedIcon className="mb-6 h-24 w-24 text-slate-500 dark:text-slate-400" />
 
       <h1 className="mb-8 text-2xl text-slate-700 dark:text-slate-200">
         Select a Project
       </h1>
 
-      <div className="w-full max-w-md">
-        {featuredProjects.length > 0 && (
-          <div className="mb-8">
-            <h2 className={SECTION_HEADING_CLASS}>
-              <span className="mr-2 flex items-center justify-center rounded-full border border-amber-300 bg-amber-200 p-2.5 text-amber-700 inset-shadow-sm inset-shadow-amber-50 dark:border-amber-500 dark:bg-amber-700 dark:text-amber-200 dark:inset-shadow-amber-900">
-                <StarIcon className="h-5 w-5" />
-              </span>
-              Favourite Projects
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {featuredProjects.map((project) => (
-                <ProjectItem
-                  key={project.path}
-                  project={project}
-                  isEditing={editingProject === project.name}
-                  isDisabled={isAnyEditing && editingProject !== project.name}
-                  actions={itemActions}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+      <div className="grid w-full items-start gap-x-10 gap-y-10 md:grid-cols-2">
+        <section>
+          <h2 className={COLUMN_HEADING_CLASS}>
+            <span className="mr-2 flex items-center justify-center rounded-full border border-slate-300 bg-slate-200 p-2.5 text-slate-700 inset-shadow-sm inset-shadow-slate-50 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-200 dark:inset-shadow-slate-800">
+              <FolderClosedIcon className="h-5 w-5" />
+            </span>
+            Tagging Projects
+          </h2>
 
-        {regularProjects.length > 0 && (
-          <div className="mb-8">
-            <h2 className={SECTION_HEADING_CLASS}>
-              <span className="mr-2 flex items-center justify-center rounded-full border border-slate-300 bg-slate-200 p-2.5 text-slate-700 inset-shadow-sm inset-shadow-slate-50 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-200 dark:inset-shadow-slate-800">
-                <FolderClosedIcon className="h-5 w-5" />
-              </span>
-              {featuredProjects.length > 0
-                ? 'Other Tagging Projects'
-                : 'Tagging Projects'}
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {regularProjects.map((project) => (
-                <ProjectItem
-                  key={project.path}
-                  project={project}
-                  isEditing={editingProject === project.name}
-                  isDisabled={isAnyEditing && editingProject !== project.name}
-                  actions={itemActions}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {(trainingProjects.length > 0 || trainingStatus === 'error') && (
-          <div className="mb-8">
-            <h2 className={SECTION_HEADING_CLASS}>
-              <span className="mr-2 flex items-center justify-center rounded-full border border-sky-300 bg-sky-200 p-2.5 text-sky-700 inset-shadow-sm inset-shadow-sky-50 dark:border-sky-500 dark:bg-sky-700 dark:text-sky-200 dark:inset-shadow-sky-900">
-                <GpuIcon className="h-5 w-5" />
-              </span>
-              Training Projects
-            </h2>
-            {trainingStatus === 'error' ? (
-              <p className="text-sm text-rose-500 dark:text-rose-400">
-                Couldn&rsquo;t load training projects
-                {trainingError ? ` — ${trainingError}` : ''}.{' '}
-                <button
-                  type="button"
-                  onClick={refreshAll}
-                  className="cursor-pointer underline"
-                >
-                  Retry
-                </button>
-              </p>
-            ) : (
+          {featuredProjects.length > 0 && (
+            <div className="mb-6">
+              <FavouritesHeading />
               <div className="flex flex-wrap gap-3">
-                {trainingProjects.map((project) => (
-                  <TrainingProjectItem
-                    key={project.id}
-                    project={project}
-                    isEditing={editingId === project.id}
-                    isDisabled={isAnyEditing && editingId !== project.id}
-                    actions={trainingItemActions}
-                  />
-                ))}
+                {featuredProjects.map(renderTaggingItem)}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+
+          {regularProjects.length > 0 && (
+            <div>
+              {featuredProjects.length > 0 && (
+                <h3 className={SUBSECTION_HEADING_CLASS}>
+                  <FolderClosedIcon className="h-4 w-4" />
+                  All Projects
+                </h3>
+              )}
+              <div className="flex flex-wrap gap-3">
+                {regularProjects.map(renderTaggingItem)}
+              </div>
+            </div>
+          )}
+
+          {featuredProjects.length === 0 && regularProjects.length === 0 && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              No tagging projects found in the projects folder.
+            </p>
+          )}
+        </section>
+
+        <section>
+          <h2 className={COLUMN_HEADING_CLASS}>
+            <span className="mr-2 flex items-center justify-center rounded-full border border-sky-300 bg-sky-200 p-2.5 text-sky-700 inset-shadow-sm inset-shadow-sky-50 dark:border-sky-500 dark:bg-sky-700 dark:text-sky-200 dark:inset-shadow-sky-900">
+              <GpuIcon className="h-5 w-5" />
+            </span>
+            Training Projects
+          </h2>
+
+          {trainingStatus === 'error' ? (
+            <p className="text-sm text-rose-500 dark:text-rose-400">
+              Couldn&rsquo;t load training projects
+              {trainingError ? ` — ${trainingError}` : ''}.{' '}
+              <button
+                type="button"
+                onClick={refreshAll}
+                className="cursor-pointer underline"
+              >
+                Retry
+              </button>
+            </p>
+          ) : trainingProjects.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              No saved training projects yet — use <strong>Save As…</strong> in
+              the training workbench to create one.
+            </p>
+          ) : (
+            <>
+              {featuredTrainingProjects.length > 0 && (
+                <div className="mb-6">
+                  <FavouritesHeading />
+                  <div className="flex flex-wrap gap-3">
+                    {featuredTrainingProjects.map(renderTrainingItem)}
+                  </div>
+                </div>
+              )}
+
+              {regularTrainingProjects.length > 0 && (
+                <div>
+                  {featuredTrainingProjects.length > 0 && (
+                    <h3 className={SUBSECTION_HEADING_CLASS}>
+                      <GpuIcon className="h-4 w-4" />
+                      All Projects
+                    </h3>
+                  )}
+                  <div className="flex flex-wrap gap-3">
+                    {regularTrainingProjects.map(renderTrainingItem)}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </section>
       </div>
 
-      <div className="mt-4 flex gap-3">
+      <div className="mt-10 flex gap-3">
         <Button onClick={refreshAll} size="md" width="xl">
           Refresh Project List
         </Button>
       </div>
 
       <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-        Note: project folders with no images are not shown, unless created here
+        Note: only registered folders are listed — New Project also registers
+        an existing folder
       </p>
 
       <NewProjectModal

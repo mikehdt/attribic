@@ -11,6 +11,8 @@ export type TrainingProjectMeta = {
   latestVersion: number;
   /** Display colour for project lists; absent means the default (slate). */
   color?: ProjectColor;
+  /** Pinned to the Favourites section of project lists. */
+  featured?: boolean;
 };
 
 /** A single version snapshot. One of these per `v{N}.json` file. */

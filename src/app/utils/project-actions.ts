@@ -43,9 +43,6 @@ export type Project = {
   thumbnail?: boolean;
   thumbnailVersion?: number;
   hidden?: boolean;
-  private?: boolean;
-  /** Keeps an asset-less project in the list; see `ProjectConfig`. */
-  showWhenEmpty?: boolean;
   featured?: boolean;
   captionMode?: CaptionMode;
   triggerPhrases?: string[];
@@ -102,9 +99,11 @@ export const getProjectInfo = async (
 };
 
 /**
- * Get a list of project folders from the projects directory
- * Each project folder should contain image files and associated txt files
- * Private projects are never included, hidden projects are included but filtered client-side
+ * Get a list of project folders from the projects directory.
+ * Only folders registered with a `.tagging/project.json` are listed — the
+ * projects root usually holds unrelated folders too, and the config file is
+ * what marks a folder as a project. Hidden projects are included but filtered
+ * client-side.
  */
 export const getProjectList = async (): Promise<Project[]> => {
   try {
@@ -125,8 +124,11 @@ export const getProjectList = async (): Promise<Project[]> => {
     const projectFolders = entries.filter((entry) => entry.isDirectory());
 
     // Map to project objects and count images
-    const projects: Project[] = await Promise.all(
-      projectFolders.map(async (folder) => {
+    const projects = await Promise.all(
+      projectFolders.map(async (folder): Promise<Project | null> => {
+        const config = readConfig(folder.name);
+        if (!config) return null;
+
         const projectPath = path.join(projectsFolder, folder.name);
         let imageCount = 0;
 
@@ -180,39 +182,33 @@ export const getProjectList = async (): Promise<Project[]> => {
           // Continue with imageCount = 0
         }
 
-        const config = readConfig(folder.name);
-
-        const isPrivate = config?.private || false;
-        const isHidden = config?.hidden || isPrivate;
-
         return {
           name: folder.name,
           path: projectPath,
           imageCount,
-          title: config?.title,
-          color: config?.color,
-          thumbnail: config?.thumbnail ? hasThumbnail(folder.name) : false,
-          thumbnailVersion: config?.thumbnailVersion,
-          hidden: isHidden,
-          private: isPrivate,
-          showWhenEmpty: config?.showWhenEmpty || false,
-          featured: config?.featured || false,
-          captionMode: config?.captionMode,
-          triggerPhrases: config?.triggerPhrases,
-          captionPrompt: config?.captionPrompt,
+          title: config.title,
+          color: config.color,
+          thumbnail: config.thumbnail ? hasThumbnail(folder.name) : false,
+          thumbnailVersion: config.thumbnailVersion,
+          hidden: config.hidden || false,
+          featured: config.featured || false,
+          captionMode: config.captionMode,
+          triggerPhrases: config.triggerPhrases,
+          captionPrompt: config.captionPrompt,
         };
       }),
     );
 
-    // Always filter out private projects, but include hidden ones when includeHidden is true
-    const visibleProjects = projects.filter((project) => !project.private);
+    const registeredProjects = projects.filter(
+      (project): project is Project => project !== null,
+    );
 
     // Separate featured and regular projects
-    const featuredProjects = visibleProjects
+    const featuredProjects = registeredProjects
       .filter((project) => project.featured)
       .sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
 
-    const regularProjects = visibleProjects
+    const regularProjects = registeredProjects
       .filter((project) => !project.featured)
       .sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
 
@@ -229,11 +225,11 @@ export type CreateProjectResult =
 
 /**
  * Create a new tagging project: a folder under the projects root, seeded with a
- * `.tagging` config.
+ * `.tagging` config. The config file is what registers the folder as a project
+ * and makes it appear in the list.
  *
- * The config is what makes the new project visible — the list hides folders
- * with no assets, so `showWhenEmpty` is set to carry it through until the first
- * image arrives.
+ * A folder that already exists without a config is registered in place rather
+ * than rejected — that's how a pre-existing image folder becomes a project.
  *
  * Failures come back as `{ success: false, error }` rather than thrown: these
  * are the user's to fix (bad name, name taken) and the form flags the field
@@ -258,11 +254,12 @@ export const createProject = async (
   }
 
   // Scanned case-insensitively rather than left to mkdir's EEXIST: NTFS treats
-  // "Foo" and "foo" as the same folder, and the clash is worth naming since an
-  // existing asset-less folder won't be in the list to explain itself.
-  let clash: string | undefined;
+  // "Foo" and "foo" as the same folder. An existing folder is only a clash if
+  // it's already registered; otherwise it gets registered in place, under its
+  // on-disk casing.
+  let existing: string | undefined;
   try {
-    clash = fs
+    existing = fs
       .readdirSync(projectsFolder, { withFileTypes: true })
       .find(
         (entry) =>
@@ -274,22 +271,20 @@ export const createProject = async (
     return { success: false, error: 'Could not read the projects folder.' };
   }
 
-  if (clash) {
+  if (existing && readConfig(existing)) {
     return {
       success: false,
-      error: `A folder named “${clash}” already exists in the projects folder.`,
+      error: `“${existing}” is already a project.`,
     };
   }
 
-  const projectPath = path.join(projectsFolder, name);
+  const folderOnDisk = existing ?? name;
+  const projectPath = path.join(projectsFolder, folderOnDisk);
   const trimmedTitle = title?.trim();
 
   try {
-    fs.mkdirSync(projectPath);
-    writeConfig(name, {
-      showWhenEmpty: true,
-      ...(trimmedTitle ? { title: trimmedTitle } : {}),
-    });
+    if (!existing) fs.mkdirSync(projectPath);
+    writeConfig(folderOnDisk, trimmedTitle ? { title: trimmedTitle } : {});
   } catch (error) {
     console.error(`Error creating project ${name}:`, error);
     return { success: false, error: 'Could not create the project folder.' };
@@ -298,11 +293,10 @@ export const createProject = async (
   return {
     success: true,
     project: {
-      name,
+      name: folderOnDisk,
       path: projectPath,
       imageCount: 0,
       title: trimmedTitle || undefined,
-      showWhenEmpty: true,
     },
   };
 };

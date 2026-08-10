@@ -52,16 +52,9 @@ export const useProjectList = () => {
         dispatch(setProjectsFolder(config.projectsFolder ?? ''));
       }
 
-      // Call server action to get project list (always include hidden, but not private)
-      const projectData = await getProjectList();
-      // Asset-less folders are dropped — the projects root usually holds
-      // unrelated folders too — except where the project opted out of that with
-      // `showWhenEmpty`, which is how a newly created project stays visible.
-      setProjects(
-        projectData.filter(
-          (project) => project?.imageCount || project?.showWhenEmpty,
-        ),
-      );
+      // Registration is decided server-side: only folders with a
+      // `.tagging/project.json` come back, regardless of image count.
+      setProjects(await getProjectList());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load projects');
     } finally {
@@ -137,11 +130,9 @@ export const useProjectList = () => {
   );
 
   // Separate projects into featured and regular, filtering out hidden projects unless showHidden is true
-  // Always filter out private projects regardless of showHidden state
-  const nonPrivateProjects = projects.filter((project) => !project.private);
   const visibleProjects = showHidden
-    ? nonPrivateProjects
-    : nonPrivateProjects.filter((project) => !project.hidden);
+    ? projects
+    : projects.filter((project) => !project.hidden);
   const featuredProjects = visibleProjects.filter(
     (project) => project.featured,
   );

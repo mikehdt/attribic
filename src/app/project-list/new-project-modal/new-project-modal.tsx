@@ -63,7 +63,8 @@ export const NewProjectModal = ({
         </h2>
 
         <p className="w-full text-sm text-slate-500 dark:text-slate-400">
-          Creates an empty folder in the projects folder, ready for images.
+          Creates a new folder in the projects folder — or, if the folder
+          already exists, registers it as a project.
         </p>
 
         <div className="flex w-full flex-col gap-1">

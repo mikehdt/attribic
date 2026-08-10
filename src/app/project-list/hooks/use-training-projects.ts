@@ -47,6 +47,15 @@ export const useTrainingProjects = () => {
     [projects],
   );
 
+  const featuredTrainingProjects = useMemo(
+    () => sortedProjects.filter((p) => p.featured),
+    [sortedProjects],
+  );
+  const regularTrainingProjects = useMemo(
+    () => sortedProjects.filter((p) => !p.featured),
+    [sortedProjects],
+  );
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState<ProjectColor | undefined>('slate');
@@ -116,8 +125,31 @@ export const useTrainingProjects = () => {
     [editName, editColor, projects, handleCancelEdit, reload, showErrorToast],
   );
 
+  const handleToggleFeatured = useCallback(
+    async (project: TrainingProjectSummary) => {
+      try {
+        const res = await fetch(`/api/training/projects/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ featured: !project.featured }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          showErrorToast(data.error || 'Failed to update project');
+          return;
+        }
+        reload();
+      } catch {
+        showErrorToast('Failed to update project');
+      }
+    },
+    [reload, showErrorToast],
+  );
+
   return {
     trainingProjects: sortedProjects,
+    featuredTrainingProjects,
+    regularTrainingProjects,
     trainingStatus: status,
     trainingError: error,
     editingId,
@@ -129,5 +161,6 @@ export const useTrainingProjects = () => {
     handleStartEdit,
     handleCancelEdit,
     handleSaveEdit,
+    handleToggleFeatured,
   };
 };

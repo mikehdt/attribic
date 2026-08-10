@@ -12,9 +12,6 @@ export type Project = {
   thumbnailVersion?: number;
   featured?: boolean;
   hidden?: boolean;
-  private?: boolean;
-  /** Keeps the project listed even with no assets in it. */
-  showWhenEmpty?: boolean;
   captionMode?: CaptionMode;
   triggerPhrases?: string[];
   captionPrompt?: string;

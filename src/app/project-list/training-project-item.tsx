@@ -1,4 +1,4 @@
-import { CheckIcon, GpuIcon, PencilIcon, XIcon } from 'lucide-react';
+import { CheckIcon, GpuIcon, PencilIcon, StarIcon, XIcon } from 'lucide-react';
 import Image from 'next/image';
 import { memo, useEffect, useRef, useState } from 'react';
 
@@ -22,6 +22,7 @@ export type TrainingProjectItemActions = {
   onSaveEdit: (projectId: string) => void;
   onNameChange: (name: string) => void;
   onColorChange: (color: ProjectColor | undefined) => void;
+  onToggleFeatured: (project: TrainingProjectSummary) => void;
 };
 
 type TrainingProjectItemProps = {
@@ -42,13 +43,19 @@ const latestVersionOf = (
 
 /**
  * A 40px circle matching ProjectIcon's footprint: the first dataset thumbnail
- * of the latest version, or a GPU icon when no dataset has one.
+ * of the latest version, or a GPU icon when no dataset has one. Hovering it
+ * offers the same featured-star toggle as tagging rows.
  */
 const TrainingProjectIcon = ({
   project,
+  isEditing,
+  onToggleFeatured,
 }: {
   project: TrainingProjectSummary;
+  isEditing: boolean;
+  onToggleFeatured: (project: TrainingProjectSummary) => void;
 }) => {
+  const [isHovering, setIsHovering] = useState(false);
   // A saved summary can claim a thumbnail that has since been removed from the
   // tagging project it borrows from — fall back to the icon on a failed load.
   const [thumbFailed, setThumbFailed] = useState(false);
@@ -57,18 +64,41 @@ const TrainingProjectIcon = ({
   );
 
   return (
-    <span className="mr-3 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white dark:bg-slate-600">
-      {thumb?.folderName && !thumbFailed ? (
-        <Image
-          src={projectThumbnailSrc(thumb.folderName, thumb.thumbnailVersion)}
-          alt={project.name}
-          width={40}
-          height={40}
-          className="h-full w-full object-cover"
-          onError={() => setThumbFailed(true)}
-        />
-      ) : (
-        <GpuIcon className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+    <span
+      className="relative mr-3 h-10 w-10 shrink-0"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white dark:bg-slate-600">
+        {thumb?.folderName && !thumbFailed ? (
+          <Image
+            src={projectThumbnailSrc(thumb.folderName, thumb.thumbnailVersion)}
+            alt={project.name}
+            width={40}
+            height={40}
+            className="h-full w-full object-cover"
+            onError={() => setThumbFailed(true)}
+          />
+        ) : (
+          <GpuIcon className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+        )}
+      </span>
+
+      {!isEditing && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFeatured(project);
+          }}
+          className={`absolute inset-0 flex cursor-pointer items-center justify-center rounded-full transition-opacity duration-200 ${isHovering ? 'border opacity-100' : 'opacity-0'} ${project.featured ? 'border-slate-300 bg-white dark:border-slate-500 dark:bg-slate-600' : 'border-amber-400 bg-amber-100 dark:border-amber-500 dark:bg-amber-800'}`}
+          title={project.featured ? 'Remove from favourites' : 'Add to favourites'}
+        >
+          {project.featured ? (
+            <StarIcon className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+          ) : (
+            <StarIcon className="h-5 w-5 fill-current text-amber-500 dark:text-amber-400" />
+          )}
+        </div>
       )}
     </span>
   );
@@ -109,7 +139,11 @@ const TrainingProjectItemComponent = ({
       className={`group w-full justify-start p-4 text-left transition-opacity duration-200 ${isDisabled ? 'pointer-events-none opacity-35' : ''}`}
     >
       <div className="flex w-full items-center">
-        <TrainingProjectIcon project={project} />
+        <TrainingProjectIcon
+          project={project}
+          isEditing={isEditing}
+          onToggleFeatured={actions.onToggleFeatured}
+        />
 
         {isEditing ? (
           <div className="flex min-w-0 flex-1 items-center justify-between">

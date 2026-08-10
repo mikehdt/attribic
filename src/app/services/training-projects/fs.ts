@@ -520,6 +520,24 @@ export async function setProjectColor(
   return updated;
 }
 
+/** Pin or unpin the project from Favourites. Cosmetic like colour — no
+ * `updatedAt` bump, and `false` is stored as an absent key. */
+export async function setProjectFeatured(
+  id: string,
+  featured: boolean,
+): Promise<TrainingProjectMeta | null> {
+  const meta = await readMeta(id);
+  if (!meta) return null;
+
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- name binds only to drop the field */
+  const { featured: _previous, ...rest } = meta;
+  const updated: TrainingProjectMeta = featured
+    ? { ...rest, featured: true }
+    : rest;
+  await writeMeta(updated);
+  return updated;
+}
+
 export async function setVersionLabel(
   id: string,
   version: number,
