@@ -89,8 +89,8 @@ export const ProjectsFolderButton = () => {
       <Button
         onClick={browse}
         disabled={saving}
-        size="sm"
-        width="lg"
+        size="xs"
+        width="md"
         variant="ghost"
         title="Set the projects folder"
       >

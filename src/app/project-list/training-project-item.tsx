@@ -8,6 +8,7 @@ import type {
   TrainingProjectVersionSummary,
 } from '@/app/services/training-projects/disk-schema';
 import { Button } from '@/app/shared/button';
+import { Checkbox } from '@/app/shared/checkbox';
 import { ColorSwatchRow } from '@/app/shared/color-swatch-row';
 import type { ProjectColor } from '@/app/shared/project-colors';
 import { modelLabel } from '@/app/training/components/project-toolbar/model-backend-badges';
@@ -16,12 +17,15 @@ import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 export type TrainingProjectItemActions = {
   editColor: ProjectColor | undefined;
   editName: string;
+  editHidden: boolean;
+  showHidden: boolean;
   onSelect: (project: TrainingProjectSummary) => void;
   onStartEdit: (project: TrainingProjectSummary) => void;
   onCancelEdit: () => void;
   onSaveEdit: (projectId: string) => void;
   onNameChange: (name: string) => void;
   onColorChange: (color: ProjectColor | undefined) => void;
+  onHiddenChange: (hidden: boolean) => void;
   onToggleFeatured: (project: TrainingProjectSummary) => void;
 };
 
@@ -91,7 +95,9 @@ const TrainingProjectIcon = ({
             onToggleFeatured(project);
           }}
           className={`absolute inset-0 flex cursor-pointer items-center justify-center rounded-full transition-opacity duration-200 ${isHovering ? 'border opacity-100' : 'opacity-0'} ${project.featured ? 'border-slate-300 bg-white dark:border-slate-500 dark:bg-slate-600' : 'border-amber-400 bg-amber-100 dark:border-amber-500 dark:bg-amber-800'}`}
-          title={project.featured ? 'Remove from favourites' : 'Add to favourites'}
+          title={
+            project.featured ? 'Remove from favourites' : 'Add to favourites'
+          }
         >
           {project.featured ? (
             <StarIcon className="h-5 w-5 text-slate-600 dark:text-slate-300" />
@@ -136,7 +142,7 @@ const TrainingProjectItemComponent = ({
       width="lg"
       color={isEditing ? actions.editColor : project.color || 'slate'}
       inert={isEditing}
-      className={`group w-full justify-start p-4 text-left transition-opacity duration-200 ${isDisabled ? 'pointer-events-none opacity-35' : ''}`}
+      className={`group w-full justify-start p-4 text-left transition-opacity duration-200 ${actions.showHidden && project.hidden && !isEditing && !isDisabled ? 'opacity-50' : ''} ${isDisabled ? 'pointer-events-none opacity-35' : ''}`}
     >
       <div className="flex w-full items-center">
         <TrainingProjectIcon
@@ -166,6 +172,14 @@ const TrainingProjectItemComponent = ({
                   value={actions.editColor}
                   onChange={actions.onColorChange}
                   className="mr-auto"
+                />
+
+                <Checkbox
+                  isSelected={actions.editHidden || false}
+                  onChange={() => actions.onHiddenChange(!actions.editHidden)}
+                  ariaLabel="Hide project from list"
+                  label="Hide"
+                  size="sm"
                 />
               </div>
             </div>
@@ -224,7 +238,7 @@ const TrainingProjectItemComponent = ({
             </div>
 
             <div className="relative flex items-center">
-              <div className="text-sm text-slate-500 tabular-nums transition-transform duration-200 group-hover:-translate-x-8 dark:text-slate-300">
+              <div className="text-sm text-nowrap text-slate-500 tabular-nums transition-transform duration-200 group-hover:-translate-x-8 dark:text-slate-300">
                 {project.versions.length === 1
                   ? '1 version'
                   : `${project.versions.length} versions`}

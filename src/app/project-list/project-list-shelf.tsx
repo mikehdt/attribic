@@ -40,11 +40,11 @@ export const ProjectListShelf = () => {
             variant="ghost"
             onClick={() => router.push('/training')}
           >
-            <GpuIcon /> Training
+            <GpuIcon /> LoRA Training
           </Button>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
           <Checkbox
             isSelected={showHidden}
             onChange={() => dispatch(setShowHidden(!showHidden))}
@@ -61,7 +61,7 @@ export const ProjectListShelf = () => {
             onClick={() => dispatch(setNewProjectOpen(true))}
           >
             <FolderPlusIcon />
-            New Project
+            New Tagging Project
           </Button>
         </div>
       </ShelfInfoRow>

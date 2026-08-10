@@ -538,6 +538,22 @@ export async function setProjectFeatured(
   return updated;
 }
 
+/** Hide or unhide the project in project lists. Cosmetic like colour — no
+ * `updatedAt` bump, and `false` is stored as an absent key. */
+export async function setProjectHidden(
+  id: string,
+  hidden: boolean,
+): Promise<TrainingProjectMeta | null> {
+  const meta = await readMeta(id);
+  if (!meta) return null;
+
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- name binds only to drop the field */
+  const { hidden: _previous, ...rest } = meta;
+  const updated: TrainingProjectMeta = hidden ? { ...rest, hidden: true } : rest;
+  await writeMeta(updated);
+  return updated;
+}
+
 export async function setVersionLabel(
   id: string,
   version: number,

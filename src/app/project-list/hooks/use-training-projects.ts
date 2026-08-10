@@ -7,7 +7,10 @@ import type { TrainingProjectSummary } from '@/app/services/training-projects/di
 import type { ProjectColor } from '@/app/shared/project-colors';
 import { useToast } from '@/app/shared/toast/hooks/use-toast';
 import { useAppSelector } from '@/app/store/hooks';
-import { selectProjectListRefreshToken } from '@/app/store/project-list';
+import {
+  selectProjectListRefreshToken,
+  selectShowHidden,
+} from '@/app/store/project-list';
 import { useTrainingProjectList } from '@/app/training/components/project-toolbar/use-training-project-list';
 import { slugify } from '@/app/utils/slug';
 
@@ -47,18 +50,26 @@ export const useTrainingProjects = () => {
     [projects],
   );
 
+  const showHidden = useAppSelector(selectShowHidden);
+  const visibleProjects = useMemo(
+    () =>
+      showHidden ? sortedProjects : sortedProjects.filter((p) => !p.hidden),
+    [sortedProjects, showHidden],
+  );
+
   const featuredTrainingProjects = useMemo(
-    () => sortedProjects.filter((p) => p.featured),
-    [sortedProjects],
+    () => visibleProjects.filter((p) => p.featured),
+    [visibleProjects],
   );
   const regularTrainingProjects = useMemo(
-    () => sortedProjects.filter((p) => !p.featured),
-    [sortedProjects],
+    () => visibleProjects.filter((p) => !p.featured),
+    [visibleProjects],
   );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState<ProjectColor | undefined>('slate');
+  const [editHidden, setEditHidden] = useState(false);
 
   const handleSelect = useCallback(
     (project: TrainingProjectSummary) => {
@@ -71,12 +82,14 @@ export const useTrainingProjects = () => {
     setEditingId(project.id);
     setEditName(project.name);
     setEditColor(project.color || 'slate');
+    setEditHidden(project.hidden || false);
   }, []);
 
   const handleCancelEdit = useCallback(() => {
     setEditingId(null);
     setEditName('');
     setEditColor('slate');
+    setEditHidden(false);
   }, []);
 
   const handleSaveEdit = useCallback(
@@ -94,8 +107,9 @@ export const useTrainingProjects = () => {
       const nextColor = editColor && editColor !== 'slate' ? editColor : null;
       const nameChanged = !current || name !== current.name;
       const colorChanged = (current?.color ?? null) !== nextColor;
+      const hiddenChanged = (current?.hidden ?? false) !== editHidden;
 
-      if (!nameChanged && !colorChanged) {
+      if (!nameChanged && !colorChanged && !hiddenChanged) {
         handleCancelEdit();
         return;
       }
@@ -107,6 +121,7 @@ export const useTrainingProjects = () => {
           body: JSON.stringify({
             ...(nameChanged ? { name } : {}),
             ...(colorChanged ? { color: nextColor } : {}),
+            ...(hiddenChanged ? { hidden: editHidden } : {}),
           }),
         });
         const data = await res.json();
@@ -122,7 +137,15 @@ export const useTrainingProjects = () => {
         showErrorToast('Failed to save project');
       }
     },
-    [editName, editColor, projects, handleCancelEdit, reload, showErrorToast],
+    [
+      editName,
+      editColor,
+      editHidden,
+      projects,
+      handleCancelEdit,
+      reload,
+      showErrorToast,
+    ],
   );
 
   const handleToggleFeatured = useCallback(
@@ -155,8 +178,10 @@ export const useTrainingProjects = () => {
     editingId,
     editName,
     editColor,
+    editHidden,
     setEditName,
     setEditColor,
+    setEditHidden,
     handleSelect,
     handleStartEdit,
     handleCancelEdit,

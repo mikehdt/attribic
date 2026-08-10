@@ -6,6 +6,7 @@ import {
   renameProject,
   setProjectColor,
   setProjectFeatured,
+  setProjectHidden,
 } from '@/app/services/training-projects/fs';
 import { isProjectColor } from '@/app/shared/project-colors';
 
@@ -43,15 +44,17 @@ export async function PATCH(request: Request, { params }: Params) {
       name?: string;
       color?: unknown;
       featured?: unknown;
+      hidden?: unknown;
     };
     const hasName = Boolean(body.name?.trim());
     // `color: null` clears the colour; absent leaves it untouched.
     const hasColor = 'color' in body;
     const hasFeatured = 'featured' in body;
+    const hasHidden = 'hidden' in body;
 
-    if (!hasName && !hasColor && !hasFeatured) {
+    if (!hasName && !hasColor && !hasFeatured && !hasHidden) {
       return NextResponse.json(
-        { error: 'name, color or featured is required' },
+        { error: 'name, color, featured or hidden is required' },
         { status: 400 },
       );
     }
@@ -61,6 +64,12 @@ export async function PATCH(request: Request, { params }: Params) {
     if (hasFeatured && typeof body.featured !== 'boolean') {
       return NextResponse.json(
         { error: 'featured must be a boolean' },
+        { status: 400 },
+      );
+    }
+    if (hasHidden && typeof body.hidden !== 'boolean') {
+      return NextResponse.json(
+        { error: 'hidden must be a boolean' },
         { status: 400 },
       );
     }
@@ -83,6 +92,12 @@ export async function PATCH(request: Request, { params }: Params) {
     }
     if (hasFeatured) {
       meta = await setProjectFeatured(id, body.featured === true);
+      if (!meta) {
+        return NextResponse.json({ error: 'not found' }, { status: 404 });
+      }
+    }
+    if (hasHidden) {
+      meta = await setProjectHidden(id, body.hidden === true);
       if (!meta) {
         return NextResponse.json({ error: 'not found' }, { status: 404 });
       }

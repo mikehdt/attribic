@@ -13,6 +13,8 @@ export type TrainingProjectMeta = {
   color?: ProjectColor;
   /** Pinned to the Favourites section of project lists. */
   featured?: boolean;
+  /** Filtered from project lists unless "show hidden" is on. */
+  hidden?: boolean;
 };
 
 /** A single version snapshot. One of these per `v{N}.json` file. */
