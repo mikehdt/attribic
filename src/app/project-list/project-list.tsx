@@ -280,7 +280,7 @@ export const ProjectList = () => {
               className="ml-auto"
             >
               <FolderPlusIcon />
-              Add
+              New
             </Button>
           </div>
 
