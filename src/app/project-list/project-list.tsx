@@ -23,8 +23,11 @@ import {
   type TrainingProjectItemActions,
 } from './training-project-item';
 
+const COLUMN_HEADING_ROW_CLASS =
+  'mb-4 flex items-center border-b border-b-slate-200 pb-2 dark:border-b-slate-600';
+
 const COLUMN_HEADING_CLASS =
-  'mb-4 flex items-center border-b border-b-slate-200 pb-2 text-lg font-semibold text-slate-700 dark:border-b-slate-600 dark:text-slate-200';
+  'flex items-center text-lg font-semibold text-slate-700 dark:text-slate-200';
 
 const SUBSECTION_HEADING_CLASS =
   'mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-500 dark:text-slate-400';
@@ -260,12 +263,26 @@ export const ProjectList = () => {
 
       <div className="grid w-full items-start gap-x-10 gap-y-10 md:grid-cols-2">
         <section>
-          <h2 className={COLUMN_HEADING_CLASS}>
-            <span className="mr-2 flex items-center justify-center rounded-full border border-slate-300 bg-slate-200 p-2.5 text-slate-700 inset-shadow-sm inset-shadow-slate-50 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-200 dark:inset-shadow-slate-800">
-              <FolderClosedIcon className="h-5 w-5" />
-            </span>
-            Tagging Projects
-          </h2>
+          <div className={COLUMN_HEADING_ROW_CLASS}>
+            <h2 className={COLUMN_HEADING_CLASS}>
+              <span className="mr-2 flex items-center justify-center rounded-full border border-slate-300 bg-slate-200 p-2.5 text-slate-700 inset-shadow-sm inset-shadow-slate-50 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-200 dark:inset-shadow-slate-800">
+                <FolderClosedIcon className="h-5 w-5" />
+              </span>
+              Tagging Projects
+            </h2>
+
+            <Button
+              size="sm"
+              width="md"
+              color="sky"
+              variant="ghost"
+              onClick={handleOpenNewProject}
+              className="ml-auto"
+            >
+              <FolderPlusIcon />
+              Add
+            </Button>
+          </div>
 
           {featuredProjects.length > 0 && (
             <div className="mb-6">
@@ -298,12 +315,14 @@ export const ProjectList = () => {
         </section>
 
         <section>
-          <h2 className={COLUMN_HEADING_CLASS}>
-            <span className="mr-2 flex items-center justify-center rounded-full border border-sky-300 bg-sky-200 p-2.5 text-sky-700 inset-shadow-sm inset-shadow-sky-50 dark:border-sky-500 dark:bg-sky-700 dark:text-sky-200 dark:inset-shadow-sky-900">
-              <GpuIcon className="h-5 w-5" />
-            </span>
-            Training Projects
-          </h2>
+          <div className={COLUMN_HEADING_ROW_CLASS}>
+            <h2 className={COLUMN_HEADING_CLASS}>
+              <span className="mr-2 flex items-center justify-center rounded-full border border-sky-300 bg-sky-200 p-2.5 text-sky-700 inset-shadow-sm inset-shadow-sky-50 dark:border-sky-500 dark:bg-sky-700 dark:text-sky-200 dark:inset-shadow-sky-900">
+                <GpuIcon className="h-5 w-5" />
+              </span>
+              Training Projects
+            </h2>
+          </div>
 
           {trainingStatus === 'error' ? (
             <p className="text-sm text-rose-500 dark:text-rose-400">
@@ -358,8 +377,8 @@ export const ProjectList = () => {
       </div>
 
       <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-        Note: only registered folders are listed — New Project also registers
-        an existing folder
+        Note: only registered folders are listed — New Project also registers an
+        existing folder
       </p>
 
       <NewProjectModal

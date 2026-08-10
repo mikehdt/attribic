@@ -1,6 +1,6 @@
 'use client';
 
-import { FolderPlusIcon, GpuIcon } from 'lucide-react';
+import { GpuIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/app/shared/button';
@@ -9,11 +9,7 @@ import { GlobalMenu } from '@/app/shared/global-menu';
 import { ShelfInfoRow, TopShelfFrame } from '@/app/shared/shelf';
 import { ToolbarDivider } from '@/app/shared/toolbar-divider';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
-import {
-  selectShowHidden,
-  setNewProjectOpen,
-  setShowHidden,
-} from '@/app/store/project-list';
+import { selectShowHidden, setShowHidden } from '@/app/store/project-list';
 
 import { ProjectsFolderButton } from './projects-folder-button';
 
@@ -53,16 +49,6 @@ export const ProjectListShelf = () => {
           />
 
           <ProjectsFolderButton />
-
-          <Button
-            size="xs"
-            width="md"
-            color="sky"
-            onClick={() => dispatch(setNewProjectOpen(true))}
-          >
-            <FolderPlusIcon />
-            New Tagging Project
-          </Button>
         </div>
       </ShelfInfoRow>
     </TopShelfFrame>
