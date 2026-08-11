@@ -43,9 +43,11 @@ const PREVIEW_HEIGHT_EXPANDED_REM = 26;
 const InspectorPreview = ({
   asset,
   isExpanded,
+  onToggleExpand,
 }: {
   asset: ImageAsset;
   isExpanded: boolean;
+  onToggleExpand: () => void;
 }) => {
   const projectName = useAppSelector(selectProjectFolderName);
   const showCropVisualization = useAppSelector(selectShowCropVisualization);
@@ -62,8 +64,9 @@ const InspectorPreview = ({
 
   return (
     <div
-      className="flex shrink-0 items-center justify-center overflow-hidden border-b border-(--border) bg-(--surface-muted) transition-[height] duration-300 ease-in-out"
+      className="flex shrink-0 cursor-pointer items-center justify-center overflow-hidden border-b border-(--border) bg-(--surface-muted) transition-[height] duration-300 ease-in-out"
       style={{ height: `${heightRem}rem` }}
+      onClick={onToggleExpand}
     >
       {isVideo ? (
         <video
@@ -73,6 +76,7 @@ const InspectorPreview = ({
           muted
           playsInline
           preload="metadata"
+          onClick={(e) => e.stopPropagation()}
         />
       ) : (
         // The span is sized to the exact contain box: full letterbox height
@@ -109,15 +113,21 @@ const InspectorPreview = ({
 const InspectorContent = ({
   asset,
   isExpanded,
+  onToggleExpand,
 }: {
   asset: ImageAsset;
   isExpanded: boolean;
+  onToggleExpand: () => void;
 }) => {
   const captionMode = useAppSelector(selectCaptionMode);
 
   return (
     <>
-      <InspectorPreview asset={asset} isExpanded={isExpanded} />
+      <InspectorPreview
+        asset={asset}
+        isExpanded={isExpanded}
+        onToggleExpand={onToggleExpand}
+      />
 
       {/* text-sm cascades into the tag chips, add-tag input and caption
           editor (they all inherit font size), keeping the narrow column
@@ -329,7 +339,11 @@ export const GridSidebar = ({
               against the full panel height when the content is short */}
           <div ref={contentRef} className="flex flex-1 flex-col">
             {asset ? (
-              <InspectorContent asset={asset} isExpanded={isExpanded} />
+              <InspectorContent
+                asset={asset}
+                isExpanded={isExpanded}
+                onToggleExpand={() => setIsExpanded(!isExpanded)}
+              />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center text-slate-400 dark:text-slate-500">
                 <ImageIcon className="h-10 w-10" />
