@@ -1,8 +1,23 @@
+export type ImageSizeConstraints = {
+  /** Cap on the served width, px. Aspect ratio is preserved (fit inside). */
+  maxWidth?: number;
+  /** Cap on the served height, px. Aspect ratio is preserved (fit inside). */
+  maxHeight?: number;
+};
+
 /**
  * Generate a URL for an image that can be used with Next.js Image component
- * This works with images from any folder on disk via our API route
+ * This works with images from any folder on disk via our API route.
+ *
+ * Optional constraints ask the route for a downscaled preview (never
+ * enlarged); omit them for the original file. Videos ignore the constraints
+ * server-side.
  */
-export const getImageUrl = (fileName: string, projectName?: string): string => {
+export const getImageUrl = (
+  fileName: string,
+  projectName?: string,
+  constraints?: ImageSizeConstraints,
+): string => {
   if (!projectName) {
     // Fallback to public/assets for backward compatibility
     return `/assets/${fileName}`;
@@ -13,7 +28,11 @@ export const getImageUrl = (fileName: string, projectName?: string): string => {
   const encodedProjectName = encodeURIComponent(projectName);
   const encodedFileName = encodeURIComponent(fileName);
 
-  return `/api/images/${encodedFileName}?projectName=${encodedProjectName}`;
+  let url = `/api/images/${encodedFileName}?projectName=${encodedProjectName}`;
+  if (constraints?.maxWidth) url += `&w=${constraints.maxWidth}`;
+  if (constraints?.maxHeight) url += `&h=${constraints.maxHeight}`;
+
+  return url;
 };
 
 /**

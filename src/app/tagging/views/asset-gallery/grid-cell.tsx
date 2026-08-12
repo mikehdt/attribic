@@ -18,6 +18,10 @@ import { isArchiveSubfolder } from '@/app/utils/subfolder-utils';
 
 type PreviewState = 'select' | 'deselect' | null;
 
+// Cells render at ~12rem (192px); 384 covers 2x DPR without decoding the
+// full-size original for every tile
+const CELL_PREVIEW_PX = 384;
+
 type GridCellProps = {
   assetId: string;
   fileExtension: string;
@@ -58,7 +62,13 @@ const GridCellComponent = ({
   const isArchived = isArchiveSubfolder(subfolder);
 
   const fileName = `${assetId}.${fileExtension}`;
-  const baseUrl = getImageUrl(fileName, projectName || undefined);
+  const baseUrl = getImageUrl(
+    fileName,
+    projectName || undefined,
+    isVideo
+      ? undefined
+      : { maxWidth: CELL_PREVIEW_PX, maxHeight: CELL_PREVIEW_PX },
+  );
   const imageUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${lastModified}`;
 
   // Plain click inspects; shift-click is a selection gesture (range extend).

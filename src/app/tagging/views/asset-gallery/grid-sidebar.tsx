@@ -40,6 +40,14 @@ import { useZoomKey } from './use-zoom-key';
 const PREVIEW_HEIGHT_REM = 15;
 const PREVIEW_HEIGHT_EXPANDED_REM = 26;
 
+// Served-image caps: the expanded letterbox is 26rem tall in a 45rem panel,
+// so 1440×832 covers 2x DPR for both orientations. One URL for collapsed and
+// expanded, so toggling zoom never refetches.
+const PREVIEW_CONSTRAINTS = {
+  maxWidth: 1440,
+  maxHeight: PREVIEW_HEIGHT_EXPANDED_REM * 16 * 2,
+};
+
 /** Fixed-height letterbox so the tag editor always starts at the same y. */
 const InspectorPreview = ({
   asset,
@@ -55,7 +63,11 @@ const InspectorPreview = ({
 
   const isVideo = isSupportedVideoExtension(`.${asset.fileExtension}`);
   const fileName = `${asset.fileId}.${asset.fileExtension}`;
-  const baseUrl = getImageUrl(fileName, projectName || undefined);
+  const baseUrl = getImageUrl(
+    fileName,
+    projectName || undefined,
+    isVideo ? undefined : PREVIEW_CONSTRAINTS,
+  );
   const mediaUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${asset.lastModified}`;
 
   const { width, height } = asset.dimensions;
