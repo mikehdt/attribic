@@ -17,6 +17,7 @@ import {
   selectAssetIsCurrent,
   selectAssetIsSelected,
   setCurrentAsset,
+  setShiftHoverAssetId,
 } from '@/app/store/selection';
 import { handleEditorEscape } from '@/app/tagging/views/asset-gallery/editor-focus';
 import { useZoomKey } from '@/app/tagging/views/asset-gallery/use-zoom-key';
@@ -117,6 +118,9 @@ const AssetComponent = ({
   // z zooms the current row's image, mirroring a click on it
   useZoomKey(isCurrent, toggleImageZoom);
 
+  // Stops propagation so the nested checkbox and the strip around it don't
+  // both toggle, which means the row's own click handler never sees this —
+  // the highlight has to move from here instead
   const onToggleAssetSelection = useCallback(
     (e: MouseEvent) => {
       e.stopPropagation();
@@ -131,8 +135,11 @@ const AssetComponent = ({
           currentPage,
         }),
       );
+      if (!isCurrent) {
+        dispatch(setCurrentAsset(assetId));
+      }
     },
-    [assetId, currentPage, dispatch],
+    [assetId, currentPage, dispatch, isCurrent],
   );
 
   const onToggleLocalCropVisualization = useCallback(
@@ -186,6 +193,22 @@ const AssetComponent = ({
     }
   }, [isCurrent, assetId, dispatch]);
 
+  // Clicking anywhere in the row inspects it, matching the grid's cells, so
+  // the highlight follows the mouse as well as the keyboard
+  const onRowClick = useCallback(
+    (e: MouseEvent) => {
+      if (!isCurrent) {
+        dispatch(setCurrentAsset(assetId));
+      }
+      // With Shift held the highlight is the far end of a pending range, so
+      // move the preview with it — the mouse equivalent of Shift+arrow
+      if (e.shiftKey) {
+        dispatch(setShiftHoverAssetId(assetId));
+      }
+    },
+    [assetId, dispatch, isCurrent],
+  );
+
   // Current-asset highlight: sky by default, shifting to the purple
   // selection language when the highlighted asset is itself selected
   const currentClasses = isCurrent
@@ -195,6 +218,7 @@ const AssetComponent = ({
   return (
     <div
       data-asset-id={assetId}
+      onClick={onRowClick}
       className={`my-2 flex w-full scroll-mt-36 scroll-mb-16 overflow-hidden rounded-lg border transition-shadow max-md:flex-col ${isSelected ? 'border-(--border-selected) shadow-sm shadow-purple-200 dark:shadow-purple-700' : 'border-(--border)'} ${isArchived ? 'opacity-60' : ''} ${currentClasses}`}
     >
       <div

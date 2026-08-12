@@ -12,6 +12,7 @@ import {
   type AssetNavAdapter,
   useAssetKeyboardNav,
 } from './use-asset-keyboard-nav';
+import { useClearCurrentOnBackgroundClick } from './use-background-click';
 
 type AssetGridProps = {
   groupedAssets: GroupedAssets;
@@ -85,6 +86,7 @@ export const AssetGrid = ({
   );
 
   useAssetKeyboardNav(paginatedAssetIds, currentPage, navAdapter);
+  const onBackgroundClick = useClearCurrentOnBackgroundClick();
 
   const renderedGroups = useMemo(
     () =>
@@ -132,7 +134,14 @@ export const AssetGrid = ({
 
   return (
     <div className="flex gap-4">
-      <div className="min-w-0 flex-1">{renderedGroups}</div>
+      {/* Background clicks clear the highlight, so the handler goes on the
+          cell column only — the inspector beside it is not background */}
+      <div
+        className="min-h-[calc(100vh-10rem)] min-w-0 flex-1"
+        onClick={onBackgroundClick}
+      >
+        {renderedGroups}
+      </div>
       <GridSidebar
         isOverlayOpen={isInspectorOverlayOpen}
         onOverlayClose={closeInspectorOverlay}

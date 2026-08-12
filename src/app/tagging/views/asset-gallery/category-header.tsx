@@ -21,6 +21,7 @@ export const CategoryHeader = ({ category, visible }: CategoryHeaderProps) => {
   return (
     <div
       id={anchorId}
+      data-category-header
       className="sticky top-24 z-10 -mx-2 cursor-pointer scroll-mt-24 rounded-sm border-b border-b-slate-700/80 bg-slate-500/60 px-4 py-1 text-sm font-medium text-white backdrop-blur-md transition-colors text-shadow-slate-700 text-shadow-xs hover:bg-slate-600/70 dark:bg-slate-600/60"
       onClick={() => scrollToAnchor(anchorId)}
       title="Click to scroll to top of this section"
