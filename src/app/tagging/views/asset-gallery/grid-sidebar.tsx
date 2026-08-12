@@ -7,7 +7,6 @@ import {
 import Image from 'next/image';
 import {
   CSSProperties,
-  KeyboardEvent,
   RefObject,
   useEffect,
   useRef,
@@ -31,7 +30,9 @@ import { TaggingManager } from '@/app/tagging/components/tagging/tagging-manager
 import { composeDimensions, getAspectRatio } from '@/app/utils/helpers';
 import { getImageUrl } from '@/app/utils/image-utils';
 
+import { handleEditorEscape } from './editor-focus';
 import { useScrollFade } from './use-scroll-fade';
+import { useZoomKey } from './use-zoom-key';
 
 // Preview letterbox heights (collapsed/expanded); the width calc below must
 // use the active value so the contain box (and therefore the crop overlay)
@@ -180,28 +181,6 @@ const ScrollFade = ({
   />
 );
 
-/**
- * Escape hands keyboard control back to the grid: blurring the focused widget
- * makes the grid's window-level nav active again (it only needs focus to be
- * outside the inspector). Widgets with an Escape meaning of their own win
- * first — the autocomplete preventDefaults its dismiss, the caption editor
- * blurs itself, and a text field keeps Escape while it still has content to
- * clear — so backing out is repeated Escapes, never a lost edit.
- */
-const handleEscapeToGrid = (e: KeyboardEvent<HTMLDivElement>) => {
-  if (e.key !== 'Escape' || e.defaultPrevented) return;
-  const target = e.target as HTMLElement;
-  if (
-    (target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement) &&
-    target.value
-  ) {
-    return;
-  }
-  target.blur();
-  e.preventDefault();
-};
-
 type GridSidebarProps = {
   isOverlayOpen: boolean;
   onOverlayClose: () => void;
@@ -282,6 +261,9 @@ export const GridSidebar = ({
     setLastAssetId(currentAssetId);
     setIsExpanded(false);
   }
+  // z expands/collapses the inspected image, mirroring a click on the preview
+  useZoomKey(!!asset, () => setIsExpanded((prev) => !prev));
+
   const spacerRef = useRef<HTMLDivElement>(null);
   const pinnedRightPx = usePinnedRightEdge(spacerRef);
   const { scrollRef, contentRef, hasScrollAbove, hasScrollBelow } =
@@ -294,7 +276,7 @@ export const GridSidebar = ({
     >
       <div
         data-grid-inspector
-        onKeyDown={handleEscapeToGrid}
+        onKeyDown={handleEditorEscape}
         style={
           pinnedRightPx !== null
             ? ({ '--inspector-right': `${pinnedRightPx}px` } as CSSProperties)

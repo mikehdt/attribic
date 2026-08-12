@@ -8,7 +8,10 @@ import {
 import { GridCell } from './grid-cell';
 import { GridSidebar } from './grid-sidebar';
 import type { GroupedAssets, ShiftHoverPreview } from './use-asset-gallery';
-import { useGridKeyboardNav } from './use-grid-keyboard-nav';
+import {
+  type AssetNavAdapter,
+  useAssetKeyboardNav,
+} from './use-asset-keyboard-nav';
 
 type AssetGridProps = {
   groupedAssets: GroupedAssets;
@@ -66,10 +69,22 @@ export const AssetGrid = ({
     revealGridInspector(setInspectorOverlayOpen);
   }, []);
 
-  useGridKeyboardNav(paginatedAssetIds, currentPage, {
-    isOpen: isInspectorOverlayOpen,
-    setOpen: setInspectorOverlayOpen,
-  });
+  // Escape closes the narrow-viewport overlay before the nav layer clears
+  // the current asset; Tab lands in the inspector panel
+  const navAdapter = useMemo<AssetNavAdapter>(
+    () => ({
+      editorSelector: '[data-grid-inspector]',
+      onTabInto: () => revealGridInspector(setInspectorOverlayOpen),
+      onEscape: () => {
+        if (!isInspectorOverlayOpen) return false;
+        setInspectorOverlayOpen(false);
+        return true;
+      },
+    }),
+    [isInspectorOverlayOpen],
+  );
+
+  useAssetKeyboardNav(paginatedAssetIds, currentPage, navAdapter);
 
   const renderedGroups = useMemo(
     () =>

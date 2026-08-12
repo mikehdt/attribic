@@ -11,9 +11,14 @@ import {
   clearVisibilityFilters,
   selectPaginationSize,
 } from '@/app/store/filters';
-import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import {
+  useAppDispatch,
+  useAppSelector,
+  useAppStore,
+} from '@/app/store/hooks';
 import {
   clearClickTracking,
+  selectCurrentAssetId,
   selectSelectedAssets,
   selectShiftHoverPreview,
   setShiftHoverAssetId,
@@ -52,6 +57,7 @@ export const useAssetGallery = (currentPage: number) => {
   useAnchorScrolling();
 
   const dispatch = useAppDispatch();
+  const store = useAppStore();
 
   // Track whether shift key is currently held. A ref, not state: nothing
   // renders from it, and a state flip would change handleAssetHover's
@@ -81,9 +87,13 @@ export const useAssetGallery = (currentPage: number) => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift' && !isShiftHeldRef.current) {
         isShiftHeldRef.current = true;
-        // If already hovering an asset when shift is pressed, update Redux
-        if (hoveredAssetRef.current) {
-          dispatch(setShiftHoverAssetId(hoveredAssetRef.current));
+        // If already hovering an asset when shift is pressed, update Redux;
+        // with no hover, the keyboard's current asset previews instead, so
+        // Shift+arrow range selection lights up the same way the mouse does
+        const target =
+          hoveredAssetRef.current ?? selectCurrentAssetId(store.getState());
+        if (target) {
+          dispatch(setShiftHoverAssetId(target));
         }
       }
     };
@@ -112,7 +122,7 @@ export const useAssetGallery = (currentPage: number) => {
       window.removeEventListener('blur', handleBlur);
       cancelPendingHoverClear();
     };
-  }, [cancelPendingHoverClear, dispatch]);
+  }, [cancelPendingHoverClear, dispatch, store]);
 
   const paginationSize = useAppSelector(selectPaginationSize);
   const sortType = useAppSelector(selectSortType);

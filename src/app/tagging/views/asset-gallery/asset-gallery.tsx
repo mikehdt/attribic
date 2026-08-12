@@ -9,6 +9,7 @@ import { selectTaggingViewMode } from '@/app/store/preferences';
 import { AssetGrid } from './asset-grid';
 import { AssetList } from './asset-list';
 import { useAssetGallery } from './use-asset-gallery';
+import { useAssetHotkeys } from './use-asset-hotkeys';
 
 type AssetGalleryProps = {
   currentPage?: number;
@@ -30,6 +31,8 @@ export const AssetGallery = ({ currentPage = 1 }: AssetGalleryProps) => {
     handleAssetHover,
     handleClearFilters,
   } = useAssetGallery(currentPage);
+
+  useAssetHotkeys(paginatedAssetIds, currentPage);
 
   if (!hasResults) {
     return (
@@ -59,6 +62,7 @@ export const AssetGallery = ({ currentPage = 1 }: AssetGalleryProps) => {
       groupedAssets={groupedAssets}
       showCategoryHeaders={showCategoryHeaders}
       currentPage={currentPage}
+      paginatedAssetIds={paginatedAssetIds}
       shiftHoverPreview={shiftHoverPreview}
       onAssetHover={handleAssetHover}
     />

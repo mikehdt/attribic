@@ -12,7 +12,14 @@ import {
   selectProjectFolderName,
   selectShowCropVisualization,
 } from '@/app/store/project';
-import { handleAssetClick, selectAssetIsSelected } from '@/app/store/selection';
+import {
+  handleAssetClick,
+  selectAssetIsCurrent,
+  selectAssetIsSelected,
+  setCurrentAsset,
+} from '@/app/store/selection';
+import { handleEditorEscape } from '@/app/tagging/views/asset-gallery/editor-focus';
+import { useZoomKey } from '@/app/tagging/views/asset-gallery/use-zoom-key';
 import { composeDimensions, getAspectRatio } from '@/app/utils/helpers';
 import { getImageUrl } from '@/app/utils/image-utils';
 import { isArchiveSubfolder } from '@/app/utils/subfolder-utils';
@@ -67,6 +74,9 @@ const AssetComponent = ({
   const isSelected = useAppSelector((state) =>
     selectAssetIsSelected(state, assetId),
   );
+  const isCurrent = useAppSelector((state) =>
+    selectAssetIsCurrent(state, assetId),
+  );
   const globalShowCropVisualization = useAppSelector(
     selectShowCropVisualization,
   );
@@ -103,6 +113,9 @@ const AssetComponent = ({
   const toggleImageZoom = useCallback(() => {
     setImageZoom((prev) => !prev);
   }, []);
+
+  // z zooms the current row's image, mirroring a click on it
+  useZoomKey(isCurrent, toggleImageZoom);
 
   const onToggleAssetSelection = useCallback(
     (e: MouseEvent) => {
@@ -165,9 +178,24 @@ const AssetComponent = ({
 
   const isArchived = isArchiveSubfolder(subfolder);
 
+  // Clicking or tabbing into the inline editor moves the keyboard nav origin
+  // here, so navigation resumes from the row being edited
+  const onEditorFocusCapture = useCallback(() => {
+    if (!isCurrent) {
+      dispatch(setCurrentAsset(assetId));
+    }
+  }, [isCurrent, assetId, dispatch]);
+
+  // Current-asset highlight: sky by default, shifting to the purple
+  // selection language when the highlighted asset is itself selected
+  const currentClasses = isCurrent
+    ? `ring-2 ring-offset-2 ring-offset-(--background) ${showAsSelected ? 'ring-purple-500' : 'ring-sky-500'}`
+    : '';
+
   return (
     <div
-      className={`my-2 flex w-full overflow-hidden rounded-lg border transition-shadow max-md:flex-col ${isSelected ? 'border-(--border-selected) shadow-sm shadow-purple-200 dark:shadow-purple-700' : 'border-(--border)'} ${isArchived ? 'opacity-60' : ''}`}
+      data-asset-id={assetId}
+      className={`my-2 flex w-full scroll-mt-36 scroll-mb-16 overflow-hidden rounded-lg border transition-shadow max-md:flex-col ${isSelected ? 'border-(--border-selected) shadow-sm shadow-purple-200 dark:shadow-purple-700' : 'border-(--border)'} ${isArchived ? 'opacity-60' : ''} ${currentClasses}`}
     >
       <div
         className={selectionPanelClasses}
@@ -255,6 +283,9 @@ const AssetComponent = ({
         </div>
 
         <div
+          data-asset-editor
+          onKeyDown={handleEditorEscape}
+          onFocusCapture={onEditorFocusCapture}
           className={`min-h-40 w-full bg-slate-50 p-4 max-md:p-2 ${imageZoom ? 'md:w-1/4' : 'md:w-3/4'} dark:bg-slate-900`}
         >
           {captionMode === 'caption' ? (

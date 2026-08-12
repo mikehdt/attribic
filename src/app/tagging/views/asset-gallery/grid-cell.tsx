@@ -128,10 +128,10 @@ const GridCellComponent = ({
       ? 'border-(--border) opacity-60'
       : 'border-(--border)';
 
-  // Current-asset highlight uses sky, distinct from the purple selection
-  // language, so "inspected" and "selected" never read as the same state
+  // Current-asset highlight: sky by default, shifting to the purple
+  // selection language when the inspected cell is itself selected
   const currentClasses = isCurrent
-    ? 'ring-2 ring-sky-500 ring-offset-2 ring-offset-(--surface-muted)'
+    ? `ring-2 ring-offset-2 ring-offset-(--surface-muted) ${showAsSelected ? 'ring-purple-500' : 'ring-sky-500'}`
     : '';
 
   return (

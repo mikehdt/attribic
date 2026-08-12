@@ -21,6 +21,7 @@ import { PaginationControls } from '../pagination/controls';
 import { Pagination } from '../pagination/pagination';
 import { IoActions } from './io-actions';
 import { LoadingStatus } from './loading-status';
+import { useSaveHotkey } from './use-save-hotkey';
 
 type TaggingBottomShelfProps = {
   currentPage?: number;
@@ -34,6 +35,8 @@ export const TaggingBottomShelf = ({
 }: TaggingBottomShelfProps) => {
   const dispatch = useAppDispatch();
   const { showToast } = useToast();
+
+  useSaveHotkey();
 
   // IO state selectors
   const ioState = useAppSelector(selectIoState);

@@ -3,14 +3,27 @@ import { useMemo } from 'react';
 import { Asset } from '@/app/tagging/components/asset/asset';
 
 import { CategoryHeader } from './category-header';
+import { focusAssetRowEditor } from './editor-focus';
 import type { GroupedAssets, ShiftHoverPreview } from './use-asset-gallery';
+import {
+  type AssetNavAdapter,
+  useAssetKeyboardNav,
+} from './use-asset-keyboard-nav';
 
 type AssetListProps = {
   groupedAssets: GroupedAssets;
   showCategoryHeaders: boolean;
   currentPage: number;
+  paginatedAssetIds: string[];
   shiftHoverPreview: ShiftHoverPreview;
   onAssetHover: (assetId: string | null) => void;
+};
+
+// Tab lands in the current row's inline editor; there are no extra Escape
+// layers, so the nav layer's own handling (clear current) applies directly
+const listNavAdapter: AssetNavAdapter = {
+  editorSelector: '[data-asset-editor]',
+  onTabInto: focusAssetRowEditor,
 };
 
 /** The full-detail row renderer: image, inline tag editor and metadata. */
@@ -18,9 +31,12 @@ export const AssetList = ({
   groupedAssets,
   showCategoryHeaders,
   currentPage,
+  paginatedAssetIds,
   shiftHoverPreview,
   onAssetHover,
 }: AssetListProps) => {
+  useAssetKeyboardNav(paginatedAssetIds, currentPage, listNavAdapter);
+
   // Memoize rendered assets to prevent unnecessary re-renders
   const renderedAssets = useMemo(
     () =>

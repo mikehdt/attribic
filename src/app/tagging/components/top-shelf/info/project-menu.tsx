@@ -4,11 +4,12 @@ import {
   ChevronDownIcon,
   HighlighterIcon,
   ImagePlusIcon,
+  KeyboardIcon,
   MessageSquareTextIcon,
   RefreshCwIcon,
 } from 'lucide-react';
 import Image from 'next/image';
-import { memo, useCallback, useId, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { MenuEditModeSwitcher } from '@/app/shared/menu-edit-mode-switcher';
 import { MenuItem } from '@/app/shared/menu-item';
@@ -38,12 +39,14 @@ import {
   selectProjectThumbnailVersion,
   setCaptionMode,
 } from '@/app/store/project';
+import { isTypingContextBlocked } from '@/app/tagging/views/asset-gallery/use-asset-keyboard-nav';
 import { updateProject } from '@/app/utils/project-actions';
 import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
 
 import { BucketCropModal } from '../asset-controls/bucket-crop-modal/bucket-crop-modal';
 import { TriggerPhrasesModal } from '../tag-controls/trigger-phrases-modal';
 import { CaptionPromptModal } from './caption-prompt-modal';
+import { KeyboardShortcutsModal } from './keyboard-shortcuts-modal';
 import { MenuCaptionModeSwitcher } from './menu-caption-mode-switcher';
 import { SwitchToHybridModal } from './switch-to-hybrid-modal';
 import { SwitchToTagsModal } from './switch-to-tags-modal';
@@ -67,6 +70,7 @@ const ProjectMenuComponent = () => {
   const [isBucketModalOpen, setIsBucketModalOpen] = useState(false);
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [isTriggersModalOpen, setIsTriggersModalOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   // Non-zero while the hybrid→tags confirm dialog is open; holds the count of
   // captions that would be discarded.
   const [switchToTagsCount, setSwitchToTagsCount] = useState<number | null>(
@@ -143,6 +147,28 @@ const ProjectMenuComponent = () => {
 
   const handleCloseTriggersModal = useCallback(() => {
     setIsTriggersModalOpen(false);
+  }, []);
+
+  const handleOpenShortcutsModal = useCallback(() => {
+    closePopup(popupId);
+    setIsShortcutsModalOpen(true);
+  }, [closePopup, popupId]);
+
+  const handleCloseShortcutsModal = useCallback(() => {
+    setIsShortcutsModalOpen(false);
+  }, []);
+
+  // ? opens the shortcuts reference from anywhere in the gallery (inert
+  // while typing or when a dialog is already open, same as the nav layer)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingContextBlocked(e)) return;
+      e.preventDefault();
+      setIsShortcutsModalOpen(true);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleSetTagEditMode = useCallback(
@@ -318,12 +344,23 @@ const ProjectMenuComponent = () => {
             label="Bucket Visualisation Tool"
             onClick={handleOpenBucketModal}
           />
+
+          <MenuItem
+            icon={<KeyboardIcon className="h-5 w-5" />}
+            label="Keyboard Shortcuts"
+            onClick={handleOpenShortcutsModal}
+          />
         </div>
       </Popup>
 
       <BucketCropModal
         isOpen={isBucketModalOpen}
         onClose={handleCloseBucketModal}
+      />
+
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={handleCloseShortcutsModal}
       />
 
       <CaptionPromptModal

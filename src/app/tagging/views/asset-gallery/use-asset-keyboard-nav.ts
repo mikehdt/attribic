@@ -5,9 +5,21 @@ import {
   handleAssetClick,
   selectCurrentAssetId,
   setCurrentAsset,
+  setShiftHoverAssetId,
 } from '@/app/store/selection';
 
-import { revealGridInspector } from './focus-grid-inspector';
+/** The per-view half of the keyboard model: where Tab lands and what extra
+ * layers Escape unwinds. Everything else is identical across views. */
+export type AssetNavAdapter = {
+  /** Nav is inert while focus is inside this surface (the view's editing UI
+   * owns its own keys). */
+  editorSelector: string;
+  /** Bring the current asset's editing surface under the keyboard. */
+  onTabInto: (currentAssetId: string) => void;
+  /** Unwind a view-specific layer (e.g. an overlay). Return true when a
+   * layer was closed, so the current asset survives this Escape. */
+  onEscape?: () => boolean;
+};
 
 type CellPosition = {
   id: string;
@@ -34,8 +46,10 @@ const collectCellPositions = (): CellPosition[] =>
  * Find the cell visually above/below the current one: the horizontally
  * nearest cell in the closest row in that direction. Geometry-based rather
  * than index arithmetic so partial rows at category-group boundaries move to
- * the cell actually below, not a diagonal neighbour in display order.
- * Returns null at a dead end (no row further in that direction).
+ * the cell actually below, not a diagonal neighbour in display order. (For
+ * the list view's full-width rows every row is its own visual row, so this
+ * degenerates to previous/next.) Returns null at a dead end (no row further
+ * in that direction).
  */
 const findVerticalNeighbour = (
   currentId: string,
@@ -72,14 +86,71 @@ const findVerticalNeighbour = (
   return best.id;
 };
 
-const scrollCellIntoView = (assetId: string) => {
+export const scrollAssetIntoView = (assetId: string) => {
   document
     .querySelector(`[data-asset-id="${CSS.escape(assetId)}"]`)
     ?.scrollIntoView({ block: 'nearest' });
 };
 
 /**
- * Keyboard navigation for the grid view's current asset.
+ * The first asset whose top edge clears the fixed top shelf — where arrow
+ * keys pick up when nothing is highlighted yet, so starting navigation
+ * mid-scroll works on what's in front of you instead of yanking the view
+ * back to the first asset on the page. Falls back to null when everything
+ * on screen is partially scrolled off (caller uses display-order first).
+ */
+const findFirstFullyVisibleId = (): string | null => {
+  const shelfBottom =
+    document.querySelector('[data-top-shelf]')?.getBoundingClientRect()
+      .bottom ?? 0;
+  for (const el of document.querySelectorAll<HTMLElement>('[data-asset-id]')) {
+    if (el.getBoundingClientRect().top >= shelfBottom) {
+      return el.dataset.assetId ?? null;
+    }
+  }
+  return null;
+};
+
+// Both views' editing surfaces; only one exists at a time, so hotkeys that
+// aren't view-specific guard against the pair
+export const GALLERY_EDITOR_SELECTOR =
+  '[data-grid-inspector], [data-asset-editor]';
+
+/**
+ * True when a keystroke belongs to a typing (or otherwise key-consuming)
+ * widget: a text input, a focused video player's transport keys, or an open
+ * dialog. The floor every gallery hotkey guards against.
+ */
+export const isTypingContextBlocked = (e: KeyboardEvent): boolean => {
+  if (e.defaultPrevented) return true;
+  const target = e.target as HTMLElement | null;
+  if (
+    target?.closest('input, textarea, select, video, [contenteditable="true"]')
+  ) {
+    return true;
+  }
+  return !!document.querySelector('[role="dialog"]');
+};
+
+/**
+ * True when a global asset hotkey must stay inert: a typing context, or
+ * focus inside the view's editing surface (whose widgets own the same
+ * arrows/Enter/Space/Escape the nav layer binds). Shared by the nav layer
+ * and the sibling asset hotkeys so "when the keyboard belongs to the
+ * gallery" has exactly one definition.
+ */
+export const isNavContextBlocked = (
+  e: KeyboardEvent,
+  editorSelector: string,
+): boolean => {
+  if (isTypingContextBlocked(e)) return true;
+  const target = e.target as HTMLElement | null;
+  return !!target?.closest(editorSelector);
+};
+
+/**
+ * Keyboard navigation for the gallery's current asset, shared by the grid
+ * and list views (per-view differences live in the adapter).
  *
  * - Left/right step linearly through display order (crossing row and
  *   category boundaries); up/down move to the visually nearest cell in the
@@ -88,32 +159,28 @@ const scrollCellIntoView = (assetId: string) => {
  * - Home/End jump to the first/last asset on the page.
  * - Space and Enter toggle selection of the current asset (with Shift they
  *   extend the range from the last click, same as shift-clicking it).
- * - Escape clears the current asset (after first closing the narrow-viewport
- *   inspector overlay, when it's open).
- * - Tab (with an asset inspected, no control focused) crosses to the
- *   inspector's first tag — or its add-tag input when untagged; Escape from
- *   the inspector crosses back (handled in GridSidebar). Shift+Tab and Tab
- *   from a focused control stay native. At
- *   widths where the inspector column is hidden, Tab first opens it as an
- *   overlay via the passed controls.
+ * - Escape unwinds one layer at a time: the adapter's layer first (the
+ *   grid's narrow-viewport overlay), then the current-asset highlight.
+ * - Tab (with a current asset, no control focused) crosses into the view's
+ *   editing surface via the adapter — the grid's inspector panel or the list
+ *   row's inline editor; Escape from there crosses back (handleEditorEscape).
+ *   Shift+Tab and Tab from a focused control stay native.
  *
- * Inert while focus is in an input-like element or the inspector sidebar, or
+ * Inert while focus is in an input-like element or the editing surface, or
  * while any dialog is open, so it never fights local keyboard handling.
  */
-export const useGridKeyboardNav = (
+export const useAssetKeyboardNav = (
   orderedAssetIds: string[],
   currentPage: number,
-  overlay: { isOpen: boolean; setOpen: (open: boolean) => void },
+  adapter: AssetNavAdapter,
 ) => {
   const dispatch = useAppDispatch();
   const currentAssetId = useAppSelector(selectCurrentAssetId);
-  // Destructured so the effect re-binds on state changes, not on the
-  // per-render identity of the controls object
-  const { isOpen: isOverlayOpen, setOpen: setOverlayOpen } = overlay;
 
   // Refs so the window listener binds once and always sees fresh values
   const currentRef = useRef(currentAssetId);
   const idsRef = useRef(orderedAssetIds);
+  const adapterRef = useRef(adapter);
 
   useEffect(() => {
     currentRef.current = currentAssetId;
@@ -124,23 +191,18 @@ export const useGridKeyboardNav = (
   }, [orderedAssetIds]);
 
   useEffect(() => {
+    adapterRef.current = adapter;
+  }, [adapter]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
-      const target = e.target as HTMLElement | null;
-      if (
-        target?.closest('input, textarea, select, [contenteditable="true"]')
-      ) {
-        return;
-      }
-      // The inspector owns all keys while focus is inside it — its widgets
-      // (tag chips, dnd-kit reorder, autocomplete) use the same arrows and
-      // Enter/Space/Escape this hook binds
-      if (target?.closest('[data-grid-inspector]')) return;
-      if (document.querySelector('[role="dialog"]')) return;
+      const { editorSelector, onTabInto, onEscape } = adapterRef.current;
+      if (isNavContextBlocked(e, editorSelector)) return;
 
       // A control that genuinely holds focus (shelf button, view toggle,
       // a tabbed-to checkbox) keeps its native Enter/Space semantics; the
       // global bindings only act when nothing interactive is focused
+      const target = e.target as HTMLElement | null;
       const interactiveFocus = !!target?.closest(
         'button, a, [role="button"], [role="checkbox"], [role="switch"]',
       );
@@ -151,22 +213,33 @@ export const useGridKeyboardNav = (
       const current = currentRef.current;
       const currentIndex = current ? ids.indexOf(current) : -1;
 
+      // With no highlight yet, arrows pick up from the first asset actually
+      // in view rather than jumping the page back to the top
+      const pickupIndex = () => {
+        const visibleId = findFirstFullyVisibleId();
+        const index = visibleId ? ids.indexOf(visibleId) : -1;
+        return index === -1 ? 0 : index;
+      };
+
       let nextIndex: number | null = null;
 
       switch (e.key) {
         case 'ArrowRight':
           nextIndex =
             currentIndex === -1
-              ? 0
+              ? pickupIndex()
               : Math.min(currentIndex + 1, ids.length - 1);
           break;
         case 'ArrowLeft':
-          nextIndex = currentIndex === -1 ? 0 : Math.max(currentIndex - 1, 0);
+          nextIndex =
+            currentIndex === -1
+              ? pickupIndex()
+              : Math.max(currentIndex - 1, 0);
           break;
         case 'ArrowDown':
         case 'ArrowUp': {
           if (currentIndex === -1 || !current) {
-            nextIndex = 0;
+            nextIndex = pickupIndex();
             break;
           }
           const neighbourId = findVerticalNeighbour(
@@ -200,21 +273,20 @@ export const useGridKeyboardNav = (
           }
           return;
         case 'Escape':
-          // Back out one layer at a time: overlay first, then the highlight
-          if (isOverlayOpen) {
-            setOverlayOpen(false);
-            return;
-          }
+          // Back out one layer at a time: the view's layer first, then the
+          // highlight
+          if (onEscape?.()) return;
           if (current) {
             dispatch(setCurrentAsset(null));
           }
           return;
         case 'Tab':
-          // Bridge to the inspector so tagging the inspected asset is one
-          // keystroke away; from a focused control, Tab keeps native order
+          // Bridge to the editing surface so tagging the current asset is
+          // one keystroke away; from a focused control, Tab keeps native
+          // order
           if (e.shiftKey || interactiveFocus || !current) return;
           e.preventDefault();
-          revealGridInspector(setOverlayOpen);
+          onTabInto(current);
           return;
         default:
           return;
@@ -222,17 +294,22 @@ export const useGridKeyboardNav = (
 
       if (nextIndex !== null) {
         e.preventDefault();
-        // Keyboard navigation reclaims the grid: drop focus from whatever
+        // Keyboard navigation reclaims the gallery: drop focus from whatever
         // control Tab wandered onto (shelf buttons etc.), so the next Tab
-        // bridges to the inspector rather than resuming shelf tab order
+        // bridges to the editing surface rather than resuming shelf tab order
         (document.activeElement as HTMLElement | null)?.blur();
         const nextId = ids[nextIndex];
         dispatch(setCurrentAsset(nextId));
-        scrollCellIntoView(nextId);
+        // Moving with Shift held previews the range a Shift+Space would
+        // select, exactly as shift-hovering the same asset with the mouse
+        if (e.shiftKey) {
+          dispatch(setShiftHoverAssetId(nextId));
+        }
+        scrollAssetIntoView(nextId);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dispatch, currentPage, isOverlayOpen, setOverlayOpen]);
+  }, [dispatch, currentPage]);
 };

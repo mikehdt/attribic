@@ -1,27 +1,20 @@
+import { focusFirstEditorControl } from './editor-focus';
+
 export const isGridInspectorFocused = (): boolean => {
   const panel = document.querySelector<HTMLElement>('[data-grid-inspector]');
   return !!panel && panel.contains(document.activeElement);
 };
 
 /**
- * Focus the inspector's primary control: the first tag chip when the asset
- * has tags (arrows take over from there), else the add-tag input, else the
- * first focusable control (caption mode). Returns false when the inspector
- * is hidden (narrow viewports) or has no asset loaded, so the caller can
- * summon the overlay or let native Tab proceed.
+ * Focus the inspector's primary control (see focusFirstEditorControl).
+ * Returns false when the inspector is hidden (narrow viewports) or has no
+ * asset loaded, so the caller can summon the overlay or let native Tab
+ * proceed.
  */
 export const focusGridInspector = (): boolean => {
   const panel = document.querySelector<HTMLElement>('[data-grid-inspector]');
   if (!panel || panel.offsetWidth === 0) return false;
-  const target =
-    panel.querySelector<HTMLElement>('[data-tag-chip][tabindex="0"]') ??
-    panel.querySelector<HTMLElement>('[data-tag-input="add"]:not(:disabled)') ??
-    panel.querySelector<HTMLElement>(
-      'button:not(:disabled):not([data-inspector-close]), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
-    );
-  if (!target) return false;
-  target.focus();
-  return true;
+  return focusFirstEditorControl(panel);
 };
 
 /**

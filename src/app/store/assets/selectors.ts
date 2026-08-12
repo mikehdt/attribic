@@ -436,6 +436,22 @@ export const selectFilteredAssetsCount = createSelector(
   (filteredAssets) => filteredAssets.length,
 );
 
+// First tagless asset in filtered order — the exact order pagination slices,
+// so the index maps straight to a page. Used by the jump-to-first-untagged
+// hotkey.
+export const selectFirstTaglessFilteredAsset = createSelector(
+  [
+    selectFilteredAssets,
+    (state: RootState) => state.project.config.captionMode,
+  ],
+  (assets, captionMode) => {
+    const index = assets.findIndex((asset) =>
+      isAssetTagless(asset, captionMode),
+    );
+    return index === -1 ? null : { fileId: assets[index].fileId, index };
+  },
+);
+
 // Selector to count how many files match each filename pattern
 // Returns a map of pattern -> count
 export const selectFilenamePatternCounts = createSelector(
