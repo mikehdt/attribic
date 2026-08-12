@@ -13,7 +13,11 @@ import {
 } from '../store/filters';
 import type { CaptionMode } from '../store/project/types';
 import { composeDimensions, naturalCompare } from './helpers';
-import { getAssetFileName, isArchiveSubfolder } from './subfolder-utils';
+import {
+  getAssetFileName,
+  getAssetSortName,
+  isArchiveSubfolder,
+} from './subfolder-utils';
 
 /**
  * Apply visibility-based filtering using per-class modes.
@@ -331,7 +335,10 @@ const applySorting = (
 
     switch (sortType) {
       case SortType.NAME:
-        comparison = naturalCompare(a.fileId, b.fileId);
+        comparison = naturalCompare(
+          getAssetSortName(a.fileId, a.subfolder),
+          getAssetSortName(b.fileId, b.subfolder),
+        );
         break;
 
       case SortType.INDEX:
@@ -371,13 +378,14 @@ const applySorting = (
         const getCategoryAndSecondary = (asset: ImageAsset) => {
           const imageDims = asset.dimensions;
           const bucketDims = asset.bucket;
+          const secondary = getAssetSortName(asset.fileId, asset.subfolder);
 
           // Check if dimensions are identical
           if (
             imageDims.width === bucketDims.width &&
             imageDims.height === bucketDims.height
           ) {
-            return { category: 0, secondary: asset.fileId }; // Identical - highest priority
+            return { category: 0, secondary }; // Identical - highest priority
           }
 
           // Check if aspect ratios are identical (within small tolerance for floating point)
@@ -389,11 +397,11 @@ const applySorting = (
             Math.abs(imageAspectRatio - bucketAspectRatio) <
             aspectRatioTolerance
           ) {
-            return { category: 1, secondary: asset.fileId }; // Same aspect ratio - medium priority
+            return { category: 1, secondary }; // Same aspect ratio - medium priority
           }
 
           // Different aspect ratio - lowest priority
-          return { category: 2, secondary: asset.fileId };
+          return { category: 2, secondary };
         };
 
         const aCategoryData = getCategoryAndSecondary(a);

@@ -39,6 +39,17 @@ export const getAssetFileName = (
 };
 
 /**
+ * Name key for ordering assets. Identical to `fileId` except for archived
+ * assets, whose `.archive/` prefix is dropped: a leading `.` sorts before every
+ * real filename, so keeping it would clump the whole archive at the front of a
+ * Combined-mode gallery (and onto its first page) instead of letting each
+ * archived asset slot in beside its unarchived neighbours. Repeat-folder
+ * prefixes are kept — those groupings are intentional.
+ */
+export const getAssetSortName = (fileId: string, subfolder?: string): string =>
+  isArchiveSubfolder(subfolder) ? getAssetFileName(fileId, subfolder) : fileId;
+
+/**
  * Parse a subfolder name into its repeat count and label components
  * @param subfolder - Folder name (e.g., "2_sonic")
  * @returns Object with repeatCount and label, or null if invalid
