@@ -33,6 +33,12 @@ import { CropVisualization } from './crop-visualization';
 
 type PreviewState = 'select' | 'deselect' | null;
 
+// Longest-edge cap for the row image. Un-zoomed rows render at max-h-64, but
+// the zoomed state can reach 3/4 of a full-bleed row, so the cap is sized for
+// zoom — one URL for both states, so toggling never refetches. A 4K landscape
+// serves at 1920×1080; bump if zoom looks soft on very wide displays.
+const ROW_PREVIEW_PX = 1920;
+
 type AssetProps = {
   assetId: string;
   fileExtension: string;
@@ -108,7 +114,13 @@ const AssetComponent = ({
   // Get the image URL for the current project with cache busting
   const projectName = useAppSelector(selectProjectFolderName);
   const fileName = `${assetId}.${fileExtension}`;
-  const baseUrl = getImageUrl(fileName, projectName || undefined);
+  const baseUrl = getImageUrl(
+    fileName,
+    projectName || undefined,
+    isVideo
+      ? undefined
+      : { maxWidth: ROW_PREVIEW_PX, maxHeight: ROW_PREVIEW_PX },
+  );
   const imageUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${lastModified}`;
 
   const toggleImageZoom = useCallback(() => {
