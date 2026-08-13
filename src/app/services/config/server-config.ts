@@ -33,7 +33,7 @@ export function getHfToken(): string | null {
  * every server-side reader agrees on it — the literal was repeated at six call
  * sites, each free to drift.
  */
-export const DEFAULT_PROJECTS_FOLDER = 'public/assets';
+const DEFAULT_PROJECTS_FOLDER = 'public/assets';
 
 /**
  * Read the configured projects folder, or '' when unset. Prefer

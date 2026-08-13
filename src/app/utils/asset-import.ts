@@ -16,7 +16,7 @@ import { isValidRepeatFolder } from './subfolder-utils';
  */
 const SIDECAR_SUFFIXES = ['.poster.jpg', '.txt', '.npz'] as const;
 
-export type ImportCandidate = {
+type ImportCandidate = {
   /** Path relative to the drop root, e.g. `2_chara/cat.png`. */
   relativePath: string;
   size: number;
@@ -32,7 +32,7 @@ export type ImportSkipReason =
   /** A sidecar whose asset isn't part of this import. */
   | 'orphaned';
 
-export type ImportSidecar = {
+type ImportSidecar = {
   relativePath: string;
   /** Path written to, relative to the project folder. */
   targetPath: string;
@@ -52,7 +52,7 @@ export type PlannedImport = {
   sidecars: ImportSidecar[];
 };
 
-export type SkippedImport = {
+type SkippedImport = {
   relativePath: string;
   reason: ImportSkipReason;
 };
@@ -97,7 +97,7 @@ export const splitSidecarName = (
  * `2_chara` folder lands in `2_chara` rather than the project root. The deepest
  * match wins, which flattens any nesting into the nearest repeat ancestor.
  */
-export const detectRepeatFolder = (relativePath: string): string | null => {
+const detectRepeatFolder = (relativePath: string): string | null => {
   const segments = normaliseImportPath(relativePath).split('/');
   segments.pop(); // the file name itself
   for (let i = segments.length - 1; i >= 0; i--) {

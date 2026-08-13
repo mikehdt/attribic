@@ -114,7 +114,7 @@ const detectDuplicateFileIds = (
   return { uniqueFiles, duplicateWarnings };
 };
 
-export type ImageFileListErrorType = 'not_found' | 'read_error';
+type ImageFileListErrorType = 'not_found' | 'read_error';
 
 export interface ImageFileListResult {
   files: string[];

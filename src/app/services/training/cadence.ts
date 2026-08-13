@@ -39,7 +39,7 @@ export function resolveSampleCadence(form: TrainingFormValues): Cadence {
  * over the same timeline, so they share this: only the config keys and the
  * enablement rule differ.
  */
-export function deriveCadenceSteps({
+function deriveCadenceSteps({
   mode,
   everyEpochs,
   everySteps,

@@ -28,7 +28,7 @@ export type JobStatus =
 // Job type discriminator
 // ---------------------------------------------------------------------------
 
-export type JobType = 'training' | 'download' | 'tagging';
+type JobType = 'training' | 'download' | 'tagging';
 
 // ---------------------------------------------------------------------------
 // Per-type job shapes

@@ -7,7 +7,7 @@
  * validates here is safe to `mkdir` anywhere.
  */
 
-export const MAX_FOLDER_NAME_LENGTH = 64;
+const MAX_FOLDER_NAME_LENGTH = 64;
 
 /** Path separators plus the characters Windows reserves in a path segment. */
 const INVALID_CHARS = /[<>:"/\\|?*]/;

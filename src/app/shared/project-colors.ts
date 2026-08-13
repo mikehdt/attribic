@@ -4,7 +4,7 @@
  * line up with the Button component's colour variants, so a stored colour can
  * be passed straight through as `color`.
  */
-export const PROJECT_COLORS = [
+const PROJECT_COLORS = [
   'slate',
   'rose',
   'amber',

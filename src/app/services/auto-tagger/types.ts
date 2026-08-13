@@ -53,7 +53,7 @@ export type TaggerModel = {
   videoDefaults?: VlmVideoOptions;
 };
 
-export type ModelFile = {
+type ModelFile = {
   name: string;
   size: number;
 };
@@ -94,7 +94,7 @@ export type VlmVideoQuality = 'low' | 'standard' | 'high';
  * so a 5-minute clip still gets uniform coverage across its full length while
  * a 5-second clip doesn't oversample.
  */
-export type VlmVideoOptions = {
+type VlmVideoOptions = {
   /** Total frames sampled across the whole clip, regardless of duration. */
   frameBudget: number;
   /** Hard cap on sample rate so short clips don't oversample. */

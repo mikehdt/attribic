@@ -27,7 +27,7 @@ export type ComponentStatusMap = Record<
   }
 >;
 
-export type ResolvedComponentPath = {
+type ResolvedComponentPath = {
   path: string | null;
   source: 'default' | 'download' | null;
 };
@@ -36,7 +36,7 @@ export type ResolvedComponentPath = {
  * The path a component resolves to, if any. A saved default (an explicit
  * user choice) wins over an installed download (an implicit fallback).
  */
-export function resolveComponentPath(
+function resolveComponentPath(
   component: ModelComponent,
   savedPaths: ModelPaths | undefined,
   statuses: ComponentStatusMap,

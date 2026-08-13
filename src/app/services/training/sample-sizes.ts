@@ -34,7 +34,7 @@ export const DEFAULT_SAMPLE_ASPECT: SampleAspect = 'square';
  * base resolution and chosen so a 1024 base lands exactly on the standard SDXL
  * buckets. `native` isn't here — it's an exact size, not a ratio of the base.
  */
-export const SAMPLE_ASPECTS: {
+const SAMPLE_ASPECTS: {
   value: SampleAspect;
   label: string;
   wMul: number;

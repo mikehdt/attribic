@@ -11,7 +11,7 @@ export const isGridInspectorFocused = (): boolean => {
  * asset loaded, so the caller can summon the overlay or let native Tab
  * proceed.
  */
-export const focusGridInspector = (): boolean => {
+const focusGridInspector = (): boolean => {
   const panel = document.querySelector<HTMLElement>('[data-grid-inspector]');
   if (!panel || panel.offsetWidth === 0) return false;
   return focusFirstEditorControl(panel);

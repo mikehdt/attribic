@@ -6,7 +6,7 @@ import { recordStatsSample } from './history';
 
 /** One GPU's current load. Every figure is optional — nvidia-smi answers
  * `[N/A]` for anything a given card or driver doesn't expose. */
-export type GpuStats = {
+type GpuStats = {
   index: number;
   name: string;
   utilization: number | null;

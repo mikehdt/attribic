@@ -21,7 +21,7 @@ import type { BatchEvent, SnapshotStatus } from './client';
  * reads `total` afterwards (a reattach only learns it from the snapshot) and
  * seeds `completed` when some images are already accounted for.
  */
-export type BatchCounters = {
+type BatchCounters = {
   total: number;
   /** Images finished so far, successes and failures alike. */
   completed: number;

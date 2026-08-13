@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   selectAllImages,
   selectAllSubfolders,
+  selectFilteredAssets,
   selectIoState,
 } from '@/app/store/assets';
 import { moveAssetsToFolderThunk } from '@/app/store/assets/actions';
@@ -12,14 +13,16 @@ import {
   selectHasActiveFilters,
   selectHasActiveNonArchiveVisibility,
 } from '@/app/store/filters';
-import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
+import { useAppDispatch, useAppSelector, useAppStore } from '@/app/store/hooks';
 import { selectProjectInfo } from '@/app/store/project';
 import {
   clearSelection,
   selectAssetsWithActiveFilters,
   selectAssetsWithActiveFiltersCount,
+  selectCurrentAssetId,
   selectSelectedAssets,
   selectSelectedAssetsCount,
+  setCurrentAsset,
 } from '@/app/store/selection';
 import { ARCHIVE_FOLDER, parseSubfolder } from '@/app/utils/subfolder-utils';
 
@@ -40,6 +43,7 @@ export const useMoveToFolderModal = ({
   onClose,
 }: UseMoveToFolderModalParams) => {
   const dispatch = useAppDispatch();
+  const store = useAppStore();
 
   // Scoping state
   const [applyToSelectedAssets, setApplyToSelectedAssets] = useState(false);
@@ -87,35 +91,24 @@ export const useMoveToFolderModal = ({
 
   const hasSelectedAssets = selectedAssetsCount > 0;
 
+  // A scope counts only when it exists *and* is ticked. The checkbox is the
+  // single source of truth even when it's the only one on screen — a lone
+  // filter scope that applied regardless of its checkbox is what let a move
+  // reach assets the user never asked for.
+  const useSelected = hasSelectedAssets && applyToSelectedAssets;
+  const useFiltered = hasActiveFilters && applyToAssetsWithActiveFilters;
+
   // Resolve effective asset IDs based on scoping (same pattern as add-tags-modal)
   const resolvedAssetIds = useMemo(() => {
-    if (hasSelectedAssets && hasActiveFilters) {
-      if (applyToSelectedAssets && applyToAssetsWithActiveFilters) {
-        // Intersection
-        const filteredIds = new Set(
-          assetsWithActiveFilters.map((a) => a.fileId),
-        );
-        return selectedAssets.filter((id) => filteredIds.has(id));
-      } else if (applyToSelectedAssets) {
-        return [...selectedAssets];
-      } else if (applyToAssetsWithActiveFilters) {
-        return assetsWithActiveFilters.map((a) => a.fileId);
-      }
-      return [];
-    } else if (hasSelectedAssets) {
-      return [...selectedAssets];
-    } else if (hasActiveFilters) {
-      return assetsWithActiveFilters.map((a) => a.fileId);
+    if (useSelected && useFiltered) {
+      // Intersection
+      const filteredIds = new Set(assetsWithActiveFilters.map((a) => a.fileId));
+      return selectedAssets.filter((id) => filteredIds.has(id));
     }
+    if (useSelected) return [...selectedAssets];
+    if (useFiltered) return assetsWithActiveFilters.map((a) => a.fileId);
     return [];
-  }, [
-    hasSelectedAssets,
-    hasActiveFilters,
-    applyToSelectedAssets,
-    applyToAssetsWithActiveFilters,
-    selectedAssets,
-    assetsWithActiveFilters,
-  ]);
+  }, [useSelected, useFiltered, selectedAssets, assetsWithActiveFilters]);
 
   const imageIndex = useMemo(
     () => new Map(allImages.map((img) => [img.fileId, img])),
@@ -228,10 +221,7 @@ export const useMoveToFolderModal = ({
 
   // Archiving is a selected-assets-only operation — the filtered scope can
   // sweep in assets the user never chose, which archive must not do.
-  const isSelectedOnlyScope =
-    hasSelectedAssets &&
-    (!hasActiveFilters ||
-      (applyToSelectedAssets && !applyToAssetsWithActiveFilters));
+  const isSelectedOnlyScope = useSelected && !useFiltered;
 
   // The archive is a meta destination, kept out of folderOptions so the
   // rename/count machinery never sees it
@@ -299,6 +289,20 @@ export const useMoveToFolderModal = ({
     renameFolderName,
   ]);
 
+  // Source folders the move empties, and so removes. Named outright rather
+  // than left to a generic "empty folders will be deleted": collapsing several
+  // folders into one is the outcome that's hardest to walk back.
+  const emptiedFolders = useMemo(
+    () =>
+      Object.keys(sourceFolderSummary).filter(
+        (folder) =>
+          folder !== DESTINATION_ROOT &&
+          folder !== resolvedDestination &&
+          sourceFolderSummary[folder] === folderTotals[folder],
+      ),
+    [sourceFolderSummary, folderTotals, resolvedDestination],
+  );
+
   // Count assets that would actually move (not already in destination)
   const effectiveMoveCount = useMemo(() => {
     if (!resolvedDestination && selectedDestination === DESTINATION_ROOT) {
@@ -336,12 +340,9 @@ export const useMoveToFolderModal = ({
     return option?.disabled ?? false;
   }, [selectedDestination, folderOptions, archiveOption.disabled]);
 
-  // Scoping validation (same as add-tags-modal)
+  // Scoping validation — a scope exists but none of them is ticked
   const hasInvalidConstraints =
-    hasSelectedAssets &&
-    hasActiveFilters &&
-    !applyToSelectedAssets &&
-    !applyToAssetsWithActiveFilters;
+    (hasSelectedAssets || hasActiveFilters) && !useSelected && !useFiltered;
 
   // Overall form validity
   const isFormValid =
@@ -462,6 +463,19 @@ export const useMoveToFolderModal = ({
         if (!keepFilterSelections && hasExplicitFilters) {
           dispatch(clearSelections());
         }
+        // The selection slice remaps the inspected asset's id to its new
+        // location rather than dropping it, so if the move took it out of the
+        // filtered view (archived while the archive is hidden) the inspector
+        // would keep showing an asset that has no cell behind it. Read the
+        // state after the clears above — they can widen what's visible.
+        const state = store.getState();
+        const currentId = selectCurrentAssetId(state);
+        if (
+          currentId &&
+          !selectFilteredAssets(state).some((a) => a.fileId === currentId)
+        ) {
+          dispatch(setCurrentAsset(null));
+        }
         onClose();
       }
     } catch {
@@ -473,6 +487,7 @@ export const useMoveToFolderModal = ({
     isFormValid,
     isMoving,
     dispatch,
+    store,
     selectedDestination,
     newRepeatCount,
     newLabel,
@@ -495,6 +510,17 @@ export const useMoveToFolderModal = ({
     const assetWord = count === 1 ? 'asset' : 'assets';
     const folderWord = sourceFolderCount === 1 ? 'folder' : 'folders';
 
+    // Only the folders this move actually empties, listed while the list is
+    // still short enough to read
+    const emptiedNote =
+      emptiedFolders.length === 0
+        ? ''
+        : emptiedFolders.length === 1
+          ? ` ${emptiedFolders[0]} will be left empty and removed.`
+          : emptiedFolders.length <= 3
+            ? ` ${emptiedFolders.join(', ')} will be left empty and removed.`
+            : ` ${emptiedFolders.length} folders will be left empty and removed.`;
+
     if (isRenameMode) {
       return `Renaming ${selectedDestination} — all ${count} ${assetWord} in it move to the new name.`;
     }
@@ -504,9 +530,9 @@ export const useMoveToFolderModal = ({
         return `All assets are already archived.`;
       }
       if (effectiveMoveCount < count) {
-        return `${effectiveMoveCount} of ${count} ${assetWord} will be archived (${count - effectiveMoveCount} already archived).`;
+        return `${effectiveMoveCount} of ${count} ${assetWord} will be archived (${count - effectiveMoveCount} already archived).${emptiedNote}`;
       }
-      return `${count} ${assetWord} will be archived. Empty folders will be deleted.`;
+      return `${count} ${assetWord} will be archived.${emptiedNote}`;
     }
 
     // A half-typed new folder isn't a destination yet, so the counts below
@@ -518,13 +544,14 @@ export const useMoveToFolderModal = ({
       return `All assets are already in the selected destination.`;
     }
     if (hasDestination && effectiveMoveCount < count) {
-      return `${effectiveMoveCount} of ${count} ${assetWord} will be moved (${count - effectiveMoveCount} already in destination).`;
+      return `${effectiveMoveCount} of ${count} ${assetWord} will be moved (${count - effectiveMoveCount} already in destination).${emptiedNote}`;
     }
-    return `${count} ${assetWord} from ${sourceFolderCount} ${folderWord} will be moved. Empty folders will be deleted.`;
+    return `${count} ${assetWord} from ${sourceFolderCount} ${folderWord} will be moved.${emptiedNote}`;
   }, [
     resolvedAssetIds.length,
     sourceFolderCount,
     effectiveMoveCount,
+    emptiedFolders,
     isRenameMode,
     isArchiveMode,
     selectedDestination,

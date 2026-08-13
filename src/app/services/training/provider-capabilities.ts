@@ -100,7 +100,7 @@ const CAPABILITY_SET: Record<ProviderCapability, true> = {
 
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_SET) as ProviderCapability[];
 
-export const PROVIDER_CAPABILITIES: Record<
+const PROVIDER_CAPABILITIES: Record<
   TrainingProvider,
   ReadonlySet<ProviderCapability>
 > = {

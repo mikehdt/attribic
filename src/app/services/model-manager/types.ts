@@ -7,7 +7,7 @@
 import type { ModelArchitecture, ModelComponentType } from '../training/models';
 
 /** Which feature a downloadable model belongs to */
-export type ModelFeature = 'auto-tagger' | 'training';
+type ModelFeature = 'auto-tagger' | 'training';
 
 /** A file within a downloadable model */
 export type ModelFile = {
@@ -90,7 +90,7 @@ export type ModelVariant = {
 export type ModelStatus =
   'not_installed' | 'downloading' | 'ready' | 'partial' | 'error' | 'checking';
 
-export type DownloadProgress = {
+type DownloadProgress = {
   downloadId: string;
   modelId: string;
   status: ModelStatus;

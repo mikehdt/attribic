@@ -102,13 +102,20 @@ const GridCellComponent = ({
       dispatch(
         handleAssetClick({ assetId, isShiftHeld: e.shiftKey, currentPage }),
       );
+      // stopPropagation means the cell's own click handler never sees this, so
+      // the highlight has to move from here — otherwise a ticked checkbox
+      // elsewhere reads as "the current asset" and batch actions hit the wrong
+      // images. Mirrors the list rows.
+      if (!isCurrent) {
+        dispatch(setCurrentAsset(assetId));
+      }
       // A mouse click leaves DOM focus on this checkbox, which would swallow
       // Enter/Space and re-fire on this cell no matter where the current-asset
       // highlight has moved. It's not tabbable (see below), so blurring can
       // never disrupt keyboard flow.
       (document.activeElement as HTMLElement | null)?.blur();
     },
-    [assetId, currentPage, dispatch],
+    [assetId, currentPage, dispatch, isCurrent],
   );
 
   const handleMouseEnter = useCallback(() => {

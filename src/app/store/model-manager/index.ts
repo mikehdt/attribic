@@ -149,7 +149,7 @@ export const modelManagerReducer = modelManagerSlice.reducer;
 export const {
   setModelStatus,
 
-  setIsScanning,
+  
   openModelManagerModal,
   closeModelManagerModal,
 } = modelManagerSlice.actions;

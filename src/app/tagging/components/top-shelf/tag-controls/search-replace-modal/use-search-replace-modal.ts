@@ -31,12 +31,12 @@ import {
 
 export type SearchReplaceTarget = 'tags' | 'captions';
 
-export type TagPreviewRow = TagUpdate & {
+type TagPreviewRow = TagUpdate & {
   assetCount: number;
   ranges: MatchRange[];
 };
 
-export type CaptionPreviewRow = {
+type CaptionPreviewRow = {
   fileId: string;
   caption: string;
   ranges: MatchRange[];

@@ -111,7 +111,6 @@ export const MoveToFolderModal = ({
           selectedCount={selectedAssetsCount}
           scopeToSelected={applyToSelectedAssets}
           onScopeToSelectedChange={setApplyToSelectedAssets}
-          requireBothConstraints
           requireAtLeastOne
           showBorder
         />

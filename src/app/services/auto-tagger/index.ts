@@ -17,7 +17,7 @@ export type {
   TagResult,
   TriggerPhraseInsertMode,
   VlmOptions,
-  VlmVideoOptions,
+  
   VlmVideoQuality,
 } from './types';
 // VLM_VIDEO_QUALITY_PIXELS is deliberately not re-exported — its only consumer

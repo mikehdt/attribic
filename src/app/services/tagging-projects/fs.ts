@@ -54,7 +54,7 @@ const assertSafeProjectName = (projectName: string): void => {
   }
 };
 
-export const getTaggingDir = (projectName: string): string => {
+const getTaggingDir = (projectName: string): string => {
   assertSafeProjectName(projectName);
   return path.join(getProjectsRoot(), projectName, TAGGING_DIR);
 };
@@ -62,7 +62,7 @@ export const getTaggingDir = (projectName: string): string => {
 const getConfigPath = (projectName: string): string =>
   path.join(getTaggingDir(projectName), CONFIG_FILE);
 
-export const getThumbnailPath = (projectName: string): string =>
+const getThumbnailPath = (projectName: string): string =>
   path.join(getTaggingDir(projectName), THUMBNAIL_FILE);
 
 export const readConfig = (projectName: string): ProjectConfig | null => {

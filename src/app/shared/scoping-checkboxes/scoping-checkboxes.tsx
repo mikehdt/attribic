@@ -22,8 +22,9 @@ type ScopingCheckboxesProps = {
   requireBothConstraints?: boolean;
 
   /**
-   * When true and both constraints are available, at least one must be selected.
-   * Only applies when requireBothConstraints is true.
+   * When true, at least one available constraint must be ticked — including
+   * when only one exists, so unticking the sole scope reads as "nothing
+   * chosen" rather than silently falling back to everything it matches.
    */
   requireAtLeastOne?: boolean;
 
@@ -55,9 +56,14 @@ export const ScopingCheckboxes = ({
   const showIndependentMode =
     !requireBothConstraints && (hasSelectedAssets || hasActiveFilters);
 
-  // Check if validation error should show
+  // Check if validation error should show. A constraint only counts as chosen
+  // when it both exists and is ticked, so the message covers the one-checkbox
+  // case as well as the two-checkbox one.
   const hasInvalidConstraints =
-    requireAtLeastOne && showBothMode && !scopeToSelected && !scopeToFiltered;
+    requireAtLeastOne &&
+    (showBothMode || showIndependentMode) &&
+    !(hasSelectedAssets && scopeToSelected) &&
+    !(hasActiveFilters && scopeToFiltered);
 
   if (!showBothMode && !showIndependentMode) {
     return null;
@@ -90,7 +96,7 @@ export const ScopingCheckboxes = ({
         </div>
 
         {hasInvalidConstraints && (
-          <p className="text-xs text-red-600">
+          <p className="w-full text-sm text-red-600">
             Select at least one option above to proceed.
           </p>
         )}
@@ -128,6 +134,12 @@ export const ScopingCheckboxes = ({
             ariaLabel="Scope to selected assets"
           />
         </div>
+      )}
+
+      {hasInvalidConstraints && (
+        <p className="w-full text-sm text-red-600">
+          Select at least one option above to proceed.
+        </p>
       )}
     </>
   );

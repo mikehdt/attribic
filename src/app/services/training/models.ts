@@ -1097,7 +1097,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
   },
 ];
 
-export const ARCHITECTURE_LABELS: Record<ModelArchitecture, string> = {
+const ARCHITECTURE_LABELS: Record<ModelArchitecture, string> = {
   flux: 'Flux',
   sdxl: 'Stable Diffusion',
   zimage: 'Z-Image',

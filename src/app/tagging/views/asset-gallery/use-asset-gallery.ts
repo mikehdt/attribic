@@ -27,7 +27,7 @@ import { groupAssetsByCategory } from '@/app/tagging/utils/category-utils';
 import { useAnchorScrolling } from '@/app/tagging/utils/use-anchor-scrolling';
 
 /** An asset annotated with its position within the paginated, filtered list. */
-export interface AssetWithPaginationIndex extends ImageAsset {
+interface AssetWithPaginationIndex extends ImageAsset {
   paginatedIndex: number;
   filteredIndex: number; // 1-based position in full filtered list
 }

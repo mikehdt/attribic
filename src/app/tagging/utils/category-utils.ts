@@ -16,7 +16,7 @@ const UNGROUPED_CATEGORY = 'All Assets';
  * a lone category still spans multiple pages, and the jump menu lists one entry
  * per page, so "only one category" isn't enough to make it disable itself.
  */
-export const isUngroupedSortType = (sortType: SortType): boolean =>
+const isUngroupedSortType = (sortType: SortType): boolean =>
   sortType === SortType.INDEX;
 
 // Constants for sort category names
@@ -45,7 +45,7 @@ const getSelectedCategoryIndex = (category: string): number => {
 };
 
 // Function to get sort category for an asset
-export const getSortCategory = (
+const getSortCategory = (
   asset: ImageAsset,
   sortType: SortType,
   selectedAssets: string[],
@@ -128,7 +128,7 @@ export const getSortCategory = (
 };
 
 // Function to sort categories based on sort type and direction
-export const sortCategories = (
+const sortCategories = (
   categories: string[],
   sortType: SortType,
   sortDirection: SortDirection,

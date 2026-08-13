@@ -44,7 +44,7 @@ export function registerTaggingController(jobId: string): AbortController {
 }
 
 /** Abort a tagging job by ID. */
-export function abortTagging(jobId: string): void {
+function abortTagging(jobId: string): void {
   const controller = controllers.get(jobId);
   if (controller) {
     controller.abort();

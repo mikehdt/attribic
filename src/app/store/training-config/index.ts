@@ -816,7 +816,7 @@ export const {
   hydrateFromProject,
   hydrateFromRun,
   stampSaved,
-  clearLoadedProject,
+  
 } = trainingConfigSlice.actions;
 
 export const trainingConfigReducer = trainingConfigSlice.reducer;

@@ -16,7 +16,7 @@ export function modeHasCaption(captionMode: CaptionMode): boolean {
  * Whether a mode edits a booru-style tag list.
  * Everything except pure `caption` mode maintains a tag list.
  */
-export function modeHasTags(captionMode: CaptionMode): boolean {
+function modeHasTags(captionMode: CaptionMode): boolean {
   return captionMode !== 'caption';
 }
 
@@ -94,7 +94,7 @@ export function getUpdatedTags(asset: ImageAsset): string[] {
  * @param captionMode Determines the separator: comma for tags, space for sentences
  * @returns Joined string of tags
  */
-export function createFlattenedTags(tags: string[]): string {
+function createFlattenedTags(tags: string[]): string {
   return tags.join(', ');
 }
 
