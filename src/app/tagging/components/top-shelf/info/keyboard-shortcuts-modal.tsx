@@ -27,16 +27,21 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['←', '→'], description: 'Previous / next asset' },
       {
         keys: ['↑', '↓'],
-        description: 'Asset above / below (follows the visual layout)',
+        description: 'Asset above / below',
+      },
+      {
+        keys: ['PgUp', 'PgDn'],
+        description: 'Move up / down a page',
       },
       { keys: ['Home', 'End'], description: 'First / last asset on the page' },
       {
         keys: ['Ctrl+U'],
-        description: 'Jump to the first untagged asset, changing page if needed',
+        description:
+          'Jump to the first untagged asset, changing page if needed',
       },
       {
         keys: ['Esc'],
-        description: 'Back out one layer at a time, then clear the highlight',
+        description: 'Move back to list, again to clear highlight',
       },
     ],
   },
@@ -45,15 +50,15 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       {
         keys: ['Space', 'Enter'],
-        description: 'Select or deselect the highlighted asset',
+        description: 'Select / de-select the asset',
       },
       {
-        keys: ['Shift+↑↓←→'],
-        description: 'Preview a range from the last click as you move',
+        keys: ['Shift+↑ ↓ ← →'],
+        description: 'Hold while navigating to preview a selection range',
       },
       {
-        keys: ['Shift+Space'],
-        description: 'Apply the previewed range selection',
+        keys: ['Shift+Space', 'Shift+Enter'],
+        description: 'Set the selection',
       },
     ],
   },
@@ -62,25 +67,29 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       {
         keys: ['Tab'],
-        description: 'Open the highlighted asset’s tags — the inspector in grid view, the row editor in list view',
+        description: 'Open the highlighted asset’s tags',
       },
-      { keys: ['Z'], description: 'Zoom the highlighted asset’s image in and out' },
+      {
+        keys: ['Z'],
+        description: 'Toggle the highlighted asset’s zoom',
+      },
       {
         keys: ['Ctrl+S'],
-        description: 'Save the highlighted asset’s changes (also works while typing)',
+        description:
+          'Save the highlighted asset’s changes (works while typing)',
       },
       {
         keys: ['Ctrl+Shift+S'],
-        description: 'Save all changes',
+        description: 'Save all pending changes',
       },
       {
         keys: ['Ctrl+D'],
         description:
-          'Discard the highlighted asset’s changes (also works while typing)',
+          'Discard the highlighted asset’s changes (works while typing)',
       },
       {
         keys: ['Ctrl+Shift+D'],
-        description: 'Discard all changes',
+        description: 'Discard all pending changes',
       },
     ],
   },
@@ -89,7 +98,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       {
         keys: ['Ctrl+Del', 'Ctrl+Backspace'],
-        description: 'Archive or unarchive the highlighted asset',
+        description: 'Archive / un-archive the asset',
       },
     ],
   },
@@ -129,8 +138,8 @@ export const KeyboardShortcutsModal = ({
 
       <p className="text-sm text-slate-500">
         Use the arrow keys to highlight an asset, then work on it without
-        leaving the keyboard. Shortcuts stay out of the way while you’re
-        typing in a text field.
+        leaving the keyboard. Shortcuts stay out of the way while you’re typing
+        in a text field.
       </p>
 
       <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2">
@@ -139,11 +148,11 @@ export const KeyboardShortcutsModal = ({
             <h3 className="mb-2 border-b border-slate-200 pb-1 text-sm font-semibold tracking-wide text-slate-600 uppercase dark:border-slate-700 dark:text-slate-300">
               {group.title}
             </h3>
-            <dl className="flex flex-col gap-2">
+            <dl className="flex flex-col gap-3">
               {group.shortcuts.map((shortcut) => (
                 <div
                   key={shortcut.keys.join()}
-                  className="flex items-baseline justify-between gap-4"
+                  className="flex items-center justify-between gap-4"
                 >
                   <dt className="shrink-0">
                     {shortcut.keys.map((combo, index) => (
@@ -168,8 +177,7 @@ export const KeyboardShortcutsModal = ({
       </div>
 
       <p className="border-t border-slate-200 pt-3 text-sm text-slate-500 dark:border-slate-700">
-        Press <Key combo="?" /> anywhere in the gallery to open this
-        reference.
+        Press <Key combo="?" /> anywhere in the gallery to open this reference.
       </p>
     </div>
   </Modal>

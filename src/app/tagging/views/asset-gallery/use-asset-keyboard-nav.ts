@@ -43,13 +43,62 @@ const collectCellPositions = (): CellPosition[] =>
   });
 
 /**
- * Find the cell visually above/below the current one: the horizontally
- * nearest cell in the closest row in that direction. Geometry-based rather
- * than index arithmetic so partial rows at category-group boundaries move to
- * the cell actually below, not a diagonal neighbour in display order. (For
- * the list view's full-width rows every row is its own visual row, so this
- * degenerates to previous/next.) Returns null at a dead end (no row further
- * in that direction).
+ * The visual rows strictly above/below the current cell, nearest row first.
+ * Geometry-based rather than index arithmetic so partial rows at
+ * category-group boundaries move to the cell actually below, not a diagonal
+ * neighbour in display order. (For the list view's full-width rows every row
+ * is its own visual row, so a row is always a single cell.)
+ */
+const rowsBeyond = (
+  cells: CellPosition[],
+  current: CellPosition,
+  direction: 1 | -1,
+): CellPosition[][] => {
+  const candidates = cells
+    .filter((cell) =>
+      direction === 1
+        ? cell.top > current.top + ROW_TOLERANCE
+        : cell.top < current.top - ROW_TOLERANCE,
+    )
+    .sort((a, b) => (a.top - b.top) * direction);
+
+  const rows: CellPosition[][] = [];
+  for (const cell of candidates) {
+    const row = rows.at(-1);
+    if (row && Math.abs(row[0].top - cell.top) <= ROW_TOLERANCE) {
+      row.push(cell);
+    } else {
+      rows.push([cell]);
+    }
+  }
+  return rows;
+};
+
+/** The cell in `row` horizontally nearest the current one, so vertical moves
+ * hold their column across ragged rows. */
+const nearestInRow = (row: CellPosition[], current: CellPosition) =>
+  row.reduce((best, cell) =>
+    Math.abs(cell.centerX - current.centerX) <
+    Math.abs(best.centerX - current.centerX)
+      ? cell
+      : best,
+  );
+
+/** Height of the gallery between the two fixed shelves — how far one
+ * PageUp/PageDown moves. */
+const visibleGalleryHeight = (): number => {
+  const shelfBottom =
+    document.querySelector('[data-top-shelf]')?.getBoundingClientRect()
+      .bottom ?? 0;
+  const bottomShelfTop =
+    document.querySelector('[data-bottom-shelf]')?.getBoundingClientRect()
+      .top ?? window.innerHeight;
+  return Math.max(bottomShelfTop - shelfBottom, 1);
+};
+
+/**
+ * Find the cell visually above/below the current one. Returns null at a dead
+ * end (no row further in that direction).
  */
 const findVerticalNeighbour = (
   currentId: string,
@@ -59,31 +108,34 @@ const findVerticalNeighbour = (
   const current = cells.find((cell) => cell.id === currentId);
   if (!current) return null;
 
-  const candidates = cells.filter((cell) =>
-    direction === 1
-      ? cell.top > current.top + ROW_TOLERANCE
-      : cell.top < current.top - ROW_TOLERANCE,
-  );
-  if (!candidates.length) return null;
+  const [row] = rowsBeyond(cells, current, direction);
+  return row ? nearestInRow(row, current).id : null;
+};
 
-  const nextRowTop =
-    direction === 1
-      ? Math.min(...candidates.map((cell) => cell.top))
-      : Math.max(...candidates.map((cell) => cell.top));
-  const row = candidates.filter(
-    (cell) => Math.abs(cell.top - nextRowTop) <= ROW_TOLERANCE,
-  );
+/**
+ * Find the cell one screenful above/below the current one: the furthest row
+ * still within a gallery height, so a page step never skips past assets you
+ * haven't seen. Falls back to the adjacent row when a single row is taller
+ * than the viewport, and returns null at a dead end.
+ */
+const findPageNeighbour = (
+  currentId: string,
+  direction: 1 | -1,
+): string | null => {
+  const cells = collectCellPositions();
+  const current = cells.find((cell) => cell.id === currentId);
+  if (!current) return null;
 
-  let best = row[0];
-  for (const cell of row) {
-    if (
-      Math.abs(cell.centerX - current.centerX) <
-      Math.abs(best.centerX - current.centerX)
-    ) {
-      best = cell;
-    }
+  const rows = rowsBeyond(cells, current, direction);
+  if (!rows.length) return null;
+
+  const span = visibleGalleryHeight();
+  let target = rows[0];
+  for (const row of rows) {
+    if (Math.abs(row[0].top - current.top) > span) break;
+    target = row;
   }
-  return best.id;
+  return nearestInRow(target, current).id;
 };
 
 export const scrollAssetIntoView = (assetId: string) => {
@@ -156,6 +208,9 @@ export const isNavContextBlocked = (
  *   category boundaries); up/down move to the visually nearest cell in the
  *   adjacent row, measured from the rendered layout at keypress time so
  *   breakpoint reflows and partial category rows are always respected.
+ * - PageUp/PageDown move a screenful in the same geometric terms, landing on
+ *   the furthest row still within one gallery height (native page scrolling
+ *   is suppressed — the highlight scrolls itself into view instead).
  * - Home/End jump to the first/last asset on the page.
  * - Space and Enter toggle selection of the current asset (with Shift they
  *   extend the range from the last click, same as shift-clicking it).
@@ -237,15 +292,17 @@ export const useAssetKeyboardNav = (
               : Math.max(currentIndex - 1, 0);
           break;
         case 'ArrowDown':
-        case 'ArrowUp': {
+        case 'ArrowUp':
+        case 'PageDown':
+        case 'PageUp': {
           if (currentIndex === -1 || !current) {
             nextIndex = pickupIndex();
             break;
           }
-          const neighbourId = findVerticalNeighbour(
-            current,
-            e.key === 'ArrowDown' ? 1 : -1,
-          );
+          const byPage = e.key === 'PageDown' || e.key === 'PageUp';
+          const neighbourId = (
+            byPage ? findPageNeighbour : findVerticalNeighbour
+          )(current, e.key === 'ArrowDown' || e.key === 'PageDown' ? 1 : -1);
           // Dead end: no row further in that direction
           if (neighbourId === null) return;
           nextIndex = ids.indexOf(neighbourId);

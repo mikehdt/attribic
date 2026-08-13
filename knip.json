@@ -1,5 +1,5 @@
 {
-  "project": ["**/*.{js,ts,jsx,tsx}"],
+  "project": ["**/*.{js,ts,jsx,tsx}", "workers/onnx-tagger.js"],
   "ignoreDependencies": [
     "eslint-config-prettier",
     "postcss-load-config",
