@@ -1,5 +1,7 @@
 // Utilities for handling repeat training subfolders
 
+import { naturalCompare } from './helpers';
+
 /**
  * Regex pattern for valid repeat folder names: {number}_{label}
  * Examples: 2_sonic, 3_knuckles, 10_test
@@ -39,15 +41,24 @@ export const getAssetFileName = (
 };
 
 /**
- * Name key for ordering assets. Identical to `fileId` except for archived
- * assets, whose `.archive/` prefix is dropped: a leading `.` sorts before every
- * real filename, so keeping it would clump the whole archive at the front of a
- * Combined-mode gallery (and onto its first page) instead of letting each
- * archived asset slot in beside its unarchived neighbours. Repeat-folder
- * prefixes are kept — those groupings are intentional.
+ * Order two assets by name alone, ignoring which folder each one lives in.
+ * Moving an asset into (or out of) a subfolder must not move it in the gallery
+ * when the sort is name-based — folder is what the Folder sort is for.
+ *
+ * Falls back to the full `fileId` when the bare names match, so two assets that
+ * share a filename across folders get a stable, deterministic order instead of
+ * whichever way the scan happened to list them.
  */
-export const getAssetSortName = (fileId: string, subfolder?: string): string =>
-  isArchiveSubfolder(subfolder) ? getAssetFileName(fileId, subfolder) : fileId;
+export const compareAssetNames = (
+  a: { fileId: string; subfolder?: string },
+  b: { fileId: string; subfolder?: string },
+): number => {
+  const byName = naturalCompare(
+    getAssetFileName(a.fileId, a.subfolder),
+    getAssetFileName(b.fileId, b.subfolder),
+  );
+  return byName !== 0 ? byName : naturalCompare(a.fileId, b.fileId);
+};
 
 /**
  * Parse a subfolder name into its repeat count and label components

@@ -67,6 +67,9 @@ export const MoveToFolderModal = ({
 
     keepSelection,
     setKeepSelection,
+    hasFilterSelections,
+    keepFilterSelections,
+    setKeepFilterSelections,
 
     isMoving,
     collisionError,
@@ -356,15 +359,26 @@ export const MoveToFolderModal = ({
           </div>
         </div>
 
-        {/* Keep selection checkbox */}
-        {hasSelectedAssets && (
-          <div className="flex w-full items-center">
-            <Checkbox
-              isSelected={keepSelection}
-              onChange={() => setKeepSelection((v) => !v)}
-              label="Keep asset selection after moving"
-              ariaLabel="Keep asset selection after moving"
-            />
+        {/* Keep-after-move checkboxes */}
+        {(hasSelectedAssets || hasFilterSelections) && (
+          <div className="flex w-full flex-col gap-2">
+            {hasSelectedAssets && (
+              <Checkbox
+                isSelected={keepSelection}
+                onChange={() => setKeepSelection((v) => !v)}
+                label="Keep asset selection after moving"
+                ariaLabel="Keep asset selection after moving"
+              />
+            )}
+
+            {hasFilterSelections && (
+              <Checkbox
+                isSelected={keepFilterSelections}
+                onChange={() => setKeepFilterSelections((v) => !v)}
+                label="Keep tag and filter selections after moving"
+                ariaLabel="Keep tag and filter selections after moving"
+              />
+            )}
           </div>
         )}
 

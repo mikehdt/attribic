@@ -257,10 +257,9 @@ export const sortCategories = (
  *
  * This is the single source of truth for a page's visual order. Both the grid
  * render and shift-range selection derive their order from here so the range
- * that gets highlighted always matches what's on screen — unlike the raw
- * `selectFilteredAssets` order, which sorts by full fileId and can diverge from
- * the category grouping (e.g. NAME sort buckets a `2_sonic/zebra` subfolder asset
- * under "Z" while the flat sort places it among the leading digits).
+ * that gets highlighted always matches what's on screen — grouping can still
+ * reorder relative to the flat `selectFilteredAssets` order whenever a sort's
+ * categories aren't in the same sequence as its comparator (Folder, Selected).
  */
 export const groupAssetsByCategory = <T extends ImageAsset>(
   assets: T[],

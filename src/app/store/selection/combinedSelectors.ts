@@ -1,7 +1,9 @@
 import { createSelector } from '@reduxjs/toolkit';
 
 import { composeDimensions } from '../../utils/helpers';
+import { isArchiveSubfolder } from '../../utils/subfolder-utils';
 import {
+  type ImageAsset,
   selectAllAssetsTagless,
   selectAllImages,
   selectFilteredAssets,
@@ -9,7 +11,7 @@ import {
 import {
   selectFilterTags,
   selectHasActiveFilters,
-  selectHasActiveVisibility,
+  selectHasActiveNonArchiveVisibility,
 } from '../filters';
 import type { RootState } from '../index';
 import { selectSelectedAssets, selectSelectedAssetsSet } from '../selection';
@@ -143,11 +145,18 @@ export const selectTagCoExistence = (
  * filtered view regardless of whether it narrows the result set.
  * When only explicit filter selections are active (without visibility modes),
  * returns assets matching any of the selections (union/OR logic).
+ *
+ * Archived assets are never in this set, and showing the archive is never what
+ * puts a scope on it. Bulk actions read this to answer "which assets did the
+ * user mean?", and merely having the archive on screen — which is what you do
+ * to move something out of it — must not answer "all of them": a Move would
+ * then sweep the whole gallery into one folder. Archived assets are reachable
+ * by selecting them, which is the deliberate act this stands in for.
  */
 export const selectAssetsWithActiveFilters = createSelector(
   [
     (state: RootState) => selectHasActiveFilters(state),
-    (state: RootState) => selectHasActiveVisibility(state),
+    (state: RootState) => selectHasActiveNonArchiveVisibility(state),
     selectAllAssetsTagless,
     selectFilteredAssets,
     selectAllImages,
@@ -173,18 +182,21 @@ export const selectAssetsWithActiveFilters = createSelector(
     filterBuckets,
     filenamePatterns,
   ) => {
+    const unarchived = (assets: ImageAsset[]) =>
+      assets.filter((asset) => !isArchiveSubfolder(asset.subfolder));
+
     if (!hasActiveFilters && !hasActiveVisibility) {
       // When every asset is tagless, treat it as an implicit Tagless scope
       // so Add Tags / Auto Tagger operate on the whole project without
       // forcing the user to tick a redundant filter first.
-      if (allAssetsTagless) return allImages;
+      if (allAssetsTagless) return unarchived(allImages);
       return [];
     }
 
     // When visibility scopes are active (tagless, selected, modified),
     // return the filtered view — even when all assets happen to match
     if (hasActiveVisibility) {
-      return filteredAssets;
+      return unarchived(filteredAssets);
     }
 
     // Only explicit filter selections (tags, sizes, etc.) — compute a union
@@ -197,6 +209,7 @@ export const selectAssetsWithActiveFilters = createSelector(
       const bucketSet = new Set(filterBuckets);
 
       return allImages.filter((img) => {
+        if (isArchiveSubfolder(img.subfolder)) return false;
         if (tagSet.size > 0 && img.tagList.some((t) => tagSet.has(t)))
           return true;
         if (extSet.size > 0 && extSet.has(img.fileExtension)) return true;

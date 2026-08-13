@@ -6,7 +6,7 @@ import { selectIoState } from '@/app/store/assets';
 import { IoState } from '@/app/store/assets/types';
 import {
   selectHasActiveFilters,
-  selectHasActiveVisibility,
+  selectHasActiveNonArchiveVisibility,
 } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
 import { selectSelectedAssetsCount } from '@/app/store/selection';
@@ -19,7 +19,9 @@ export const MoveToFolderButton = () => {
 
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
-  const hasActiveVisibility = useAppSelector(selectHasActiveVisibility);
+  const hasActiveVisibility = useAppSelector(
+    selectHasActiveNonArchiveVisibility,
+  );
   const assetsWithActiveFiltersCount = useAppSelector(
     selectAssetsWithActiveFiltersCount,
   );

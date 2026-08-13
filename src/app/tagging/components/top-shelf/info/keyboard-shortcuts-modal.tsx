@@ -73,6 +73,15 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
         keys: ['Ctrl+Shift+S'],
         description: 'Save all changes',
       },
+      {
+        keys: ['Ctrl+D'],
+        description:
+          'Discard the highlighted asset’s changes (also works while typing)',
+      },
+      {
+        keys: ['Ctrl+Shift+D'],
+        description: 'Discard all changes',
+      },
     ],
   },
   {

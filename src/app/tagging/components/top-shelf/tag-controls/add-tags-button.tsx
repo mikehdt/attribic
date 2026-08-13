@@ -5,7 +5,7 @@ import { Button } from '@/app/shared/button';
 import { selectAllAssetsTagless } from '@/app/store/assets';
 import {
   selectHasActiveFilters,
-  selectHasActiveVisibility,
+  selectHasActiveNonArchiveVisibility,
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
@@ -23,7 +23,9 @@ export const AddTagsButton = () => {
 
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
-  const hasActiveVisibility = useAppSelector(selectHasActiveVisibility);
+  const hasActiveVisibility = useAppSelector(
+    selectHasActiveNonArchiveVisibility,
+  );
   const allAssetsTagless = useAppSelector(selectAllAssetsTagless);
   const assetsWithActiveFiltersCount = useAppSelector(
     selectAssetsWithActiveFiltersCount,

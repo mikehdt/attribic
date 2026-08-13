@@ -8,8 +8,9 @@ import {
 import { moveAssetsToFolderThunk } from '@/app/store/assets/actions';
 import { IoState } from '@/app/store/assets/types';
 import {
+  clearSelections,
   selectHasActiveFilters,
-  selectHasActiveVisibility,
+  selectHasActiveNonArchiveVisibility,
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectProjectInfo } from '@/app/store/project';
@@ -48,6 +49,11 @@ export const useMoveToFolderModal = ({
   // Keep selection after move
   const [keepSelection, setKeepSelection] = useState(false);
 
+  // Keep the filter selections (tags, sizes, buckets, files) after the move.
+  // Off by default: the common loop is pick a tag, move, pick the next tag —
+  // a stale selection silently widens the next move.
+  const [keepFilterSelections, setKeepFilterSelections] = useState(false);
+
   // Destination state
   const [selectedDestination, setSelectedDestination] = useState('');
   const [newRepeatCount, setNewRepeatCount] = useState(1);
@@ -64,7 +70,9 @@ export const useMoveToFolderModal = ({
 
   // Selectors
   const hasExplicitFilters = useAppSelector(selectHasActiveFilters);
-  const hasActiveVisibility = useAppSelector(selectHasActiveVisibility);
+  const hasActiveVisibility = useAppSelector(
+    selectHasActiveNonArchiveVisibility,
+  );
   const hasActiveFilters = hasExplicitFilters || hasActiveVisibility;
   const selectedAssets = useAppSelector(selectSelectedAssets);
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
@@ -451,6 +459,9 @@ export const useMoveToFolderModal = ({
         if (!keepSelection && hasSelectedAssets) {
           dispatch(clearSelection());
         }
+        if (!keepFilterSelections && hasExplicitFilters) {
+          dispatch(clearSelections());
+        }
         onClose();
       }
     } catch {
@@ -471,6 +482,8 @@ export const useMoveToFolderModal = ({
     projectInfo.projectPath,
     keepSelection,
     hasSelectedAssets,
+    keepFilterSelections,
+    hasExplicitFilters,
     onClose,
   ]);
 
@@ -561,6 +574,9 @@ export const useMoveToFolderModal = ({
     // Selection
     keepSelection,
     setKeepSelection,
+    hasFilterSelections: hasExplicitFilters,
+    keepFilterSelections,
+    setKeepFilterSelections,
 
     // State
     isMoving,

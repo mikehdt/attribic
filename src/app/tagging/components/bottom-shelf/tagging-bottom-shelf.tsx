@@ -21,6 +21,7 @@ import { PaginationControls } from '../pagination/controls';
 import { Pagination } from '../pagination/pagination';
 import { IoActions } from './io-actions';
 import { LoadingStatus } from './loading-status';
+import { useDiscardHotkey } from './use-discard-hotkey';
 import { useSaveHotkey } from './use-save-hotkey';
 
 type TaggingBottomShelfProps = {
@@ -37,6 +38,7 @@ export const TaggingBottomShelf = ({
   const { showToast } = useToast();
 
   useSaveHotkey();
+  useDiscardHotkey();
 
   // IO state selectors
   const ioState = useAppSelector(selectIoState);

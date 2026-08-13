@@ -13,11 +13,7 @@ import {
 } from '../store/filters';
 import type { CaptionMode } from '../store/project/types';
 import { composeDimensions, naturalCompare } from './helpers';
-import {
-  getAssetFileName,
-  getAssetSortName,
-  isArchiveSubfolder,
-} from './subfolder-utils';
+import { compareAssetNames, isArchiveSubfolder } from './subfolder-utils';
 
 /**
  * Apply visibility-based filtering using per-class modes.
@@ -335,20 +331,10 @@ const applySorting = (
 
     switch (sortType) {
       case SortType.NAME:
-        comparison = naturalCompare(
-          getAssetSortName(a.fileId, a.subfolder),
-          getAssetSortName(b.fileId, b.subfolder),
-        );
-        break;
-
       case SortType.INDEX:
-        // Same alphabetical intent as NAME, but on the bare filename: with no
-        // categories to fall back on, the subfolder prefix would otherwise
-        // clump folders together and defeat the flat 1..n ordering
-        comparison = naturalCompare(
-          getAssetFileName(a.fileId, a.subfolder),
-          getAssetFileName(b.fileId, b.subfolder),
-        );
+        // Both order purely by filename. Index differs only in that it doesn't
+        // group, so it shares the comparator outright.
+        comparison = compareAssetNames(a, b);
         break;
 
       case SortType.IMAGE_SIZE:
@@ -375,17 +361,16 @@ const applySorting = (
         // Within each category, sort alphabetically by asset name
 
         // Calculate scaling categories for both assets
-        const getCategoryAndSecondary = (asset: ImageAsset) => {
+        const getScaledCategory = (asset: ImageAsset) => {
           const imageDims = asset.dimensions;
           const bucketDims = asset.bucket;
-          const secondary = getAssetSortName(asset.fileId, asset.subfolder);
 
           // Check if dimensions are identical
           if (
             imageDims.width === bucketDims.width &&
             imageDims.height === bucketDims.height
           ) {
-            return { category: 0, secondary }; // Identical - highest priority
+            return 0; // Identical - highest priority
           }
 
           // Check if aspect ratios are identical (within small tolerance for floating point)
@@ -397,25 +382,22 @@ const applySorting = (
             Math.abs(imageAspectRatio - bucketAspectRatio) <
             aspectRatioTolerance
           ) {
-            return { category: 1, secondary }; // Same aspect ratio - medium priority
+            return 1; // Same aspect ratio - medium priority
           }
 
           // Different aspect ratio - lowest priority
-          return { category: 2, secondary };
+          return 2;
         };
 
-        const aCategoryData = getCategoryAndSecondary(a);
-        const bCategoryData = getCategoryAndSecondary(b);
+        const aScaledCategory = getScaledCategory(a);
+        const bScaledCategory = getScaledCategory(b);
 
         // First compare by category
-        if (aCategoryData.category !== bCategoryData.category) {
-          comparison = aCategoryData.category - bCategoryData.category;
+        if (aScaledCategory !== bScaledCategory) {
+          comparison = aScaledCategory - bScaledCategory;
         } else {
           // Within the same category, sort naturally by filename
-          comparison = naturalCompare(
-            aCategoryData.secondary,
-            bCategoryData.secondary,
-          );
+          comparison = compareAssetNames(a, b);
         }
         break;
 

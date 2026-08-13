@@ -48,6 +48,11 @@ const selectProjectTriggerPhrases = (state: RootState) =>
 /**
  * Active visibility ignoring the archive view — the archive count has its own
  * readout, so showing/hiding archives alone shouldn't light up "filtered".
+ *
+ * This is also the test bulk actions scope on. Showing the archive is how you
+ * reach an archived asset in the first place, so if it counted as a filter,
+ * opening Move with nothing selected would resolve its scope to the entire
+ * gallery and sweep every folder into the destination.
  */
 export const selectHasActiveNonArchiveVisibility = createSelector(
   selectVisibility,
@@ -82,13 +87,6 @@ export const selectHasActiveNonArchiveVisibility = createSelector(
       filterSubfolders.length > 0) ||
     (visibility.triggerPhrases !== ClassFilterMode.OFF &&
       triggerPhrases.length > 0),
-);
-
-export const selectHasActiveVisibility = createSelector(
-  selectHasActiveNonArchiveVisibility,
-  selectVisibility,
-  (hasNonArchive, visibility) =>
-    hasNonArchive || visibility.archiveView !== ArchiveViewMode.HIDDEN,
 );
 
 /**

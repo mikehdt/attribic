@@ -3,7 +3,7 @@ import { SyntheticEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { RootState } from '@/app/store';
 import {
   selectHasActiveFilters,
-  selectHasActiveVisibility,
+  selectHasActiveNonArchiveVisibility,
 } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
 import {
@@ -49,7 +49,9 @@ export const useAddTagsModal = ({
 
   // Get data for dual selection logic
   const hasExplicitFilters = useAppSelector(selectHasActiveFilters);
-  const hasActiveVisibility = useAppSelector(selectHasActiveVisibility);
+  const hasActiveVisibility = useAppSelector(
+    selectHasActiveNonArchiveVisibility,
+  );
   const hasActiveFilters = hasExplicitFilters || hasActiveVisibility;
   const selectedAssets = useAppSelector(selectSelectedAssets);
   const assetsWithActiveFilters = useAppSelector(selectAssetsWithActiveFilters);

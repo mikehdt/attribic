@@ -87,7 +87,7 @@ export const FolderNameFields = ({
               e.preventDefault();
               onSubmit?.();
             }}
-            placeholder="e.g. sonic"
+            placeholder="e.g. my-character"
             autoFocus={autoFocus}
             className={`w-full rounded border px-2 py-1 text-sm ${
               trimmedLabel === '' || isLabelValid

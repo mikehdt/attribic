@@ -37,7 +37,7 @@ export const AssetList = ({
   onAssetHover,
 }: AssetListProps) => {
   useAssetKeyboardNav(paginatedAssetIds, currentPage, listNavAdapter);
-  const onBackgroundClick = useClearCurrentOnBackgroundClick();
+  useClearCurrentOnBackgroundClick();
 
   // Memoize rendered assets to prevent unnecessary re-renders
   const renderedAssets = useMemo(
@@ -83,12 +83,8 @@ export const AssetList = ({
     ],
   );
 
-  // The min-height keeps a clickable background under a short list: 10rem is
+  // The min-height holds the page at full height under a short list: 10rem is
   // the top and bottom shelf allowance StableLayout pads `main` by, so this
   // fills the space between them without ever adding scroll of its own
-  return (
-    <div className="min-h-[calc(100vh-10rem)]" onClick={onBackgroundClick}>
-      {renderedAssets}
-    </div>
-  );
+  return <div className="min-h-[calc(100vh-10rem)]">{renderedAssets}</div>;
 };

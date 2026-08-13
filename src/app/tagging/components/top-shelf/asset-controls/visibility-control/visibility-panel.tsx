@@ -121,14 +121,20 @@ export const VisibilityPanel = () => {
           <ArchiveIcon className="h-4 w-4" />
           <span className="text-xs">Archived assets</span>
         </div>
-        <SegmentedControl
-          options={ARCHIVE_VIEW_OPTIONS}
-          value={visibility.archiveView}
-          disabled={!hasArchivedAssets}
-          width="full"
-          size="sm"
-          onChange={handleSetArchiveView}
-        />
+
+        {hasArchivedAssets ? (
+          <SegmentedControl
+            options={ARCHIVE_VIEW_OPTIONS}
+            value={visibility.archiveView}
+            width="full"
+            size="sm"
+            onChange={handleSetArchiveView}
+          />
+        ) : (
+          <span className="ml-6 text-xs text-slate-400 dark:text-slate-600">
+            There are no archived assets
+          </span>
+        )}
       </div>
     </>
   );

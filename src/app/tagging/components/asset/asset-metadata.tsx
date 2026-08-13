@@ -142,7 +142,7 @@ const AssetMetadataComponent = ({
     }
   }, [displayFilename, fileExtension, showToast]);
 
-  const handleCancelAction = useCallback(() => {
+  const handleDiscardAction = useCallback(() => {
     if (isSaving) {
       return;
     }
@@ -260,11 +260,12 @@ const AssetMetadataComponent = ({
             color="stone"
             size="sm"
             width="lg"
-            onClick={handleCancelAction}
+            onClick={handleDiscardAction}
             disabled={isSaving}
+            title="Discard this asset’s tag changes (Ctrl+D)"
           >
             <BookmarkXIcon />
-            Cancel
+            Discard
           </Button>
 
           <Button
@@ -273,6 +274,7 @@ const AssetMetadataComponent = ({
             width="lg"
             onClick={handleSaveAction}
             disabled={isSaving}
+            title="Save this asset’s tag changes (Ctrl+S)"
           >
             <BookmarkCheckIcon />
             Save

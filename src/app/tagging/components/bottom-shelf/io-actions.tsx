@@ -18,7 +18,7 @@ export const IoActions = ({ ioInProgress }: { ioInProgress: boolean }) => {
   const saveAllChanges = () => {
     dispatch(saveAllAssets({ projectPath: projectFolderName || undefined }));
   };
-  const cancelAllChanges = () => dispatch(resetAllModifiedTags());
+  const discardAllChanges = () => dispatch(resetAllModifiedTags());
 
   return (
     <>
@@ -27,14 +27,16 @@ export const IoActions = ({ ioInProgress }: { ioInProgress: boolean }) => {
         size="md"
         width="lg"
         ghostDisabled
-        onClick={cancelAllChanges}
+        onClick={discardAllChanges}
         disabled={!hasModifiedAssets || ioInProgress}
         title={
-          hasModifiedAssets ? 'Cancel all tag changes' : 'No changes to cancel'
+          hasModifiedAssets
+            ? 'Discard all tag changes (Ctrl+Shift+D)'
+            : 'No changes to discard'
         }
       >
         <BookmarkXIcon />
-        <span className="max-lg:hidden">Cancel All</span>
+        <span className="max-lg:hidden">Discard All</span>
       </Button>
 
       <Button
@@ -47,7 +49,9 @@ export const IoActions = ({ ioInProgress }: { ioInProgress: boolean }) => {
         onClick={saveAllChanges}
         disabled={!hasModifiedAssets || ioInProgress}
         title={
-          hasModifiedAssets ? 'Save all tag changes' : 'No changes to save'
+          hasModifiedAssets
+            ? 'Save all tag changes (Ctrl+Shift+S)'
+            : 'No changes to save'
         }
       >
         <BookmarkCheckIcon />
