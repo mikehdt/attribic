@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
+  adoptCurrentAssetAsRangeAnchor,
   handleAssetClick,
   selectCurrentAssetId,
   setCurrentAsset,
@@ -318,6 +319,12 @@ export const useAssetKeyboardNav = (
           if (interactiveFocus) return; // let the focused control handle it
           if (current) {
             e.preventDefault();
+            // Shift extends from the range anchor, which the Shift keypress
+            // itself only pins when it lands on the gallery — pin it here so
+            // the gesture works however Shift got held down
+            if (e.shiftKey) {
+              dispatch(adoptCurrentAssetAsRangeAnchor());
+            }
             dispatch(
               handleAssetClick({
                 assetId: current,
@@ -354,6 +361,11 @@ export const useAssetKeyboardNav = (
         // bridges to the editing surface rather than resuming shelf tab order
         (document.activeElement as HTMLElement | null)?.blur();
         const nextId = ids[nextIndex];
+        // Pin the anchor before the highlight leaves it, so a range started
+        // from the keyboard extends from where it was standing
+        if (e.shiftKey) {
+          dispatch(adoptCurrentAssetAsRangeAnchor());
+        }
         dispatch(setCurrentAsset(nextId));
         // Moving with Shift held previews the range a Shift+Space would
         // select, exactly as shift-hovering the same asset with the mouse

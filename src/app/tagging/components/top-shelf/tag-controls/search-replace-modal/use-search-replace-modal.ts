@@ -11,8 +11,9 @@ import { selectHasActiveFilters } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectCaptionMode } from '@/app/store/project';
 import {
-  selectSelectedAssets,
   selectSelectedAssetsCount,
+  selectWorkingSelection,
+  selectWorkingSelectionCount,
 } from '@/app/store/selection';
 import {
   editTagsAcrossAssets,
@@ -63,9 +64,11 @@ export const useSearchReplaceModal = (isOpen: boolean, onClose: () => void) => {
   const allImages = useAppSelector(selectAllImages);
   const filteredAssets = useAppSelector(selectFilteredAssets);
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
-  const selectedAssets = useAppSelector(selectSelectedAssets);
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  const selectedAssets = useAppSelector(selectWorkingSelection);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const hasSelectedAssets = selectedAssetsCount > 0;
+  // Ticks alone seed the scope checkbox — see the initialisation effect below
+  const hasTickedAssets = useAppSelector(selectSelectedAssetsCount) > 0;
 
   // Only hybrid mode has a genuine target choice; the other modes are fixed
   const showTargetChooser = captionMode === 'hybrid';
@@ -73,11 +76,16 @@ export const useSearchReplaceModal = (isOpen: boolean, onClose: () => void) => {
   // Seed scoping and target when the modal opens. Unlike Edit Tags, filtered
   // scoping is always meaningful here — an arbitrary pattern can match assets
   // outside the filter chips, so the filtered set is never redundant.
+  //
+  // Only ticks seed the selected scope. Unscoped, this runs across the whole
+  // project, and a highlight — which is nearly always present after clicking
+  // around — must not quietly shrink that to a single asset. Tick the box and
+  // the highlight joins the scope like any other soft selection.
   useEffect(() => {
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form initialization on modal open
       setOnlyFilteredAssets(hasActiveFilters);
-      setOnlySelectedAssets(hasSelectedAssets);
+      setOnlySelectedAssets(hasTickedAssets);
       setTargetState(
         captionMode === 'caption'
           ? 'captions'
@@ -86,7 +94,7 @@ export const useSearchReplaceModal = (isOpen: boolean, onClose: () => void) => {
             : 'tags',
       );
     }
-  }, [isOpen, hasActiveFilters, hasSelectedAssets, captionMode]);
+  }, [isOpen, hasActiveFilters, hasTickedAssets, captionMode]);
 
   const setTarget = useCallback(
     (next: SearchReplaceTarget) => {

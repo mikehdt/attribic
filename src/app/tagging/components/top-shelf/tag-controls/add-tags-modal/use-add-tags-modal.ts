@@ -9,8 +9,9 @@ import { useAppSelector } from '@/app/store/hooks';
 import {
   selectAssetsWithActiveFilters,
   selectDuplicateTagInfo,
-  selectSelectedAssets,
   selectSelectedAssetsCount,
+  selectWorkingSelection,
+  selectWorkingSelectionCount,
 } from '@/app/store/selection';
 
 type UseAddTagsModalParams = {
@@ -53,9 +54,11 @@ export const useAddTagsModal = ({
     selectHasActiveNonArchiveVisibility,
   );
   const hasActiveFilters = hasExplicitFilters || hasActiveVisibility;
-  const selectedAssets = useAppSelector(selectSelectedAssets);
+  const selectedAssets = useAppSelector(selectWorkingSelection);
   const assetsWithActiveFilters = useAppSelector(selectAssetsWithActiveFilters);
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
+  // Ticks alone seed the scope checkbox — see the initialisation effect below
+  const tickedAssetsCount = useAppSelector(selectSelectedAssetsCount);
 
   const hasSelectedAssets = selectedAssetsCount > 0;
   const assetsWithActiveFiltersCount = assetsWithActiveFilters.length;
@@ -112,14 +115,22 @@ export const useAddTagsModal = ({
     }
   }, [isOpen]);
 
-  // Initialize checkboxes based on what selections are available
+  // Initialize checkboxes based on what selections are available.
+  //
+  // The soft-selected highlight counts towards the scope once it's ticked, but
+  // it must not tick it: with filters active, merely having looked at an asset
+  // would otherwise narrow "add to everything I filtered" down to that one
+  // asset. It does seed the box when there's no filter scope to fall back on,
+  // since the scope is mandatory here and the highlight is then all there is.
   useEffect(() => {
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form initialization on modal open
-      setApplyToSelectedAssets(hasSelectedAssets);
+      setApplyToSelectedAssets(
+        hasSelectedAssets && (tickedAssetsCount > 0 || !hasActiveFilters),
+      );
       setApplyToAssetsWithActiveFilters(hasActiveFilters);
     }
-  }, [isOpen, hasSelectedAssets, hasActiveFilters]);
+  }, [isOpen, hasSelectedAssets, tickedAssetsCount, hasActiveFilters]);
 
   const handleSubmit = (e: SyntheticEvent) => {
     e.preventDefault();

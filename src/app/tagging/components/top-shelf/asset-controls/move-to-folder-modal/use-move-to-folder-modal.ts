@@ -20,8 +20,9 @@ import {
   selectAssetsWithActiveFilters,
   selectAssetsWithActiveFiltersCount,
   selectCurrentAssetId,
-  selectSelectedAssets,
   selectSelectedAssetsCount,
+  selectWorkingSelection,
+  selectWorkingSelectionCount,
   setCurrentAsset,
 } from '@/app/store/selection';
 import { ARCHIVE_FOLDER, parseSubfolder } from '@/app/utils/subfolder-utils';
@@ -78,8 +79,10 @@ export const useMoveToFolderModal = ({
     selectHasActiveNonArchiveVisibility,
   );
   const hasActiveFilters = hasExplicitFilters || hasActiveVisibility;
-  const selectedAssets = useAppSelector(selectSelectedAssets);
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  const selectedAssets = useAppSelector(selectWorkingSelection);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
+  // Ticks alone seed the scope checkbox — see the initialisation effect below
+  const tickedAssetsCount = useAppSelector(selectSelectedAssetsCount);
   const assetsWithActiveFilters = useAppSelector(selectAssetsWithActiveFilters);
   const assetsWithActiveFiltersCount = useAppSelector(
     selectAssetsWithActiveFiltersCount,
@@ -378,10 +381,16 @@ export const useMoveToFolderModal = ({
       setMoveErrors(null);
       setIsMoving(false);
 
-      setApplyToSelectedAssets(hasSelectedAssets);
+      // The soft-selected highlight counts once the box is ticked but doesn't
+      // tick it, so looking at an asset can't silently narrow a filtered move
+      // down to that one asset. It does seed the box when no filter scope
+      // exists to fall back on — a move needs a scope, and that's all there is.
+      setApplyToSelectedAssets(
+        hasSelectedAssets && (tickedAssetsCount > 0 || !hasActiveFilters),
+      );
       setApplyToAssetsWithActiveFilters(hasActiveFilters);
     }
-  }, [isOpen, hasSelectedAssets, hasActiveFilters]);
+  }, [isOpen, hasSelectedAssets, tickedAssetsCount, hasActiveFilters]);
 
   // Seed and repair the destination selection. Nothing chosen — or a choice the
   // scope has since disabled — falls back to renaming the folder the assets are

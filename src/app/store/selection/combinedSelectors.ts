@@ -15,7 +15,10 @@ import {
   selectHasActiveNonArchiveVisibility,
 } from '../filters';
 import type { RootState } from '../index';
-import { selectSelectedAssets, selectSelectedAssetsSet } from '../selection';
+import {
+  selectWorkingSelection,
+  selectWorkingSelectionSet,
+} from '../selection';
 
 // Cache for memoized selectors - prevents creating new selector instances
 const duplicateTagInfoCache = new Map<
@@ -36,7 +39,7 @@ const makeCoExistenceKey = (originalTag: string, newTagValue: string) =>
  */
 const createDuplicateTagInfoSelector = (tagName: string) =>
   createSelector(
-    [selectSelectedAssetsSet, selectAllImages],
+    [selectWorkingSelectionSet, selectAllImages],
     (selectedSet, allImages) => {
       if (!tagName || selectedSet.size === 0) {
         return {
@@ -260,11 +263,12 @@ export const selectAssetsWithActiveFiltersCount = createSelector(
 );
 
 /**
- * Selector to get the full data for selected assets
- * @returns Array of ImageAsset objects for selected assets
+ * Selector to get the full data for the working selection — everything ticked
+ * plus the highlighted asset (see selectWorkingSelection)
+ * @returns Array of ImageAsset objects
  */
-export const selectSelectedAssetsData = createSelector(
-  [selectSelectedAssetsSet, selectAllImages],
+export const selectWorkingSelectionData = createSelector(
+  [selectWorkingSelectionSet, selectAllImages],
   (selectedSet, allImages) => {
     if (selectedSet.size === 0) {
       return [];
@@ -279,20 +283,20 @@ export const selectSelectedAssetsData = createSelector(
  * changes, but subscribers only re-render when the answer flips.
  */
 export const selectNoSelectedAssetHasTags = createSelector(
-  [selectSelectedAssetsData],
+  [selectWorkingSelectionData],
   (selectedAssets) => selectedAssets.every((a) => a.tagList.length === 0),
 );
 
 /**
  * Returns the effective asset IDs based on scoping priority:
- * 1. Selected assets visible in current filtered view (intersection)
+ * 1. Working selection visible in current filtered view (intersection)
  * 2. Filtered assets (if filters active)
  * 3. Every asset the archive view exposes (see selectBulkEditableAssets)
  *
  * This determines which assets tag actions (Delete, Gather) should operate on.
  */
 export const selectEffectiveScopeAssetIds = createSelector(
-  [selectSelectedAssets, selectFilteredAssets, selectBulkEditableAssets],
+  [selectWorkingSelection, selectFilteredAssets, selectBulkEditableAssets],
   (selectedAssets, filteredAssets, allImages) => {
     // Get the intersection of selected and filtered (visible selected assets)
     const filteredIds = new Set(filteredAssets.map((a) => a.fileId));

@@ -9,7 +9,7 @@ import {
   selectHasActiveNonArchiveVisibility,
 } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
-import { selectSelectedAssetsCount } from '@/app/store/selection';
+import { selectWorkingSelectionCount } from '@/app/store/selection';
 import { selectAssetsWithActiveFiltersCount } from '@/app/store/selection/combinedSelectors';
 
 import { MoveToFolderModal } from './move-to-folder-modal/move-to-folder-modal';
@@ -17,7 +17,7 @@ import { MoveToFolderModal } from './move-to-folder-modal/move-to-folder-modal';
 export const MoveToFolderButton = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
   const hasActiveVisibility = useAppSelector(
     selectHasActiveNonArchiveVisibility,

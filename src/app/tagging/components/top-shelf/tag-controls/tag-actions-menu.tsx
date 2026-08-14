@@ -11,7 +11,7 @@ import { MenuButton, MenuItem } from '@/app/shared/menu-button';
 import { gatherTags } from '@/app/store/assets';
 import { selectFilterTags } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/app/store/hooks';
-import { selectSelectedAssetsCount } from '@/app/store/selection';
+import { selectWorkingSelectionCount } from '@/app/store/selection';
 import {
   selectEffectiveScopeAssetIds,
   selectNoSelectedAssetHasTags,
@@ -31,7 +31,7 @@ export const TagActionsMenu = () => {
     useState(false);
 
   const filterTags = useAppSelector(selectFilterTags);
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const noSelectedAssetHasTags = useAppSelector(selectNoSelectedAssetHasTags);
 
   const openCopyTagsModal = useCallback(() => setIsCopyTagsModalOpen(true), []);

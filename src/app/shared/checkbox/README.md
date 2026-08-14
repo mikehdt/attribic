@@ -33,11 +33,12 @@ import { Checkbox } from '../path/to/shared/checkbox';
 
 ## Props
 
-| Prop         | Type                 | Description                                       |
-| ------------ | -------------------- | ------------------------------------------------- |
-| `isSelected` | `boolean`            | Whether the checkbox is selected/checked          |
-| `onChange`   | `() => void`         | Function to call when the selection changes       |
-| `className`  | `string` (optional)  | Additional classes to apply to the checkbox       |
-| `tabIndex`   | `number` (optional)  | Tab index for keyboard navigation (defaults to 0) |
-| `disabled`   | `boolean` (optional) | Whether the checkbox is disabled                  |
-| `ariaLabel`  | `string` (optional)  | Aria label for accessibility                      |
+| Prop             | Type                 | Description                                                       |
+| ---------------- | -------------------- | ----------------------------------------------------------------- |
+| `isSelected`     | `boolean`            | Whether the checkbox is selected/checked                          |
+| `onChange`       | `() => void`         | Function to call when the selection changes                       |
+| `className`      | `string` (optional)  | Additional classes to apply to the checkbox                       |
+| `tabIndex`       | `number` (optional)  | Tab index for keyboard navigation (defaults to 0)                 |
+| `disabled`       | `boolean` (optional) | Whether the checkbox is disabled                                  |
+| `ariaLabel`      | `string` (optional)  | Aria label for accessibility                                      |
+| `isSoftSelected` | `boolean` (optional) | Half-ticked: counted without being chosen outright (`aria-mixed`) |

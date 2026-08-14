@@ -40,6 +40,40 @@ export const selectSelectedAssetsCount = createSelector(
 );
 
 /**
+ * The selection as an action sees it: everything ticked, plus the highlighted
+ * asset as a soft member.
+ *
+ * Highlighting an asset already reads as "this one" — you moved to it to look
+ * at it — so an action fired now should include it without demanding a tick
+ * first, and Ctrl+Delete over a highlight outside the selection means "these,
+ * and this one too". The soft member can never pile up: it is always exactly
+ * the current asset, so moving the highlight moves it and nothing lingers.
+ *
+ * Deliberately not what the selection-*management* surfaces read. The "N
+ * selected" readout, Clear selection, Select All and the Selected scope and
+ * sort all stay on the ticked set, so clearing still empties it and scoping to
+ * "Selected" doesn't quietly drag the highlight in behind it.
+ */
+export const selectWorkingSelection = createSelector(
+  [selectSelectedAssets, selectCurrentAssetId],
+  (selectedAssets, currentAssetId) =>
+    !currentAssetId || selectedAssets.includes(currentAssetId)
+      ? selectedAssets
+      : [...selectedAssets, currentAssetId],
+);
+
+// Memoized Set for O(1) lookups against the working selection
+export const selectWorkingSelectionSet = createSelector(
+  [selectWorkingSelection],
+  (workingSelection) => new Set(workingSelection),
+);
+
+export const selectWorkingSelectionCount = createSelector(
+  [selectWorkingSelection],
+  (workingSelection) => workingSelection.length,
+);
+
+/**
  * Selector to calculate which assets should show a preview state
  * when shift-hovering. Returns the preview asset IDs and whether
  * they would be selected or deselected.

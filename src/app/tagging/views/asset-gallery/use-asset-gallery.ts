@@ -19,9 +19,15 @@ import {
   selectSelectedAssets,
   selectShiftHoverPreview,
   setShiftHoverAssetId,
+  startRangeAtCurrentAsset,
 } from '@/app/store/selection';
 import { groupAssetsByCategory } from '@/app/tagging/utils/category-utils';
 import { useAnchorScrolling } from '@/app/tagging/utils/use-anchor-scrolling';
+
+import {
+  GALLERY_EDITOR_SELECTOR,
+  isNavContextBlocked,
+} from './use-asset-keyboard-nav';
 
 /** An asset annotated with its position within the paginated, filtered list. */
 interface AssetWithPaginationIndex extends ImageAsset {
@@ -43,6 +49,20 @@ export type ShiftHoverPreview = ReturnType<typeof selectShiftHoverPreview>;
 // the pointer genuinely leaves the assets.
 const HOVER_CLEAR_DELAY_MS = 120;
 
+// Keys that hand the highlight to the keyboard — after one of these, the
+// highlight is a live cursor the user is steering, not a leftover from an
+// earlier click
+const NAV_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+]);
+
 /**
  * All renderer-agnostic gallery state: filtering, pagination, category
  * grouping, shift-range tracking and hover preview. The list and grid views
@@ -62,6 +82,10 @@ export const useAssetGallery = (currentPage: number) => {
   const isShiftHeldRef = useRef(false);
   // Track currently hovered asset (using ref to avoid re-renders on hover)
   const hoveredAssetRef = useRef<string | null>(null);
+  // Which device the highlight is answering to. Arrow/Home/End/Page moves hand
+  // it to the keyboard; any pointer movement hands it straight back. Shift
+  // reads this to decide whether the highlight counts as a live range origin
+  const isKeyboardDrivenRef = useRef(false);
   // Pending gutter-crossing clear, see HOVER_CLEAR_DELAY_MS
   const hoverClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -82,20 +106,35 @@ export const useAssetGallery = (currentPage: number) => {
   // Track shift key state globally (subscribed once — no per-toggle churn)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (NAV_KEYS.has(e.key)) {
+        if (!isNavContextBlocked(e, GALLERY_EDITOR_SELECTOR)) {
+          isKeyboardDrivenRef.current = true;
+        }
+        return;
+      }
+
       if (e.key === 'Shift' && !isShiftHeldRef.current) {
         isShiftHeldRef.current = true;
-        // Pressing Shift starts a range, so pin where it starts from before
-        // the gesture can move the highlight (see the thunk). No-op once a
-        // real selection click has set an anchor.
-        dispatch(adoptCurrentAssetAsRangeAnchor());
-        // If already hovering an asset when shift is pressed, update Redux;
-        // with no hover, the keyboard's current asset previews instead, so
-        // Shift+arrow range selection lights up the same way the mouse does
-        const target =
-          hoveredAssetRef.current ?? selectCurrentAssetId(store.getState());
-        if (target) {
-          dispatch(setShiftHoverAssetId(target));
-        }
+
+        // A range needs a live origin, and Shift on its own doesn't supply
+        // one: it previews from the pointer while the pointer is actually on
+        // an asset, or from the highlight while the keyboard is the thing
+        // steering it. Shift pressed with the pointer parked on a shelf — or
+        // mid-word in a tag field — is neither, and leaves the gallery alone.
+        if (isNavContextBlocked(e, GALLERY_EDITOR_SELECTOR)) return;
+
+        // Pin where the range starts from before the gesture can move the
+        // highlight (see the thunk). Unconditional: even with nothing to
+        // preview from yet, a Shift+click that follows must start from the
+        // asset under inspection now, not one the highlight has long left
+        dispatch(startRangeAtCurrentAsset());
+
+        const target = isKeyboardDrivenRef.current
+          ? (selectCurrentAssetId(store.getState()) ?? hoveredAssetRef.current)
+          : hoveredAssetRef.current;
+        if (!target) return;
+
+        dispatch(setShiftHoverAssetId(target));
       }
     };
     // Releasing shift is an explicit "stop previewing" — clear it at once
@@ -113,14 +152,25 @@ export const useAssetGallery = (currentPage: number) => {
       dispatch(setShiftHoverAssetId(null));
     };
 
+    // Moving the mouse takes the highlight back off the keyboard, so a stale
+    // highlight from earlier arrow work can't stand in for a pointer that's
+    // since wandered off the assets
+    const handlePointerMove = () => {
+      isKeyboardDrivenRef.current = false;
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
+    window.addEventListener('pointermove', handlePointerMove, {
+      passive: true,
+    });
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('pointermove', handlePointerMove);
       cancelPendingHoverClear();
     };
   }, [cancelPendingHoverClear, dispatch, store]);
@@ -154,6 +204,10 @@ export const useAssetGallery = (currentPage: number) => {
     (assetId: string | null) => {
       hoveredAssetRef.current = assetId;
       if (!isShiftHeldRef.current) return;
+      // Keyboard nav scrolls cells under a parked pointer, firing enter/leave
+      // with no mouse movement behind it — that must not steal the preview
+      // from the highlight the arrows are steering
+      if (isKeyboardDrivenRef.current) return;
 
       cancelPendingHoverClear();
 
@@ -165,6 +219,9 @@ export const useAssetGallery = (currentPage: number) => {
         return;
       }
 
+      // The pointer can arrive on an asset after Shift went down, in which
+      // case the keydown had no origin to pin — so pin it here instead
+      dispatch(adoptCurrentAssetAsRangeAnchor());
       dispatch(setShiftHoverAssetId(assetId));
     },
     [cancelPendingHoverClear, dispatch],

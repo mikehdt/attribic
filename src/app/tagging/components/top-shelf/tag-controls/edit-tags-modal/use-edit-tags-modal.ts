@@ -10,8 +10,8 @@ import {
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
-  selectSelectedAssets,
-  selectSelectedAssetsCount,
+  selectWorkingSelection,
+  selectWorkingSelectionCount,
 } from '@/app/store/selection';
 import {
   selectDuplicateTagInfo,
@@ -51,8 +51,10 @@ export const useEditTagsModal = (
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
   const hasNonTagFilters = useAppSelector(selectHasNonTagFilters);
   const filterMode = useAppSelector(selectFilterMode);
-  const selectedAssets = useAppSelector(selectSelectedAssets);
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  // The scope box defaults off here, so the soft-selected highlight only ever
+  // joins the scope after the user ticks it
+  const selectedAssets = useAppSelector(selectWorkingSelection);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const hasSelectedAssets = selectedAssetsCount > 0;
 
   // In SHOW_ALL or MATCH_ANY mode with only tag filters active, scoping to

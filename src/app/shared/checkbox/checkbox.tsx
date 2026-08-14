@@ -15,6 +15,13 @@ interface CheckboxProps {
   label?: string; // Optional label to display next to the checkbox
   size?: 'sm' | 'md'; // Size of the checkbox
   previewState?: PreviewState; // For shift-hover preview
+  /**
+   * Half-ticked: not chosen outright, but counted anyway. The gallery uses it
+   * for the highlighted asset, which actions treat as part of the selection
+   * without it being ticked. A live preview outranks it — mid-gesture, what
+   * the gesture would do matters more than the resting state.
+   */
+  isSoftSelected?: boolean;
 }
 
 const sizeClasses = {
@@ -43,6 +50,7 @@ export const Checkbox = ({
   label,
   size = 'md',
   previewState,
+  isSoftSelected = false,
 }: CheckboxProps) => {
   const onClick = useCallback(
     (e: MouseEvent) => {
@@ -80,10 +88,20 @@ export const Checkbox = ({
         : isSelected;
   const isPreview = previewState !== null && previewState !== undefined;
 
+  // The soft state only shows at rest: ticked and previewing both describe the
+  // selection more definitely than "counted anyway" does
+  const showAsSoft = isSoftSelected && !showAsSelected && !isPreview;
+
   // Build checkbox styling based on state
   const getCheckboxStyles = () => {
     if (disabled) {
       return 'border-slate-300 bg-slate-50 shadow-slate-200 dark:bg-slate-700 dark:shadow-slate-900 dark:border-slate-600';
+    }
+
+    if (showAsSoft) {
+      // Half-ticked: the selected palette at low commitment — an outline and a
+      // dash rather than a filled box, so it never reads as a full tick
+      return 'border-sky-500 bg-sky-50 shadow-slate-300 inset-shadow-sky-100 group-hover/control:bg-sky-100 dark:bg-sky-950 dark:shadow-slate-900 dark:inset-shadow-sky-900';
     }
 
     if (showAsSelected) {
@@ -111,12 +129,12 @@ export const Checkbox = ({
       <div
         className={`relative flex ${currentSize.checkbox} items-center justify-center overflow-hidden rounded border shadow-sm inset-shadow-xs transition-all ${getCheckboxStyles()} ${className}`}
         role="checkbox"
-        aria-checked={isSelected}
+        aria-checked={isSelected ? true : showAsSoft ? 'mixed' : false}
         aria-label={ariaLabel}
         tabIndex={disabled ? -1 : tabIndex}
         onKeyDown={onKeyDown}
       >
-        {showAsSelected && (
+        {showAsSelected ? (
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-full w-full text-white"
@@ -129,7 +147,9 @@ export const Checkbox = ({
               clipRule="evenodd"
             />
           </svg>
-        )}
+        ) : showAsSoft ? (
+          <span className="h-0.5 w-1/2 rounded-full bg-sky-500 dark:bg-sky-400" />
+        ) : null}
       </div>
       {label && <span>{label}</span>}
     </label>

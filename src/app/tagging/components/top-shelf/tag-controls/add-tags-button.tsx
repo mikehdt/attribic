@@ -11,7 +11,7 @@ import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   addMultipleTagsToAssetsWithDualSelection,
   clearSelection,
-  selectSelectedAssetsCount,
+  selectWorkingSelectionCount,
 } from '@/app/store/selection';
 import { selectAssetsWithActiveFiltersCount } from '@/app/store/selection/combinedSelectors';
 
@@ -21,7 +21,7 @@ export const AddTagsButton = () => {
   const dispatch = useAppDispatch();
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
   const hasActiveVisibility = useAppSelector(
     selectHasActiveNonArchiveVisibility,

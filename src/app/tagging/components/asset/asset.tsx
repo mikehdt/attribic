@@ -13,6 +13,7 @@ import {
   selectShowCropVisualization,
 } from '@/app/store/project';
 import {
+  adoptCurrentAssetAsRangeAnchor,
   handleAssetClick,
   selectAssetIsCurrent,
   selectAssetIsSelected,
@@ -209,6 +210,12 @@ const AssetComponent = ({
   // the highlight follows the mouse as well as the keyboard
   const onRowClick = useCallback(
     (e: MouseEvent) => {
+      // Pin the range origin before the highlight moves off it — only the
+      // selection panel tracks hover, so a Shift+click out in the row body
+      // may be the first thing to give the range an origin at all
+      if (e.shiftKey) {
+        dispatch(adoptCurrentAssetAsRangeAnchor());
+      }
       if (!isCurrent) {
         dispatch(setCurrentAsset(assetId));
       }
@@ -241,6 +248,7 @@ const AssetComponent = ({
       >
         <Checkbox
           isSelected={isSelected}
+          isSoftSelected={isCurrent}
           onChange={onToggleAssetSelection}
           ariaLabel={`Select asset ${assetId}`}
           previewState={previewState}

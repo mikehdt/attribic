@@ -183,13 +183,16 @@ const GridCellComponent = ({
 
       <div
         className={`absolute top-1 left-1 z-10 flex rounded-md bg-white/80 p-1 transition-opacity dark:bg-slate-900/70 ${
-          showAsSelected || isPreview
+          // The highlighted cell shows its half-tick even unticked — it counts
+          // towards actions, so the badge saying so can't be hover-only
+          showAsSelected || isPreview || isCurrent
             ? 'opacity-100'
             : 'opacity-0 group-hover:opacity-100'
         }`}
       >
         <Checkbox
           isSelected={isSelected}
+          isSoftSelected={isCurrent}
           onChange={onToggleSelection}
           ariaLabel={`Select asset ${assetId}`}
           previewState={previewState}

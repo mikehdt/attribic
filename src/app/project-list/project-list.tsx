@@ -295,12 +295,11 @@ export const ProjectList = () => {
 
           {regularProjects.length > 0 && (
             <div>
-              {featuredProjects.length > 0 && (
-                <h3 className={SUBSECTION_HEADING_CLASS}>
-                  <FolderClosedIcon className="h-4 w-4" />
-                  All Projects
-                </h3>
-              )}
+              <h3 className={SUBSECTION_HEADING_CLASS}>
+                <FolderClosedIcon className="h-4 w-4" />
+                All Projects
+              </h3>
+
               <div className="flex flex-wrap gap-3">
                 {regularProjects.map(renderTaggingItem)}
               </div>
@@ -354,12 +353,10 @@ export const ProjectList = () => {
 
               {regularTrainingProjects.length > 0 && (
                 <div>
-                  {featuredTrainingProjects.length > 0 && (
-                    <h3 className={SUBSECTION_HEADING_CLASS}>
-                      <GpuIcon className="h-4 w-4" />
-                      All Projects
-                    </h3>
-                  )}
+                  <h3 className={SUBSECTION_HEADING_CLASS}>
+                    <GpuIcon className="h-4 w-4" />
+                    All Projects
+                  </h3>
                   <div className="flex flex-wrap gap-3">
                     {regularTrainingProjects.map(renderTrainingItem)}
                   </div>

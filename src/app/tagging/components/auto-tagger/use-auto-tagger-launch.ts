@@ -20,10 +20,10 @@ import {
   selectHasReadyModel,
 } from '@/app/store/auto-tagger';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
-import { selectSelectedAssetsCount } from '@/app/store/selection';
+import { selectWorkingSelectionCount } from '@/app/store/selection';
 import {
   selectAssetsWithActiveFiltersCount,
-  selectSelectedAssetsData,
+  selectWorkingSelectionData,
 } from '@/app/store/selection/combinedSelectors';
 
 /** Stable sentinel returned while the modal is closed. */
@@ -45,12 +45,12 @@ export function useAutoTaggerLaunch() {
   }, [dispatch]);
 
   const selectedAssetsData = useAppSelector((state) =>
-    isModalOpen ? selectSelectedAssetsData(state) : NO_ASSETS,
+    isModalOpen ? selectWorkingSelectionData(state) : NO_ASSETS,
   );
   const filteredAssets = useAppSelector((state) =>
     isModalOpen ? selectFilteredAssets(state) : NO_ASSETS,
   );
-  const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const filteredAssetsCount = useAppSelector(
     selectAssetsWithActiveFiltersCount,
   );

@@ -35,6 +35,8 @@ import {
   selectCurrentAssetId,
   selectLastClickAction,
   selectLastClickedAssetId,
+  selectWorkingSelection,
+  selectWorkingSelectionSet,
 } from './selectors';
 
 /**
@@ -70,7 +72,7 @@ export const editTagsAcrossAssets = createAsyncThunk(
 
     // Further filter by selected assets if that constraint is active
     if (onlySelectedAssets) {
-      const selectedAssetIds = new Set(state.selection.selectedAssets);
+      const selectedAssetIds = selectWorkingSelectionSet(state);
       candidateAssets = candidateAssets.filter((asset) =>
         selectedAssetIds.has(asset.fileId),
       );
@@ -256,7 +258,7 @@ export const replaceCaptionsAcrossAssets = createAsyncThunk(
       : selectBulkEditableAssets(state);
 
     if (onlySelectedAssets) {
-      const selectedAssetIds = new Set(state.selection.selectedAssets);
+      const selectedAssetIds = selectWorkingSelectionSet(state);
       candidateAssets = candidateAssets.filter((asset) =>
         selectedAssetIds.has(asset.fileId),
       );
@@ -334,7 +336,7 @@ export const addMultipleTagsToAssetsWithDualSelection = createAsyncThunk(
 
     if (applyToSelectedAssets && applyToAssetsWithActiveFilters) {
       // Both constraints: intersection of selected assets and filtered assets
-      const selectedAssets = state.selection.selectedAssets;
+      const selectedAssets = selectWorkingSelection(state);
       const filteredAssets = selectAssetsWithActiveFilters(state);
       const filteredIds = new Set(filteredAssets.map((asset) => asset.fileId));
       finalAssets = selectedAssets.filter((assetId) =>
@@ -346,7 +348,7 @@ export const addMultipleTagsToAssetsWithDualSelection = createAsyncThunk(
       const editableIds = new Set(
         selectBulkEditableAssets(state).map((asset) => asset.fileId),
       );
-      finalAssets = state.selection.selectedAssets.filter((id) =>
+      finalAssets = selectWorkingSelection(state).filter((id) =>
         editableIds.has(id),
       );
     } else if (applyToAssetsWithActiveFilters) {
@@ -379,8 +381,8 @@ export const addMultipleTagsToAssetsWithDualSelection = createAsyncThunk(
 );
 
 /**
- * Adopt the inspected asset as the range anchor, unless a real selection click
- * has already set one.
+ * Move the range anchor to the inspected asset, ending whatever range the
+ * previous anchor was the start of.
  *
  * Clicking an asset to look at it — without ticking its box — still reads as
  * "I'm starting here", so the Shift gesture that follows should extend from it
@@ -388,19 +390,25 @@ export const addMultipleTagsToAssetsWithDualSelection = createAsyncThunk(
  * falling back to a plain toggle. Treating it as a click is the whole
  * implementation: the hover preview and the range commit both key off the
  * tracked click, so the anchor ghosts itself in as soon as the range has two
- * ends.
+ * ends. And because the highlight is where you last put yourself, an anchor
+ * left behind on some earlier asset is simply stale — the range starts from
+ * where you are now.
  *
- * Called when Shift goes down rather than read live at commit time, because
- * Shift+arrow drags the current asset along to the far end of the range — the
- * anchor has to be pinned before that starts.
+ * Called as a Shift gesture begins rather than read live at commit time,
+ * because Shift+arrow drags the current asset along to the far end of the
+ * range — the anchor has to be pinned before that starts.
  */
-export const adoptCurrentAssetAsRangeAnchor =
+export const startRangeAtCurrentAsset =
   (): AppThunk => (dispatch, getState) => {
     const state = getState();
-    if (selectLastClickedAssetId(state)) return;
 
     const currentAssetId = selectCurrentAssetId(state);
     if (!currentAssetId) return;
+
+    // Already anchored here: keep the tracked click as it stands, because
+    // unticking recorded a deselecting direction that the asset's own
+    // selection state can no longer tell us apart from a fresh start
+    if (selectLastClickedAssetId(state) === currentAssetId) return;
 
     // An unselected anchor starts a selecting range, a selected one starts a
     // deselecting range — the same direction a click on it would have set
@@ -412,6 +420,19 @@ export const adoptCurrentAssetAsRangeAnchor =
           : 'select',
       }),
     );
+  };
+
+/**
+ * Give a range in progress an anchor if it somehow has none — the mid-gesture
+ * counterpart to {@link startRangeAtCurrentAsset}, which pins the anchor when
+ * Shift goes down. Deliberately never moves an existing anchor: the highlight
+ * runs ahead of it for the whole gesture, and re-anchoring on the way would
+ * collapse the range to the last step.
+ */
+export const adoptCurrentAssetAsRangeAnchor =
+  (): AppThunk => (dispatch, getState) => {
+    if (selectLastClickedAssetId(getState())) return;
+    dispatch(startRangeAtCurrentAsset());
   };
 
 /**

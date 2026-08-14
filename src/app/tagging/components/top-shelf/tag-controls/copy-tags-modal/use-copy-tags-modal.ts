@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { copyTagsToAssets, selectTagCounts } from '@/app/store/assets';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectProjectFolderName } from '@/app/store/project';
-import { selectSelectedAssetsData } from '@/app/store/selection/combinedSelectors';
+import { selectWorkingSelectionData } from '@/app/store/selection/combinedSelectors';
 
 export type TagSortOption = 'order' | 'alphabetical' | 'frequency';
 
@@ -17,7 +17,7 @@ export const useCopyTagsModal = ({
   onClose,
 }: UseCopyTagsModalParams) => {
   const dispatch = useAppDispatch();
-  const selectedAssetsData = useAppSelector(selectSelectedAssetsData);
+  const selectedAssetsData = useAppSelector(selectWorkingSelectionData);
   const tagCounts = useAppSelector(selectTagCounts);
 
   // Local state

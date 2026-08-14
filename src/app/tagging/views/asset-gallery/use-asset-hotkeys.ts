@@ -13,7 +13,7 @@ import { useAppDispatch, useAppSelector, useAppStore } from '@/app/store/hooks';
 import { selectProjectInfo } from '@/app/store/project';
 import {
   selectCurrentAssetId,
-  selectSelectedAssets,
+  selectWorkingSelection,
   setCurrentAsset,
 } from '@/app/store/selection';
 import {
@@ -46,13 +46,13 @@ let pendingScrollAssetId: string | null = null;
  * gallery. Deliberately modifier chords, never bare letters: if focus is
  * silently lost mid-edit, stray typing must not trigger destructive actions.
  *
- * - Ctrl+Delete (or Ctrl+Backspace) toggles archive on the current asset —
- *   a move to `.archive`, or back to the project root. The highlight says
- *   which group it acts on: highlighting an asset inside the selection means
- *   "all of these", highlighting one outside it means "just this one". When
- *   the move takes the highlighted asset out of the filtered view (archiving
- *   under "hide archived", unarchiving under "archived only"), the highlight
- *   advances to the nearest survivor so a culling pass never loses its place.
+ * - Ctrl+Delete (or Ctrl+Backspace) toggles archive on the working selection —
+ *   a move to `.archive`, or back to the project root. That's everything
+ *   ticked plus the highlighted asset, and the highlight sets the direction.
+ *   When the move takes the highlighted asset out of the filtered view
+ *   (archiving under "hide archived", unarchiving under "archived only"), the
+ *   highlight advances to the nearest survivor so a culling pass never loses
+ *   its place.
  * - Ctrl+U jumps to the first untagged asset in filtered order, changing
  *   page when it lives on another one.
  *
@@ -110,19 +110,16 @@ export const useAssetHotkeys = (
       const asset = selectAssetById(state, assetId);
       if (!asset) return;
 
-      // The highlighted asset sets the direction, and whether it's part of the
-      // selection decides the scope — highlighting one of the selected assets
-      // means "all of these", highlighting one outside the selection means
-      // "just this one". Targets already on the destination side are dropped,
-      // so a mixed selection archives what isn't archived yet instead of
-      // bouncing files against the folder they're already in.
+      // The highlighted asset sets the direction; the scope is the working
+      // selection, so this acts on everything ticked plus the highlighted
+      // asset itself — the highlight is a soft selection, never a scope of its
+      // own. Targets already on the destination side are dropped, so a mixed
+      // selection archives what isn't archived yet instead of bouncing files
+      // against the folder they're already in.
       const archiving = !isArchiveSubfolder(asset.subfolder);
       const destination = archiving ? ARCHIVE_FOLDER : null;
 
-      const selected = selectSelectedAssets(state);
-      const targets = (
-        selected.includes(assetId) ? selected : [assetId]
-      ).filter((id) => {
+      const targets = selectWorkingSelection(state).filter((id) => {
         const target = selectAssetById(state, id);
         return !!target && isArchiveSubfolder(target.subfolder) !== archiving;
       });
