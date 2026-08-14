@@ -11,7 +11,10 @@ import {
   selectHasActiveNonArchiveVisibility,
 } from '@/app/store/filters';
 import { useAppSelector } from '@/app/store/hooks';
-import { selectSelectedAssetsCount } from '@/app/store/selection';
+import {
+  selectSelectedAssetsCount,
+  selectSoftSelectionCount,
+} from '@/app/store/selection';
 
 const AssetCountsComponent = () => {
   const filteredCount = useAppSelector(selectFilteredAssetsCount);
@@ -21,9 +24,19 @@ const AssetCountsComponent = () => {
   const archivedCount = useAppSelector(selectArchivedCount);
   const archiveView = useAppSelector(selectArchiveView);
   const selectedAssetsCount = useAppSelector(selectSelectedAssetsCount);
+  // The highlighted asset counts as a soft member of the selection, so show it
+  // alongside the ticked count ("3+1") rather than folded into it
+  const softSelectionCount = useAppSelector(selectSoftSelectionCount);
 
   const showArchivedCount =
     archiveView !== ArchiveViewMode.HIDDEN && archivedCount > 0;
+
+  const selectionTitle =
+    softSelectionCount > 0
+      ? selectedAssetsCount > 0
+        ? `${selectedAssetsCount} selected, plus the highlighted asset`
+        : 'The highlighted asset'
+      : undefined;
 
   return (
     <div className="flex items-center gap-2 text-sm font-medium tabular-nums">
@@ -46,9 +59,22 @@ const AssetCountsComponent = () => {
         </div>
       ) : null}
 
-      {selectedAssetsCount > 0 ? (
-        <div className="flex items-center gap-1 border-l border-l-(--border) pl-2">
-          <span className="text-purple-500">{selectedAssetsCount}</span>
+      {selectedAssetsCount > 0 || softSelectionCount > 0 ? (
+        <div
+          className="flex items-center gap-1 border-l border-l-(--border) pl-2"
+          title={selectionTitle}
+        >
+          <span>
+            {selectedAssetsCount > 0 ? (
+              <span className="text-purple-500">{selectedAssetsCount}</span>
+            ) : null}
+            {selectedAssetsCount > 0 && softSelectionCount > 0 ? (
+              <span className="text-(--unselected-text)">+</span>
+            ) : null}
+            {softSelectionCount > 0 ? (
+              <span className="text-sky-500">{softSelectionCount}</span>
+            ) : null}
+          </span>
           <span className="text-(--unselected-text)">selected</span>
         </div>
       ) : null}

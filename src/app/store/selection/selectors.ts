@@ -49,10 +49,11 @@ export const selectSelectedAssetsCount = createSelector(
  * and this one too". The soft member can never pile up: it is always exactly
  * the current asset, so moving the highlight moves it and nothing lingers.
  *
- * Deliberately not what the selection-*management* surfaces read. The "N
- * selected" readout, Clear selection, Select All and the Selected scope and
- * sort all stay on the ticked set, so clearing still empties it and scoping to
- * "Selected" doesn't quietly drag the highlight in behind it.
+ * Deliberately not what the selection-*management* surfaces read. Clear
+ * selection, Select All and the Selected scope and sort all stay on the ticked
+ * set, so clearing still empties it and scoping to "Selected" doesn't quietly
+ * drag the highlight in behind it. The "N selected" readout shows both, but
+ * keeps them visibly apart ("3+1") rather than summing them.
  */
 export const selectWorkingSelection = createSelector(
   [selectSelectedAssets, selectCurrentAssetId],
@@ -71,6 +72,16 @@ export const selectWorkingSelectionSet = createSelector(
 export const selectWorkingSelectionCount = createSelector(
   [selectWorkingSelection],
   (workingSelection) => workingSelection.length,
+);
+
+/**
+ * 1 when the highlighted asset sits outside the ticked selection, else 0 — the
+ * "+1" the readout shows for the soft member of the working selection.
+ */
+export const selectSoftSelectionCount = createSelector(
+  [selectSelectedAssetsSet, selectCurrentAssetId],
+  (selectedAssetsSet, currentAssetId) =>
+    currentAssetId && !selectedAssetsSet.has(currentAssetId) ? 1 : 0,
 );
 
 /**
