@@ -265,7 +265,7 @@ export const ProjectList = () => {
         <section>
           <div className={COLUMN_HEADING_ROW_CLASS}>
             <h2 className={COLUMN_HEADING_CLASS}>
-              <span className="mr-2 flex items-center justify-center rounded-full border border-slate-300 bg-slate-200 p-2.5 text-slate-700 inset-shadow-sm inset-shadow-slate-50 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-200 dark:inset-shadow-slate-800">
+              <span className="mr-2 flex items-center justify-center rounded-full border border-slate-300 bg-slate-200 p-2.5 text-slate-700 inset-shadow-sm inset-shadow-slate-50 dark:border-slate-500 dark:bg-slate-600 dark:text-slate-200 dark:inset-shadow-slate-500">
                 <FolderClosedIcon className="h-5 w-5" />
               </span>
               Tagging Projects
@@ -317,7 +317,7 @@ export const ProjectList = () => {
         <section>
           <div className={COLUMN_HEADING_ROW_CLASS}>
             <h2 className={COLUMN_HEADING_CLASS}>
-              <span className="mr-2 flex items-center justify-center rounded-full border border-sky-300 bg-sky-200 p-2.5 text-sky-700 inset-shadow-sm inset-shadow-sky-50 dark:border-sky-500 dark:bg-sky-700 dark:text-sky-200 dark:inset-shadow-sky-900">
+              <span className="mr-2 flex items-center justify-center rounded-full border border-sky-300 bg-sky-200 p-2.5 text-sky-700 inset-shadow-sm inset-shadow-sky-50 dark:border-sky-500 dark:bg-sky-700 dark:text-sky-200 dark:inset-shadow-sky-600">
                 <GpuIcon className="h-5 w-5" />
               </span>
               Training Projects

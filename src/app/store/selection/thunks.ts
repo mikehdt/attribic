@@ -21,13 +21,21 @@ import {
 import { updateTagFilters } from '../filters';
 import { selectPaginationSize } from '../filters';
 import { type AppThunk, RootState } from '../index';
-import { selectAssetsWithActiveFilters } from './combinedSelectors';
+import {
+  selectAssetsWithActiveFilters,
+  selectBulkEditableAssets,
+} from './combinedSelectors';
 import {
   setAssetsSelectionState,
   toggleAssetSelection,
   trackAssetClick,
 } from './reducers';
-import { selectLastClickAction, selectLastClickedAssetId } from './selectors';
+import {
+  selectAssetIsSelected,
+  selectCurrentAssetId,
+  selectLastClickAction,
+  selectLastClickedAssetId,
+} from './selectors';
 
 /**
  * Thunk action to edit multiple tags in all filtered assets
@@ -53,10 +61,12 @@ export const editTagsAcrossAssets = createAsyncThunk(
   ) => {
     const state = getState() as RootState;
 
-    // Start with all assets or filtered assets based on the filter constraint
+    // Start with all assets or filtered assets based on the filter constraint.
+    // Unscoped means "every asset the archive view exposes", never the hidden
+    // archive.
     let candidateAssets = onlyFilteredAssets
       ? selectFilteredAssets(state)
-      : state.assets.images;
+      : selectBulkEditableAssets(state);
 
     // Further filter by selected assets if that constraint is active
     if (onlySelectedAssets) {
@@ -243,7 +253,7 @@ export const replaceCaptionsAcrossAssets = createAsyncThunk(
 
     let candidateAssets = onlyFilteredAssets
       ? selectFilteredAssets(state)
-      : state.assets.images;
+      : selectBulkEditableAssets(state);
 
     if (onlySelectedAssets) {
       const selectedAssetIds = new Set(state.selection.selectedAssets);
@@ -331,7 +341,14 @@ export const addMultipleTagsToAssetsWithDualSelection = createAsyncThunk(
         filteredIds.has(assetId),
       );
     } else if (applyToSelectedAssets) {
-      finalAssets = [...state.selection.selectedAssets];
+      // A stale selection can still name an archived asset the current view
+      // hides — never a legitimate target for a tag write
+      const editableIds = new Set(
+        selectBulkEditableAssets(state).map((asset) => asset.fileId),
+      );
+      finalAssets = state.selection.selectedAssets.filter((id) =>
+        editableIds.has(id),
+      );
     } else if (applyToAssetsWithActiveFilters) {
       finalAssets = selectAssetsWithActiveFilters(state).map(
         (asset) => asset.fileId,
@@ -360,6 +377,42 @@ export const addMultipleTagsToAssetsWithDualSelection = createAsyncThunk(
     };
   },
 );
+
+/**
+ * Adopt the inspected asset as the range anchor, unless a real selection click
+ * has already set one.
+ *
+ * Clicking an asset to look at it — without ticking its box — still reads as
+ * "I'm starting here", so the Shift gesture that follows should extend from it
+ * and pick it up as the first item of the range, rather than ignoring it and
+ * falling back to a plain toggle. Treating it as a click is the whole
+ * implementation: the hover preview and the range commit both key off the
+ * tracked click, so the anchor ghosts itself in as soon as the range has two
+ * ends.
+ *
+ * Called when Shift goes down rather than read live at commit time, because
+ * Shift+arrow drags the current asset along to the far end of the range — the
+ * anchor has to be pinned before that starts.
+ */
+export const adoptCurrentAssetAsRangeAnchor =
+  (): AppThunk => (dispatch, getState) => {
+    const state = getState();
+    if (selectLastClickedAssetId(state)) return;
+
+    const currentAssetId = selectCurrentAssetId(state);
+    if (!currentAssetId) return;
+
+    // An unselected anchor starts a selecting range, a selected one starts a
+    // deselecting range — the same direction a click on it would have set
+    dispatch(
+      trackAssetClick({
+        assetId: currentAssetId,
+        action: selectAssetIsSelected(state, currentAssetId)
+          ? 'deselect'
+          : 'select',
+      }),
+    );
+  };
 
 /**
  * Thunk to handle asset click with shift-selection support.

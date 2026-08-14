@@ -23,7 +23,9 @@ const focusGridInspector = (): boolean => {
  * and focus once it has rendered. Shared by the Tab binding and the
  * click-an-inspected-cell-again gesture so both land in the same place.
  */
-export const revealGridInspector = (setOverlayOpen: (open: boolean) => void) => {
+export const revealGridInspector = (
+  setOverlayOpen: (open: boolean) => void,
+) => {
   if (focusGridInspector()) return;
   setOverlayOpen(true);
   requestAnimationFrame(() => focusGridInspector());

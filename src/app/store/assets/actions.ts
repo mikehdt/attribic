@@ -33,6 +33,7 @@ import {
 } from '@/app/utils/asset-actions';
 import { ARCHIVE_FOLDER } from '@/app/utils/subfolder-utils';
 
+import { ArchiveViewMode } from '../filters/types';
 import type { ProjectState } from '../project/types';
 import { addToast } from '../toasts';
 import {
@@ -369,8 +370,10 @@ export const moveAssetsToFolderThunk = createAsyncThunk<
   async ({ assetIds, destination, projectPath }, { getState, dispatch }) => {
     const state = getState() as {
       assets: ImageAssets;
+      filters: { visibility: { archiveView: ArchiveViewMode } };
     };
     const { images, imageIndexById } = state.assets;
+    const { archiveView } = state.filters.visibility;
 
     // Build operation list from current state
     const operations: MoveAssetOperation[] = [];
@@ -409,6 +412,27 @@ export const moveAssetsToFolderThunk = createAsyncThunk<
         type: 'selection/remapSelectedAssets',
         payload: { remaps },
       });
+
+      // Selection tracks what's on screen. When the move pushes assets out of
+      // the current archive view — archiving while the archive is hidden, or
+      // restoring one while the archive is all that's shown — they can no
+      // longer be seen or acted on, so they must not stay selected and quietly
+      // widen the scope of the next bulk action.
+      const intoArchive = destination === ARCHIVE_FOLDER;
+      const movedOutOfView =
+        archiveView === ArchiveViewMode.HIDDEN
+          ? intoArchive
+          : archiveView === ArchiveViewMode.ONLY && !intoArchive;
+
+      if (movedOutOfView) {
+        dispatch({
+          type: 'selection/setAssetsSelectionState',
+          payload: {
+            assetIds: result.moved.map((m) => m.newFileId),
+            selected: false,
+          },
+        });
+      }
 
       if (result.deletedFolders.length > 0) {
         // Dispatch to filters slice (avoid circular import via barrel)

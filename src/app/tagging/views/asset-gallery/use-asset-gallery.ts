@@ -11,12 +11,9 @@ import {
   clearVisibilityFilters,
   selectPaginationSize,
 } from '@/app/store/filters';
+import { useAppDispatch, useAppSelector, useAppStore } from '@/app/store/hooks';
 import {
-  useAppDispatch,
-  useAppSelector,
-  useAppStore,
-} from '@/app/store/hooks';
-import {
+  adoptCurrentAssetAsRangeAnchor,
   clearClickTracking,
   selectCurrentAssetId,
   selectSelectedAssets,
@@ -87,6 +84,10 @@ export const useAssetGallery = (currentPage: number) => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift' && !isShiftHeldRef.current) {
         isShiftHeldRef.current = true;
+        // Pressing Shift starts a range, so pin where it starts from before
+        // the gesture can move the highlight (see the thunk). No-op once a
+        // real selection click has set an anchor.
+        dispatch(adoptCurrentAssetAsRangeAnchor());
         // If already hovering an asset when shift is pressed, update Redux;
         // with no hover, the keyboard's current asset previews instead, so
         // Shift+arrow range selection lights up the same way the mouse does

@@ -203,14 +203,11 @@ export const selectHasSubfolderAssets = createSelector(
   },
 );
 
-export const selectArchivedCount = createSelector(
-  [selectAllImages],
-  (images) =>
-    images.reduce(
-      (count, asset) =>
-        isArchiveSubfolder(asset.subfolder) ? count + 1 : count,
-      0,
-    ),
+export const selectArchivedCount = createSelector([selectAllImages], (images) =>
+  images.reduce(
+    (count, asset) => (isArchiveSubfolder(asset.subfolder) ? count + 1 : count),
+    0,
+  ),
 );
 
 export const selectHasArchivedAssets = createSelector(

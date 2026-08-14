@@ -6,6 +6,7 @@ import {
 } from '@reduxjs/toolkit';
 
 import { composeDimensions } from '../../utils/helpers';
+import { isArchiveSubfolder } from '../../utils/subfolder-utils';
 import { RootState } from '..';
 import {
   addTag,
@@ -47,7 +48,11 @@ import {
   toggleSubfolderFilter,
   toggleTagFilter,
 } from '../filters';
-import { clearSelection } from '../selection';
+import {
+  clearSelection,
+  setAssetsSelectionState,
+  setCurrentAsset,
+} from '../selection';
 
 /**
  * Generic helper to find invalid filters
@@ -385,6 +390,43 @@ filterManagerMiddleware.startListening({
       shouldResetFilterMode(state)
     ) {
       listenerApi.dispatch(setTagFilterMode(FilterMode.SHOW_ALL));
+    }
+  },
+});
+
+// Archived assets that drop off screen must not stay selected or inspected.
+// An invisible selection can't be reviewed or cleared, and every bulk action
+// scopes on the selection — so leaving it in place would let Add Tags, Edit
+// Tags and friends silently rewrite files the user has set aside. Keyed on the
+// transition rather than an action, so it fires however the view got there
+// (the archive picker, a filter reset, a project switch).
+filterManagerMiddleware.startListening({
+  predicate: (_action, currentState, previousState) =>
+    (currentState as RootState).filters.visibility.archiveView ===
+      ArchiveViewMode.HIDDEN &&
+    (previousState as RootState).filters.visibility.archiveView !==
+      ArchiveViewMode.HIDDEN,
+  effect: async (_action, listenerApi) => {
+    const state = listenerApi.getState() as RootState;
+    const { images, imageIndexById } = state.assets;
+    const isArchived = (id: string) =>
+      isArchiveSubfolder(images[imageIndexById[id]]?.subfolder);
+
+    const archivedSelection = state.selection.selectedAssets.filter(isArchived);
+    if (archivedSelection.length > 0) {
+      listenerApi.dispatch(
+        setAssetsSelectionState({
+          assetIds: archivedSelection,
+          selected: false,
+        }),
+      );
+    }
+
+    // The inspector is an editing surface — it must not keep an archived asset
+    // open once the grid behind it has stopped showing one
+    const { currentAssetId } = state.selection;
+    if (currentAssetId && isArchived(currentAssetId)) {
+      listenerApi.dispatch(setCurrentAsset(null));
     }
   },
 });

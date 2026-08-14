@@ -549,8 +549,5 @@ export type {
   JobStatus,
   TaggingImageError,
   TaggingJob,
-  
-  
-  
   TrainingJob,
 };

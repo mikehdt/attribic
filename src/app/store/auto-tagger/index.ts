@@ -155,7 +155,6 @@ export const { setSelectedModel, updateModelStatus } = autoTaggerSlice.actions;
 
 // Export basic selectors from slice
 export const {
-  
   selectProviders,
   selectModels,
   selectSelectedModelId,

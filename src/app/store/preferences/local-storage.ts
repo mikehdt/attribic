@@ -85,9 +85,7 @@ const sanitisePreferences = (parsed: unknown): PreferencesState => {
  * validated state. Returns defaults on missing/corrupt input. Pure and
  * server-safe — no `window` access.
  */
-const parsePreferences = (
-  raw: string | null | undefined,
-): PreferencesState => {
+const parsePreferences = (raw: string | null | undefined): PreferencesState => {
   if (!raw) return preferenceDefaults;
   try {
     return sanitisePreferences(JSON.parse(raw));

@@ -9,6 +9,7 @@ import {
   selectFilteredAssets,
 } from '../assets';
 import {
+  ArchiveViewMode,
   selectFilterTags,
   selectHasActiveFilters,
   selectHasActiveNonArchiveVisibility,
@@ -138,6 +139,21 @@ export const selectTagCoExistence = (
   }
   return tagCoExistenceCache.get(key)!;
 };
+
+/**
+ * The pool an unscoped bulk edit falls back to — "no filters, no selection, so
+ * act on everything". Archived assets are only part of "everything" while the
+ * user can see them: under ArchiveViewMode.HIDDEN the archive is off-screen, so
+ * a project-wide tag or caption edit must leave it alone rather than rewrite
+ * files the user has deliberately set aside and can't review.
+ */
+export const selectBulkEditableAssets = createSelector(
+  [selectAllImages, (state: RootState) => state.filters.visibility.archiveView],
+  (images, archiveView) =>
+    archiveView === ArchiveViewMode.HIDDEN
+      ? images.filter((asset) => !isArchiveSubfolder(asset.subfolder))
+      : images,
+);
 
 /**
  * Selector to get assets that match any active filtering (filters or visibility scopes).
@@ -271,12 +287,12 @@ export const selectNoSelectedAssetHasTags = createSelector(
  * Returns the effective asset IDs based on scoping priority:
  * 1. Selected assets visible in current filtered view (intersection)
  * 2. Filtered assets (if filters active)
- * 3. All assets
+ * 3. Every asset the archive view exposes (see selectBulkEditableAssets)
  *
  * This determines which assets tag actions (Delete, Gather) should operate on.
  */
 export const selectEffectiveScopeAssetIds = createSelector(
-  [selectSelectedAssets, selectFilteredAssets, selectAllImages],
+  [selectSelectedAssets, selectFilteredAssets, selectBulkEditableAssets],
   (selectedAssets, filteredAssets, allImages) => {
     // Get the intersection of selected and filtered (visible selected assets)
     const filteredIds = new Set(filteredAssets.map((a) => a.fileId));

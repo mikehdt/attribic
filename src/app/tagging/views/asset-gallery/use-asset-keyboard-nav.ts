@@ -31,16 +31,16 @@ type CellPosition = {
 const ROW_TOLERANCE = 4;
 
 const collectCellPositions = (): CellPosition[] =>
-  Array.from(
-    document.querySelectorAll<HTMLElement>('[data-asset-id]'),
-  ).map((el) => {
-    const rect = el.getBoundingClientRect();
-    return {
-      id: el.dataset.assetId ?? '',
-      top: rect.top,
-      centerX: rect.left + rect.width / 2,
-    };
-  });
+  Array.from(document.querySelectorAll<HTMLElement>('[data-asset-id]')).map(
+    (el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        id: el.dataset.assetId ?? '',
+        top: rect.top,
+        centerX: rect.left + rect.width / 2,
+      };
+    },
+  );
 
 /**
  * The visual rows strictly above/below the current cell, nearest row first.
@@ -287,9 +287,7 @@ export const useAssetKeyboardNav = (
           break;
         case 'ArrowLeft':
           nextIndex =
-            currentIndex === -1
-              ? pickupIndex()
-              : Math.max(currentIndex - 1, 0);
+            currentIndex === -1 ? pickupIndex() : Math.max(currentIndex - 1, 0);
           break;
         case 'ArrowDown':
         case 'ArrowUp':

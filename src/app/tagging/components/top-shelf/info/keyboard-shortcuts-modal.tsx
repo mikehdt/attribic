@@ -98,7 +98,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     shortcuts: [
       {
         keys: ['Ctrl+Del', 'Ctrl+Backspace'],
-        description: 'Archive / un-archive the asset',
+        description:
+          'Archive / un-archive the asset — or the whole selection, when the highlighted asset is part of it',
       },
     ],
   },

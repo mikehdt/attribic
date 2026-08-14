@@ -549,7 +549,9 @@ export async function setProjectHidden(
 
   /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- name binds only to drop the field */
   const { hidden: _previous, ...rest } = meta;
-  const updated: TrainingProjectMeta = hidden ? { ...rest, hidden: true } : rest;
+  const updated: TrainingProjectMeta = hidden
+    ? { ...rest, hidden: true }
+    : rest;
   await writeMeta(updated);
   return updated;
 }

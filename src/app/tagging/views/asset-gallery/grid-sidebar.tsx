@@ -5,13 +5,7 @@ import {
   XIcon,
 } from 'lucide-react';
 import Image from 'next/image';
-import {
-  CSSProperties,
-  RefObject,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { CSSProperties, RefObject, useEffect, useRef, useState } from 'react';
 
 import { isSupportedVideoExtension } from '@/app/constants';
 import { type ImageAsset, selectAssetById } from '@/app/store/assets';

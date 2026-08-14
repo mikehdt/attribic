@@ -13,14 +13,6 @@ export function modeHasCaption(captionMode: CaptionMode): boolean {
 }
 
 /**
- * Whether a mode edits a booru-style tag list.
- * Everything except pure `caption` mode maintains a tag list.
- */
-function modeHasTags(captionMode: CaptionMode): boolean {
-  return captionMode !== 'caption';
-}
-
-/**
  * Compose the exact string written to disk for an asset in a given mode.
  * Centralises the tags/caption/hybrid branching so save paths agree.
  */

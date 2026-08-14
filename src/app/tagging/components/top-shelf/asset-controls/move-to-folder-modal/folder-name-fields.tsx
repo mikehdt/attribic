@@ -62,7 +62,7 @@ export const FolderNameFields = ({
             value={repeatCount}
             onChange={onRepeatCountChange}
             size="sm"
-            className={`w-16 ${isRepeatCountValid ? '' : '!border-rose-400'}`}
+            className={`w-16 ${isRepeatCountValid ? '' : 'border-rose-400!'}`}
           />
         </div>
 

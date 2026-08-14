@@ -11,7 +11,11 @@ import { moveAssetsToFolderThunk } from '@/app/store/assets/actions';
 import { selectPaginationSize } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector, useAppStore } from '@/app/store/hooks';
 import { selectProjectInfo } from '@/app/store/project';
-import { selectCurrentAssetId, setCurrentAsset } from '@/app/store/selection';
+import {
+  selectCurrentAssetId,
+  selectSelectedAssets,
+  setCurrentAsset,
+} from '@/app/store/selection';
 import {
   ARCHIVE_FOLDER,
   isArchiveSubfolder,
@@ -43,10 +47,12 @@ let pendingScrollAssetId: string | null = null;
  * silently lost mid-edit, stray typing must not trigger destructive actions.
  *
  * - Ctrl+Delete (or Ctrl+Backspace) toggles archive on the current asset —
- *   a move to `.archive`, or back to the project root. When the move takes
- *   the asset out of the filtered view (archiving under "hide archived",
- *   unarchiving under "archived only"), the highlight advances to the
- *   nearest neighbour so a culling pass never loses its place.
+ *   a move to `.archive`, or back to the project root. The highlight says
+ *   which group it acts on: highlighting an asset inside the selection means
+ *   "all of these", highlighting one outside it means "just this one". When
+ *   the move takes the highlighted asset out of the filtered view (archiving
+ *   under "hide archived", unarchiving under "archived only"), the highlight
+ *   advances to the nearest survivor so a culling pass never loses its place.
  * - Ctrl+U jumps to the first untagged asset in filtered order, changing
  *   page when it lives on another one.
  *
@@ -100,34 +106,60 @@ export const useAssetHotkeys = (
 
   useEffect(() => {
     const toggleArchive = async (assetId: string) => {
-      const asset = selectAssetById(store.getState(), assetId);
+      const state = store.getState();
+      const asset = selectAssetById(state, assetId);
       if (!asset) return;
 
+      // The highlighted asset sets the direction, and whether it's part of the
+      // selection decides the scope — highlighting one of the selected assets
+      // means "all of these", highlighting one outside the selection means
+      // "just this one". Targets already on the destination side are dropped,
+      // so a mixed selection archives what isn't archived yet instead of
+      // bouncing files against the folder they're already in.
       const archiving = !isArchiveSubfolder(asset.subfolder);
       const destination = archiving ? ARCHIVE_FOLDER : null;
 
+      const selected = selectSelectedAssets(state);
+      const targets = (
+        selected.includes(assetId) ? selected : [assetId]
+      ).filter((id) => {
+        const target = selectAssetById(state, id);
+        return !!target && isArchiveSubfolder(target.subfolder) !== archiving;
+      });
+      if (targets.length === 0) return;
+
       // Computed before the move: these ids are untouched by it, so they
-      // stay valid even though the moved asset's own id gets remapped
+      // stay valid even though the moved assets' own ids get remapped
       const ids = idsRef.current;
+      const moving = new Set(targets);
       const index = ids.indexOf(assetId);
+      const stays = (id: string) => !moving.has(id);
       const successor =
-        index === -1 ? null : (ids[index + 1] ?? ids[index - 1] ?? null);
+        index === -1
+          ? null
+          : (ids.slice(index + 1).find(stays) ??
+            ids.slice(0, index).findLast(stays) ??
+            null);
 
       moveInFlightRef.current = true;
       try {
         const result = await dispatch(
           moveAssetsToFolderThunk({
-            assetIds: [assetId],
+            assetIds: targets,
             destination,
             projectPath: projectPathRef.current,
           }),
         ).unwrap();
 
         if (result.collisions.length > 0) {
+          const subject =
+            result.collisions.length === 1
+              ? 'an asset with the same name is'
+              : 'assets with the same name are';
           showErrorToast(
             archiving
-              ? 'Couldn’t archive — an asset with the same name is already in the archive'
-              : 'Couldn’t unarchive — an asset with the same name is already in the project root',
+              ? `Couldn’t archive — ${subject} already in the archive`
+              : `Couldn’t unarchive — ${subject} already in the project root`,
           );
           return;
         }
@@ -143,9 +175,7 @@ export const useAssetHotkeys = (
         const movedCurrentId = selectCurrentAssetId(state);
         const stillVisible =
           !!movedCurrentId &&
-          selectFilteredAssets(state).some(
-            (a) => a.fileId === movedCurrentId,
-          );
+          selectFilteredAssets(state).some((a) => a.fileId === movedCurrentId);
         if (!stillVisible) {
           dispatch(setCurrentAsset(successor));
           if (successor) scrollAssetIntoView(successor);

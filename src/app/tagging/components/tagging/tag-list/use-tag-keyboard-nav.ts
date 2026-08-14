@@ -104,7 +104,11 @@ export const useTagKeyboardNav = (isDragActive: boolean) =>
           ? (chips[index + 1] ?? null)
           : key === 'ArrowLeft'
             ? (chips[index - 1] ?? null)
-            : findVerticalNeighbour(chips, anchor, key === 'ArrowDown' ? 1 : -1);
+            : findVerticalNeighbour(
+                chips,
+                anchor,
+                key === 'ArrowDown' ? 1 : -1,
+              );
 
       if (next && next !== anchor) {
         next.focus();

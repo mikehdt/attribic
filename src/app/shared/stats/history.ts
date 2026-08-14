@@ -43,12 +43,6 @@ export const recordStatsSample = (stats: SystemStats, now = Date.now()) => {
   listeners.forEach((listener) => listener());
 };
 
-const clearStatsHistory = () => {
-  if (samples.length === 0) return;
-  samples = [];
-  listeners.forEach((listener) => listener());
-};
-
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
   return () => {

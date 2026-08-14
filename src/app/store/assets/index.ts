@@ -58,7 +58,7 @@ export const {
   copyTagsToAssets,
 
   setCaptionText,
-  
+
   reconcileCaptionsForMode,
   setSortType,
   setSortDirection,
