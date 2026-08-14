@@ -4,7 +4,7 @@ import { memo, MouseEvent, useCallback } from 'react';
 
 import { isSupportedVideoExtension } from '@/app/constants';
 import { Checkbox } from '@/app/shared/checkbox';
-import { ImageDimensions } from '@/app/store/assets';
+import { ImageDimensions, selectAssetHasModifiedTags } from '@/app/store/assets';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectProjectFolderName } from '@/app/store/project';
 import {
@@ -55,6 +55,9 @@ const GridCellComponent = ({
   );
   const isCurrent = useAppSelector((state) =>
     selectAssetIsCurrent(state, assetId),
+  );
+  const hasUnsavedChanges = useAppSelector((state) =>
+    selectAssetHasModifiedTags(state, assetId),
   );
   const projectName = useAppSelector(selectProjectFolderName);
 
@@ -135,20 +138,41 @@ const GridCellComponent = ({
         : isSelected;
   const isPreview = previewState !== null && previewState !== undefined;
 
-  // Opacity and border colour are transitioned on the cell below, so the
-  // preview eases in and out rather than snapping as the range changes
-  const borderClasses = showAsSelected
-    ? isPreview
-      ? 'border-(--border-selected) opacity-80'
-      : 'border-(--border-selected) shadow-sm shadow-purple-200 dark:shadow-purple-700'
-    : isPreview
-      ? 'border-(--border) opacity-60'
+  // Amber outranks the selection colour on the border: selection still reads
+  // through the tick and the purple glow, whereas unsaved tags have no other
+  // signal in the grid — the list view's amber metadata bar has no counterpart
+  // here. Matches the amber language used for pending tag edits elsewhere.
+  const borderColour = hasUnsavedChanges
+    ? 'border-amber-500 dark:border-amber-400'
+    : showAsSelected
+      ? 'border-(--border-selected)'
       : 'border-(--border)';
 
+  // Opacity and border colour are transitioned on the cell below, so the
+  // preview eases in and out rather than snapping as the range changes
+  const glowClasses = isPreview
+    ? showAsSelected
+      ? 'opacity-80'
+      : 'opacity-60'
+    : showAsSelected
+      ? 'shadow-sm shadow-purple-200 dark:shadow-purple-700'
+      : hasUnsavedChanges
+        ? 'shadow-sm shadow-amber-300 dark:shadow-amber-700'
+        : '';
+
+  const borderClasses = `${borderColour} ${glowClasses}`;
+
   // Current-asset highlight: sky by default, shifting to the purple
-  // selection language when the inspected cell is itself selected
+  // selection language when the inspected cell is itself selected — and to
+  // amber when there's unsaved work, on the same precedence as the border so
+  // the cell reads as one colour rather than two competing signals
+  const ringColour = hasUnsavedChanges
+    ? 'ring-amber-500 dark:ring-amber-400'
+    : showAsSelected
+      ? 'ring-purple-500'
+      : 'ring-sky-500';
   const currentClasses = isCurrent
-    ? `ring-2 ring-offset-2 ring-offset-(--surface-muted) ${showAsSelected ? 'ring-purple-500' : 'ring-sky-500'}`
+    ? `ring-2 ring-offset-2 ring-offset-(--surface-muted) ${ringColour}`
     : '';
 
   return (
