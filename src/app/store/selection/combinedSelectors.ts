@@ -15,10 +15,7 @@ import {
   selectHasActiveNonArchiveVisibility,
 } from '../filters';
 import type { RootState } from '../index';
-import {
-  selectWorkingSelection,
-  selectWorkingSelectionSet,
-} from '../selection';
+import { selectSelectedAssets, selectWorkingSelectionSet } from '../selection';
 
 // Cache for memoized selectors - prevents creating new selector instances
 const duplicateTagInfoCache = new Map<
@@ -289,14 +286,20 @@ export const selectNoSelectedAssetHasTags = createSelector(
 
 /**
  * Returns the effective asset IDs based on scoping priority:
- * 1. Working selection visible in current filtered view (intersection)
+ * 1. Ticked selection visible in current filtered view (intersection)
  * 2. Filtered assets (if filters active)
  * 3. Every asset the archive view exposes (see selectBulkEditableAssets)
  *
  * This determines which assets tag actions (Delete, Gather) should operate on.
+ *
+ * The ticked set, deliberately not the working selection: these actions read
+ * the filter tags, so the user's scope is "wherever these tags are". Folding in
+ * the highlighted asset would collapse that to one image the moment the user
+ * looked at anything — highlighting is how you inspect, not how you narrow a
+ * bulk edit. Scoping to one asset stays available by ticking it.
  */
 export const selectEffectiveScopeAssetIds = createSelector(
-  [selectWorkingSelection, selectFilteredAssets, selectBulkEditableAssets],
+  [selectSelectedAssets, selectFilteredAssets, selectBulkEditableAssets],
   (selectedAssets, filteredAssets, allImages) => {
     // Get the intersection of selected and filtered (visible selected assets)
     const filteredIds = new Set(filteredAssets.map((a) => a.fileId));
