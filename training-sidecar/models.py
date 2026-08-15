@@ -266,6 +266,21 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     version: str = "0.1.0"
     active_job: Optional[str] = None
+    # Whether the sleep inhibition is held right now. Reported so the feature
+    # is checkable without inspecting OS power state by hand.
+    keep_awake: bool = False
+
+
+class HeartbeatRequest(BaseModel):
+    """Node's keepalive payload.
+
+    `busy` is Node reporting work only it can see — ONNX tagging batches run
+    in the Next process, not here, so without this the power tick would call
+    the machine idle through a long auto-tag run. Optional throughout: a Node
+    build that predates this still heartbeats with no body at all.
+    """
+
+    busy: bool = False
 
 
 class GpuStats(BaseModel):

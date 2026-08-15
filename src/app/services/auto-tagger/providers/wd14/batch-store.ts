@@ -17,6 +17,11 @@
  * lifetime, not the server's.
  */
 
+import {
+  beginNodeActivity,
+  endNodeActivity,
+} from '@/app/services/power/node-activity';
+
 export type OnnxBatchStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 
 /** One image's outcome, in processing order. Mirrors the sidecar's results[]. */
@@ -91,6 +96,10 @@ export function createOnnxBatch(init: {
     results: [],
     listeners: new Set(),
   });
+  // Paired with the endNodeActivity in finishOnnxBatch, which is why that one
+  // only fires on the running -> terminal edge. Tells the sidecar to hold the
+  // machine awake: ONNX inference is invisible to it otherwise.
+  beginNodeActivity();
   return true;
 }
 
@@ -113,9 +122,14 @@ export function finishOnnxBatch(
 ): void {
   const state = batches.get(batchId);
   if (!state) return;
+  const wasRunning = state.status === 'running';
   state.status = status;
   state.error = error;
   emit(state, { kind: 'terminal', status, error });
+  // Only on the running -> terminal edge: a second finish call (a cancel
+  // landing just after the loop completed, say) must not decrement twice and
+  // release the keep-awake lock out from under another live batch.
+  if (wasRunning) endNodeActivity();
 }
 
 /**

@@ -12,6 +12,7 @@ import { MenuItem } from '@/app/shared/menu-item';
 import { MenuThemeSwitcher } from '@/app/shared/menu-theme-switcher';
 import { Popup } from '@/app/shared/popup';
 
+import { KeepAwakeToggle } from './keep-awake-toggle/keep-awake-toggle';
 import { SidecarControls } from './sidecar-controls';
 import { useGlobalMenu } from './use-global-menu';
 
@@ -66,6 +67,8 @@ const GlobalMenuComponent = () => {
             label="Activity Panel"
             onClick={handleToggleActivityPanel}
           />
+
+          <KeepAwakeToggle enabled={isOpen} />
 
           <SidecarControls enabled={isOpen} />
 

@@ -8,6 +8,8 @@ import { type ChildProcess, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+import { hasNodeActivity } from '@/app/services/power/node-activity';
+
 import { getTrainingRoot } from './training-root';
 
 const SIDECAR_PORT = 9733;
@@ -230,6 +232,9 @@ async function checkHealth(): Promise<boolean> {
 // present. When Node exits (or crashes) the pings stop, and the sidecar's idle
 // watchdog shuts it down once nothing is running — so a detached sidecar isn't
 // left orphaned. The interval is unref'd so it never keeps Node alive by itself.
+//
+// The same ping carries Node's own busy state, which the sidecar's keep-awake
+// ticker counts as work in flight (see services/power/node-activity.ts).
 const HEARTBEAT_INTERVAL_MS = 30_000;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -239,6 +244,8 @@ async function sendHeartbeat(): Promise<void> {
     const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
     await fetch(`http://127.0.0.1:${state.port}/heartbeat`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ busy: hasNodeActivity() }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -246,6 +253,16 @@ async function sendHeartbeat(): Promise<void> {
     // Sidecar down or restarting — nothing to do; the watchdog only acts
     // after a couple of minutes of silence anyway.
   }
+}
+
+/**
+ * Push a heartbeat now rather than at the next interval. Called when Node's
+ * busy state flips, so a tagging batch doesn't spend up to 30s looking idle to
+ * the sidecar's keep-awake ticker. A no-op when there's no sidecar to tell.
+ */
+export function pingSidecarActivity(): void {
+  if (!heartbeatTimer) return;
+  void sendHeartbeat();
 }
 
 /** Begin heartbeating the sidecar (idempotent). */

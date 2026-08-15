@@ -106,6 +106,26 @@ def load_config(app_root: Optional[Path] = None) -> SidecarConfig:
     )
 
 
+def read_keep_awake(config_path: Optional[Path]) -> bool:
+    """Whether to stop the machine idle-sleeping while work is in flight.
+
+    Read fresh on every power tick rather than cached on SidecarConfig, for the
+    same reason as the HF token below: the toggle lives in the app's global
+    menu and flipping it should take effect now, not after a sidecar restart.
+
+    Defaults to on — only an explicit `false` disables it. The lock is released
+    the moment the queue drains, so leaving it on can't wedge an idle machine
+    awake. Mirrors `getKeepAwakeWhileBusy` in services/config/server-config.ts.
+    """
+    if config_path is None or not config_path.exists():
+        return True
+    try:
+        with open(config_path, "r") as f:
+            return json.load(f).get("keepAwakeWhileBusy") is not False
+    except (json.JSONDecodeError, OSError):
+        return True
+
+
 def read_hf_token(config_path: Optional[Path]) -> Optional[str]:
     """The HuggingFace token for gated repos, read fresh from config.json.
 

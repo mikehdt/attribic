@@ -10,6 +10,7 @@ interface AppConfig {
   modelsFolder?: string;
   hfToken?: string;
   startSidecarOnLaunch?: boolean;
+  keepAwakeWhileBusy?: boolean;
   trainingBackends?: Record<string, string>;
 }
 
@@ -74,6 +75,16 @@ export async function POST(request: Request) {
 
     if (body.startSidecarOnLaunch !== undefined) {
       config.startSidecarOnLaunch = !!body.startSidecarOnLaunch;
+    }
+
+    // Whether to stop the host idle-sleeping while work is in flight. Lives in
+    // config.json rather than browser preferences because the sidecar is what
+    // holds the lock and it outlives the browser; it re-reads this key on every
+    // power tick, so a flip here lands within ~10s without a restart. Absent
+    // means on — only an explicit false disables it (see read_keep_awake in
+    // training-sidecar/config.py).
+    if (body.keepAwakeWhileBusy !== undefined) {
+      config.keepAwakeWhileBusy = !!body.keepAwakeWhileBusy;
     }
 
     if (body.trainingBackends !== undefined) {

@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from captioning.batch_manager import CaptionBatchManager
 from captioning.provider import get_provider as get_caption_provider
 from captioning.provider import unload_provider as unload_caption_provider
-from config import SidecarConfig, load_config, read_hf_token
+from config import SidecarConfig, load_config, read_hf_token, read_keep_awake
 from downloads.manager import DownloadManager
 from job_manager import JobManager
 from job_registry import JobKind, JobRegistry, LifecycleStatus, run_worker
@@ -27,11 +27,13 @@ from models import (
     CaptionRequest,
     CaptionResponse,
     HealthResponse,
+    HeartbeatRequest,
     StartDownloadRequest,
     StartDownloadResponse,
     StartJobRequest,
     SystemStats,
 )
+import power
 from ai_toolkit_server import AiToolkitServer
 from providers.ai_toolkit_ui import AiToolkitUiProvider
 from providers.kohya import KohyaProvider
@@ -85,6 +87,52 @@ _IDLE_SHUTDOWN_GRACE_S = 120.0
 _WATCHDOG_INTERVAL_S = 30.0
 
 
+# --- Keep-awake ticker ---
+#
+# Windows (and every other desktop OS) idle-sleeps happily through a six-hour
+# training run. The run resumes on wake, but the wall clock is gone and any
+# download mid-transfer usually isn't coming back. When the user has the toggle
+# on and there's work in flight, we hold a sleep inhibition; see power.py.
+#
+# Faster than the watchdog's tick because it's what decides whether the machine
+# is allowed to drop off — a lock taken a minute late is a minute of sleeping
+# through a run.
+_POWER_TICK_S = 10.0
+# Node reports the work only it can see (ONNX tagging batches) on the
+# heartbeat. That signal is trusted until this long after it last arrived, so a
+# Node that dies mid-batch can't leave the machine pinned awake indefinitely —
+# it just has to outlast the 30s heartbeat interval comfortably.
+_NODE_BUSY_TTL_S = 90.0
+_node_busy_until: float = 0.0
+
+
+def _work_in_flight() -> bool:
+    """Whether anything is running or waiting to run, anywhere.
+
+    Downloads are checked separately from the registry because they never
+    enter it — they're not GPU-bound and must not queue behind training — and
+    a multi-GB transfer is exactly the thing that shouldn't be interrupted.
+    """
+    if job_registry.has_running() or job_registry.queued_jobs():
+        return True
+    if download_manager.has_active:
+        return True
+    return time.monotonic() < _node_busy_until
+
+
+async def _power_ticker():
+    """Hold the machine awake while work is in flight, release it when idle."""
+    while True:
+        await asyncio.sleep(_POWER_TICK_S)
+        try:
+            enabled = read_keep_awake(sidecar_config.config_path)
+            # Must stay on this thread — the Windows flag is per-thread and
+            # would lapse the moment a worker thread exited (see power.py).
+            power.set_keep_awake(enabled and _work_in_flight())
+        except Exception as err:  # noqa: BLE001 — a power tick must never die
+            print(f"[power] Tick failed: {err}", flush=True)
+
+
 async def _idle_watchdog():
     """Exit the process when Node has gone away and there's no work left."""
     # Set once we've released the caption model during an unclaimed-results
@@ -103,12 +151,9 @@ async def _idle_watchdog():
         if not _heartbeat_seen:
             continue
         # Never shut down mid-job; let running/queued work finish first.
-        if job_registry.has_running() or job_registry.queued_jobs():
-            continue
-        # Downloads aren't in the registry (they're not GPU-bound and must not
-        # queue behind training), so they need their own check — exiting here
-        # is exactly the mid-transfer death this sidecar exists to prevent.
-        if download_manager.has_active:
+        # Exiting on a live download in particular is exactly the mid-transfer
+        # death this sidecar exists to prevent.
+        if _work_in_flight():
             continue
 
         idle_for = time.monotonic() - _last_activity_at
@@ -272,6 +317,9 @@ async def lifespan(app: FastAPI):
     # nothing left to do (see _idle_watchdog).
     watchdog_task = asyncio.create_task(_idle_watchdog())
 
+    # Stops the host idle-sleeping through long runs (see _power_ticker).
+    power_task = asyncio.create_task(_power_ticker())
+
     # Signal to the Node.js process manager that we're ready
     print(f"SIDECAR_READY port={sidecar_config.port}", flush=True)
 
@@ -283,6 +331,16 @@ async def lifespan(app: FastAPI):
         await watchdog_task
     except asyncio.CancelledError:
         pass
+
+    power_task.cancel()
+    try:
+        await power_task
+    except asyncio.CancelledError:
+        pass
+    # Hand the machine back its right to sleep. The Windows flag would lapse
+    # with the thread anyway, but a helper process on macOS/Linux outlives a
+    # crash-exit unless it's told to stop.
+    power.set_keep_awake(False)
 
     for task in worker_tasks:
         task.cancel()
@@ -335,7 +393,10 @@ async def _stamp_activity(request, call_next):
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
-    return HealthResponse(active_job=job_manager.active_job_id)
+    return HealthResponse(
+        active_job=job_manager.active_job_id,
+        keep_awake=power.is_keep_awake_active(),
+    )
 
 
 @app.get("/system/stats", response_model=SystemStats)
@@ -350,12 +411,22 @@ async def system_stats():
 
 
 @app.post("/heartbeat")
-async def heartbeat():
+async def heartbeat(payload: Optional[HeartbeatRequest] = None):
     """Node's keepalive. Arms the idle watchdog and refreshes the activity
-    timestamp — when these stop arriving, the sidecar knows Node has gone."""
-    global _heartbeat_seen, _last_activity_at
+    timestamp — when these stop arriving, the sidecar knows Node has gone.
+
+    The optional `busy` flag carries work only Node can see (ONNX tagging runs
+    in the Next process), which the power ticker counts as work in flight. It
+    expires on a TTL rather than needing a matching "not busy" call, so a Node
+    that dies mid-batch can't pin the machine awake.
+    """
+    global _heartbeat_seen, _last_activity_at, _node_busy_until
     _heartbeat_seen = True
     _last_activity_at = time.monotonic()
+    if payload is not None and payload.busy:
+        _node_busy_until = _last_activity_at + _NODE_BUSY_TTL_S
+    else:
+        _node_busy_until = 0.0
     return {"ok": True}
 
 
