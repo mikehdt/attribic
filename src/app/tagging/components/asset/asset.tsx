@@ -5,7 +5,12 @@ import { memo, MouseEvent, useCallback, useState } from 'react';
 import { isSupportedVideoExtension } from '@/app/constants';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
-import { ImageDimensions, IoState, KohyaBucket } from '@/app/store/assets';
+import {
+  ImageDimensions,
+  IoState,
+  KohyaBucket,
+  selectAssetHasModifiedTags,
+} from '@/app/store/assets';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
   selectCaptionMode,
@@ -84,6 +89,9 @@ const AssetComponent = ({
   );
   const isCurrent = useAppSelector((state) =>
     selectAssetIsCurrent(state, assetId),
+  );
+  const hasUnsavedChanges = useAppSelector((state) =>
+    selectAssetHasModifiedTags(state, assetId),
   );
   const globalShowCropVisualization = useAppSelector(
     selectShowCropVisualization,
@@ -229,9 +237,16 @@ const AssetComponent = ({
   );
 
   // Current-asset highlight: sky by default, shifting to the purple
-  // selection language when the highlighted asset is itself selected
+  // selection language when the highlighted asset is itself selected, and to
+  // amber when it has unsaved edits. Same precedence as the grid cells, so the
+  // ring never contradicts the colour the row is already wearing.
+  const ringColour = hasUnsavedChanges
+    ? 'ring-amber-500 dark:ring-amber-400'
+    : showAsSelected
+      ? 'ring-purple-500'
+      : 'ring-sky-500';
   const currentClasses = isCurrent
-    ? `ring-2 ring-offset-2 ring-offset-(--background) ${showAsSelected ? 'ring-purple-500' : 'ring-sky-500'}`
+    ? `ring-2 ring-offset-2 ring-offset-(--background) ${ringColour}`
     : '';
 
   return (

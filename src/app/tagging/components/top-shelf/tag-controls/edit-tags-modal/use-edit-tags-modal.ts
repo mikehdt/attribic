@@ -10,6 +10,7 @@ import {
 } from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import {
+  selectSelectedAssetsCount,
   selectWorkingSelection,
   selectWorkingSelectionCount,
 } from '@/app/store/selection';
@@ -51,11 +52,11 @@ export const useEditTagsModal = (
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
   const hasNonTagFilters = useAppSelector(selectHasNonTagFilters);
   const filterMode = useAppSelector(selectFilterMode);
-  // The scope box defaults off here, so the soft-selected highlight only ever
-  // joins the scope after the user ticks it
   const selectedAssets = useAppSelector(selectWorkingSelection);
   const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const hasSelectedAssets = selectedAssetsCount > 0;
+  // Ticks alone seed the scope checkbox — see the initialisation effect below
+  const hasTickedAssets = useAppSelector(selectSelectedAssetsCount) > 0;
 
   // In SHOW_ALL or MATCH_ANY mode with only tag filters active, scoping to
   // filtered assets is redundant — the filtered set already contains exactly
@@ -161,14 +162,19 @@ export const useEditTagsModal = (
     (a, b) => JSON.stringify(a) === JSON.stringify(b),
   );
 
-  // Reset the form when the modal opens
+  // Reset the form when the modal opens.
+  //
+  // Only ticks seed the selected scope. A highlight is transient — it moves as
+  // you look around — so it must not silently narrow a rename to the one asset
+  // you happen to be inspecting. It still counts towards the scope once the box
+  // is ticked, like any other soft selection.
   useEffect(() => {
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form initialization on modal open
       setOnlyFilteredAssets(isFilteredScopeMeaningful);
-      setOnlySelectedAssets(hasSelectedAssets);
+      setOnlySelectedAssets(hasTickedAssets);
     }
-  }, [isOpen, isFilteredScopeMeaningful, hasSelectedAssets]);
+  }, [isOpen, isFilteredScopeMeaningful, hasTickedAssets]);
 
   // Update editedTags when scopedFilterTags change (due to scope checkbox changes)
   useEffect(() => {

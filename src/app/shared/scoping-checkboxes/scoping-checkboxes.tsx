@@ -16,12 +16,6 @@ type ScopingCheckboxesProps = {
   onScopeToSelectedChange: (value: boolean) => void;
 
   /**
-   * When true, checkboxes only appear when both constraints exist.
-   * When false, each checkbox appears independently when its constraint exists.
-   */
-  requireBothConstraints?: boolean;
-
-  /**
    * When true, at least one available constraint must be ticked — including
    * when only one exists, so unticking the sole scope reads as "nothing
    * chosen" rather than silently falling back to everything it matches.
@@ -35,8 +29,9 @@ type ScopingCheckboxesProps = {
 };
 
 /**
- * Reusable scoping checkboxes for constraining operations to filtered/selected assets.
- * Used by add-tags-modal and edit-tags-modal.
+ * Reusable scoping checkboxes for constraining operations to filtered/selected
+ * assets. Each checkbox appears whenever its constraint exists, so a scope is
+ * never applied without a box on screen the user can untick.
  */
 export const ScopingCheckboxes = ({
   hasActiveFilters,
@@ -47,65 +42,26 @@ export const ScopingCheckboxes = ({
   selectedCount,
   scopeToSelected,
   onScopeToSelectedChange,
-  requireBothConstraints = false,
   requireAtLeastOne = false,
   showBorder = false,
 }: ScopingCheckboxesProps) => {
-  const showBothMode =
-    requireBothConstraints && hasSelectedAssets && hasActiveFilters;
-  const showIndependentMode =
-    !requireBothConstraints && (hasSelectedAssets || hasActiveFilters);
+  if (!hasSelectedAssets && !hasActiveFilters) {
+    return null;
+  }
 
   // Check if validation error should show. A constraint only counts as chosen
   // when it both exists and is ticked, so the message covers the one-checkbox
   // case as well as the two-checkbox one.
   const hasInvalidConstraints =
     requireAtLeastOne &&
-    (showBothMode || showIndependentMode) &&
     !(hasSelectedAssets && scopeToSelected) &&
     !(hasActiveFilters && scopeToFiltered);
-
-  if (!showBothMode && !showIndependentMode) {
-    return null;
-  }
 
   const borderClasses = showBorder
     ? 'w-full border-t border-t-slate-300 pt-4 dark:border-t-slate-600'
     : '';
 
-  // In "both" mode, show checkboxes only when both constraints exist
-  if (showBothMode) {
-    return (
-      <>
-        <div className={`flex items-center ${borderClasses}`}>
-          <Checkbox
-            isSelected={scopeToSelected}
-            onChange={() => onScopeToSelectedChange(!scopeToSelected)}
-            label={`Scope to selected assets (${selectedCount} ${selectedCount === 1 ? 'asset' : 'assets'})`}
-            ariaLabel="Scope to selected assets"
-          />
-        </div>
-
-        <div className="flex items-center">
-          <Checkbox
-            isSelected={scopeToFiltered}
-            onChange={() => onScopeToFilteredChange(!scopeToFiltered)}
-            label={`Scope to filtered assets (${filteredCount} ${filteredCount === 1 ? 'asset' : 'assets'})`}
-            ariaLabel="Scope to filtered assets"
-          />
-        </div>
-
-        {hasInvalidConstraints && (
-          <p className="w-full text-sm text-red-600">
-            Select at least one option above to proceed.
-          </p>
-        )}
-      </>
-    );
-  }
-
-  // In "independent" mode, show each checkbox when its constraint exists
-  // Apply border to the first visible checkbox
+  // Apply the border to the first visible checkbox
   const filteredIsFirst = hasActiveFilters;
 
   return (

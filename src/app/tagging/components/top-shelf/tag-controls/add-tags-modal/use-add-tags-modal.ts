@@ -63,6 +63,11 @@ export const useAddTagsModal = ({
   const hasSelectedAssets = selectedAssetsCount > 0;
   const assetsWithActiveFiltersCount = assetsWithActiveFilters.length;
 
+  // A scope counts only when it exists *and* is ticked — the checkbox is the
+  // single source of truth, even when it's the only one on screen
+  const useSelected = hasSelectedAssets && applyToSelectedAssets;
+  const useFiltered = hasActiveFilters && applyToAssetsWithActiveFilters;
+
   // Calculate the intersection count for summary display
   const intersectionCount =
     hasSelectedAssets && hasActiveFilters
@@ -117,33 +122,24 @@ export const useAddTagsModal = ({
 
   // Initialize checkboxes based on what selections are available.
   //
-  // The soft-selected highlight counts towards the scope once it's ticked, but
-  // it must not tick it: with filters active, merely having looked at an asset
-  // would otherwise narrow "add to everything I filtered" down to that one
-  // asset. It does seed the box when there's no filter scope to fall back on,
-  // since the scope is mandatory here and the highlight is then all there is.
+  // Only ticks seed the selected scope. A highlight is transient — it moves as
+  // you look around — so merely having looked at an asset must not arm a scope,
+  // whether that would narrow "add to everything I filtered" down to one asset
+  // or quietly make that one asset the whole target. It still counts towards
+  // the scope once the box is ticked, like any other soft selection.
   useEffect(() => {
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form initialization on modal open
-      setApplyToSelectedAssets(
-        hasSelectedAssets && (tickedAssetsCount > 0 || !hasActiveFilters),
-      );
+      setApplyToSelectedAssets(tickedAssetsCount > 0);
       setApplyToAssetsWithActiveFilters(hasActiveFilters);
     }
-  }, [isOpen, hasSelectedAssets, tickedAssetsCount, hasActiveFilters]);
+  }, [isOpen, tickedAssetsCount, hasActiveFilters]);
 
   const handleSubmit = (e: SyntheticEvent) => {
     e.preventDefault();
     if (tags.length === 0) return;
 
-    if (
-      hasSelectedAssets &&
-      hasActiveFilters &&
-      !applyToSelectedAssets &&
-      !applyToAssetsWithActiveFilters
-    ) {
-      return;
-    }
+    if (hasInvalidConstraints) return;
 
     const validTags = tags.filter((tag) => {
       const tagInfo = memoizedTagsStatus.find((t) => t.tag === tag);
@@ -151,22 +147,12 @@ export const useAddTagsModal = ({
     });
 
     if (validTags.length > 1 && onAddMultipleTags) {
-      onAddMultipleTags(
-        validTags,
-        addToStart,
-        applyToSelectedAssets,
-        applyToAssetsWithActiveFilters,
-      );
+      onAddMultipleTags(validTags, addToStart, useSelected, useFiltered);
     } else {
       const tagsToProcess = addToStart ? [...validTags].reverse() : validTags;
 
       tagsToProcess.forEach((tag) => {
-        onAddTag(
-          tag,
-          addToStart,
-          applyToSelectedAssets,
-          applyToAssetsWithActiveFilters,
-        );
+        onAddTag(tag, addToStart, useSelected, useFiltered);
       });
     }
 
@@ -190,28 +176,16 @@ export const useAddTagsModal = ({
 
   const hasNoValidTags = tags.length === 0 || validTags.length === 0;
 
+  // A scope exists but none of them is ticked — including the lone-checkbox
+  // case, where nothing ticked means nothing chosen rather than "everything"
   const hasInvalidConstraints =
-    hasSelectedAssets &&
-    hasActiveFilters &&
-    !applyToSelectedAssets &&
-    !applyToAssetsWithActiveFilters;
+    (hasSelectedAssets || hasActiveFilters) && !useSelected && !useFiltered;
 
   // Calculate the effective asset count that would be affected
   const effectiveAssetCount = (() => {
-    if (hasSelectedAssets && hasActiveFilters) {
-      if (applyToSelectedAssets && applyToAssetsWithActiveFilters) {
-        return intersectionCount;
-      } else if (applyToSelectedAssets) {
-        return selectedAssetsCount;
-      } else if (applyToAssetsWithActiveFilters) {
-        return assetsWithActiveFiltersCount;
-      }
-      return 0;
-    } else if (hasSelectedAssets) {
-      return selectedAssetsCount;
-    } else if (hasActiveFilters) {
-      return assetsWithActiveFiltersCount;
-    }
+    if (useSelected && useFiltered) return intersectionCount;
+    if (useSelected) return selectedAssetsCount;
+    if (useFiltered) return assetsWithActiveFiltersCount;
     return 0;
   })();
 
@@ -221,17 +195,13 @@ export const useAddTagsModal = ({
 
   // Calculate the summary message
   const getSummaryMessage = () => {
-    if (hasSelectedAssets && hasActiveFilters) {
-      if (applyToSelectedAssets && applyToAssetsWithActiveFilters) {
-        return `Tags will be added to ${intersectionCount} ${intersectionCount === 1 ? 'asset that is' : 'assets that are'} both selected and ${intersectionCount === 1 ? 'matches' : 'match'} active filters.`;
-      } else if (applyToSelectedAssets) {
-        return `Tags will be added to the ${selectedAssetsCount} selected ${selectedAssetsCount === 1 ? 'asset' : 'assets'}.`;
-      } else if (applyToAssetsWithActiveFilters) {
-        return `Tags will be added to ${assetsWithActiveFiltersCount} ${assetsWithActiveFiltersCount === 1 ? 'asset' : 'assets'} with active filters.`;
-      }
-    } else if (hasSelectedAssets) {
+    if (useSelected && useFiltered) {
+      return `Tags will be added to ${intersectionCount} ${intersectionCount === 1 ? 'asset that is' : 'assets that are'} both selected and ${intersectionCount === 1 ? 'matches' : 'match'} active filters.`;
+    }
+    if (useSelected) {
       return `Tags will be added to the ${selectedAssetsCount} selected ${selectedAssetsCount === 1 ? 'asset' : 'assets'}.`;
-    } else if (hasActiveFilters) {
+    }
+    if (useFiltered) {
       return `Tags will be added to ${assetsWithActiveFiltersCount} ${assetsWithActiveFiltersCount === 1 ? 'asset' : 'assets'} with active filters.`;
     }
     return '';

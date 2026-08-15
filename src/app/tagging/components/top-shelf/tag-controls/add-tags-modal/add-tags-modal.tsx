@@ -93,7 +93,6 @@ export const AddTagsModal = ({
           selectedCount={selectedAssetsCount}
           scopeToSelected={applyToSelectedAssets}
           onScopeToSelectedChange={setApplyToSelectedAssets}
-          requireBothConstraints
           requireAtLeastOne
           showBorder
         />

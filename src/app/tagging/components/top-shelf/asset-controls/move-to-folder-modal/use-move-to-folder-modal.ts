@@ -381,16 +381,14 @@ export const useMoveToFolderModal = ({
       setMoveErrors(null);
       setIsMoving(false);
 
-      // The soft-selected highlight counts once the box is ticked but doesn't
-      // tick it, so looking at an asset can't silently narrow a filtered move
-      // down to that one asset. It does seed the box when no filter scope
-      // exists to fall back on — a move needs a scope, and that's all there is.
-      setApplyToSelectedAssets(
-        hasSelectedAssets && (tickedAssetsCount > 0 || !hasActiveFilters),
-      );
+      // Only ticks seed the selected scope. A highlight is transient — it moves
+      // as you look around — so it must never arrive pre-armed to carry the one
+      // asset you were inspecting off to another folder. It still counts once
+      // the box is ticked, like any other soft selection.
+      setApplyToSelectedAssets(tickedAssetsCount > 0);
       setApplyToAssetsWithActiveFilters(hasActiveFilters);
     }
-  }, [isOpen, hasSelectedAssets, tickedAssetsCount, hasActiveFilters]);
+  }, [isOpen, tickedAssetsCount, hasActiveFilters]);
 
   // Seed and repair the destination selection. Nothing chosen — or a choice the
   // scope has since disabled — falls back to renaming the folder the assets are
