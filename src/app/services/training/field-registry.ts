@@ -348,6 +348,12 @@ export const FIELD_REGISTRY = defineFields({
     defaultKey: 'bucketNoUpscale',
     capability: 'bucketControls',
   },
+  layerOffloadPercent: {
+    tier: 'advanced',
+    group: 'performance',
+    defaultKey: 'layerOffloadPercent',
+    capability: 'layerOffloading',
+  },
   // Expert
   blocksToSwap: {
     tier: 'expert',

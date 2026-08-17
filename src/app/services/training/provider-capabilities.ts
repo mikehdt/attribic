@@ -42,7 +42,8 @@ export type ProviderCapability =
   | 'layerTargeting'
   | 'dop' // diffOutputPreservation, ...Multiplier, ...Class
   | 'contentOrStyle'
-  | 'lowVram';
+  | 'lowVram'
+  | 'layerOffloading'; // layerOffloadPercent
 
 /**
  * Capabilities shared by every sd-scripts-lineage backend (kohya today,
@@ -96,6 +97,7 @@ const CAPABILITY_SET: Record<ProviderCapability, true> = {
   dop: true,
   contentOrStyle: true,
   lowVram: true,
+  layerOffloading: true,
 };
 
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_SET) as ProviderCapability[];
@@ -136,6 +138,10 @@ const PROVIDER_CAPABILITIES: Record<
     'dop',
     'contentOrStyle',
     'lowVram',
+    // RamTorch-style CPU streaming of transformer layers — the blockSwap
+    // analogue for this backend. Models whose loaders don't attach the
+    // MemoryManager just ignore the config keys, so it's offered globally.
+    'layerOffloading',
     'verticalFlip',
   ]),
   // Mock is a fake backend for UI testing, so it shows every field/branch

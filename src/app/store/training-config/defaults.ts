@@ -102,6 +102,7 @@ export function defaultsToFormState(
     diffOutputPreservationClass: defaults.diffOutputPreservationClass,
     layerTargeting: defaults.layerTargeting,
     lowVram: defaults.lowVram,
+    layerOffloadPercent: defaults.layerOffloadPercent,
   };
 }
 

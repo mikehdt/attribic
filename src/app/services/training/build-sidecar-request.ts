@@ -250,6 +250,7 @@ export function buildSidecarStartRequest(config: TrainingStartBody): {
     diff_output_preservation_class: config.diffOutputPreservationClass,
     layer_targeting: config.layerTargeting,
     low_vram: config.lowVram,
+    layer_offload_percent: config.layerOffloadPercent,
     // Pass through the user-selected checkpoint path so the sidecar uses
     // the local file rather than the registry's default HF URL.
     model_path: checkpointPath,

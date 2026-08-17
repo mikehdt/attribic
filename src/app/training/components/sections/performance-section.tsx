@@ -43,6 +43,7 @@ type PerformanceSectionProps = {
   bucketNoUpscale: boolean;
   blocksToSwap: number;
   lowVram: boolean;
+  layerOffloadPercent: number;
   hasChanges: boolean;
   defaults: TrainingDefaults;
   visibleFields: Set<TrainingFieldName>;
@@ -88,6 +89,7 @@ const PerformanceSectionComponent = ({
   bucketNoUpscale,
   blocksToSwap,
   lowVram,
+  layerOffloadPercent,
   hasChanges,
   defaults,
   visibleFields,
@@ -121,6 +123,7 @@ const PerformanceSectionComponent = ({
     visibleFields.has('bucketResoSteps') ||
     visibleFields.has('bucketNoUpscale') ||
     visibleFields.has('blocksToSwap') ||
+    visibleFields.has('layerOffloadPercent') ||
     visibleFields.has('lowVram');
 
   if (!hasVisibleFields) return null;
@@ -411,7 +414,8 @@ const PerformanceSectionComponent = ({
         {/* Gradient Accumulation + Bucket Resolution Steps */}
         {(visibleFields.has('gradientAccumulationSteps') ||
           visibleFields.has('bucketResoSteps') ||
-          visibleFields.has('blocksToSwap')) && (
+          visibleFields.has('blocksToSwap') ||
+          visibleFields.has('layerOffloadPercent')) && (
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             {visibleFields.has('gradientAccumulationSteps') && (
               <NumberField
@@ -465,6 +469,22 @@ const PerformanceSectionComponent = ({
                 placeholder="0"
                 className="w-24 tabular-nums"
                 hint="Offloads N transformer blocks to CPU to cut VRAM; slows training."
+              />
+            )}
+
+            {visibleFields.has('layerOffloadPercent') && (
+              <NumberField
+                field="layerOffloadPercent"
+                label="Transformer Offload %"
+                value={layerOffloadPercent}
+                defaults={defaults}
+                onFieldChange={onFieldChange}
+                kind="int"
+                min={0}
+                max={100}
+                placeholder="0"
+                className="w-24 tabular-nums"
+                hint="Streams this share of transformer layers from system RAM each step. 0 = off; use when the model outsizes VRAM."
               />
             )}
           </div>

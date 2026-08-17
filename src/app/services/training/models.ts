@@ -198,6 +198,13 @@ export type TrainingDefaults = {
   layerTargeting: string;
   /** ai-toolkit-only: low-VRAM mode (offloads model components). */
   lowVram: boolean;
+  /**
+   * ai-toolkit-only: % of transformer layers streamed from system RAM during
+   * training (RamTorch-style layer offloading). 0 = off. The block-swap
+   * analogue for the ai-toolkit backend — how a model whose weights outsize
+   * VRAM (Krea 2) trains without spilling into driver sysmem fallback.
+   */
+  layerOffloadPercent: number;
 };
 
 /**
@@ -276,6 +283,7 @@ const BASE_DEFAULTS: TrainingDefaults = {
   // See cacheTextEmbeddings/unloadTextEncoder above — enable ai-toolkit's
   // block-swapping low-VRAM mode by default so 16 GB cards don't spill.
   lowVram: true,
+  layerOffloadPercent: 0,
 };
 
 export const MODEL_DEFINITIONS: ModelDefinition[] = [
@@ -916,11 +924,16 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // Krea's reference guidance is offset by one: official 4.5 == 5.5 here.
       guidanceScale: 5.5,
       sampleSteps: 28,
-      // Musubi-only (ai-toolkit uses low_vram instead). The fp8-quantised DiT
-      // is ~12 GB of weights alone; without swap a default run on a 16 GB
-      // card spills into system RAM. 16 of the 28 blocks (cap 26) keeps it
-      // comfortable while costing much less speed than the full swap.
+      // Musubi-only (ai-toolkit uses layer offloading below). The
+      // fp8-quantised DiT is ~12 GB of weights alone; without swap a default
+      // run on a 16 GB card spills into system RAM. 16 of the 28 blocks
+      // (cap 26) keeps it comfortable while costing much less speed than the
+      // full swap.
       blocksToSwap: 16,
+      // ai-toolkit-only. Full streaming matches ai-toolkit's own UI default
+      // for its layer-offloading slider; 50% measured as still spilling on
+      // 16 GB (backward-pass activation peaks) at ~79 s/step.
+      layerOffloadPercent: 100,
     },
   },
   {

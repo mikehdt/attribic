@@ -197,4 +197,6 @@ export type TrainingFormValues = {
   layerTargeting: string;
   /** ai-toolkit-only. Low-VRAM mode. */
   lowVram: boolean;
+  /** ai-toolkit-only. % of transformer layers streamed from system RAM. 0 = off. */
+  layerOffloadPercent: number;
 };

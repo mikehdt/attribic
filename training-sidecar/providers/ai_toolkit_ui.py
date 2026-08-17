@@ -1170,15 +1170,24 @@ def _build_config_dict(
     # `model_kwargs: {}` is harmless but noise.
     model_kwargs = resolve_model_kwargs(model_def, hp)
 
-    # Models whose weights outsize low_vram's park-on-CPU trick get real layer
-    # offloading when the user asks for Low VRAM mode (see the catalogue entry
-    # for the why). ModelConfig coerces the quanto qtype to the
-    # offload-compatible format itself when layer_offloading is set.
-    layer_offloading = (
-        model_def.get("low_vram_layer_offloading")
-        if hp.get("low_vram", False)
-        else None
-    )
+    # RamTorch-style layer offloading — streams a share of transformer layers
+    # from system RAM each step, for models whose weights outsize VRAM
+    # (Krea 2). Driven by the client's layerOffloadPercent field (0 = off);
+    # requests predating that field (job resumes) fall back to the catalogue's
+    # low_vram-gated default so a resumed Krea 2 run keeps offloading.
+    # ModelConfig coerces the quanto qtype to the offload-compatible format
+    # itself when layer_offloading is set.
+    if "layer_offload_percent" in hp:
+        percent = float(hp.get("layer_offload_percent") or 0) / 100.0
+        layer_offloading = (
+            {"transformer_percent": percent} if percent > 0 else None
+        )
+    else:
+        layer_offloading = (
+            model_def.get("low_vram_layer_offloading")
+            if hp.get("low_vram", False)
+            else None
+        )
 
     return {
         "job": "extension",

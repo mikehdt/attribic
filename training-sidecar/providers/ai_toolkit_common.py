@@ -173,20 +173,15 @@ SUPPORTED_MODELS = [
             "text_encoder_path": "te_repo",
             "vae_path": "vae_repo",
         },
-        # What "Low VRAM mode" must actually mean for this model. Krea 2's
-        # fp8 DiT is ~12.3 GB resident — ModelConfig.low_vram alone only
-        # parks it on CPU *between* phases, the whole model still lands on
-        # the GPU for training, and with activations on top a 16 GB card
-        # spills into driver sysmem fallback (~4 min/step, measured).
-        # ai-toolkit's real mechanism is MemoryManager layer offloading
-        # (RamTorch-style async CPU streaming with pinned-memory prefetch),
-        # which its own UI exposes for krea2 — with the offload slider
-        # defaulting to 100%. Match that: at 0.5 the ~6 GB still resident
-        # collided with backward-pass activation peaks and kept spilling
-        # (~79 s/step measured, vs ~260 unoffloaded). Full offload keeps
-        # only working buffers + LoRA + optimizer on the GPU. TE percent
-        # stays 0: the TE only occupies the GPU during embedding caching,
-        # while low_vram holds the transformer on CPU — no contention.
+        # Legacy fallback only — layer offloading is normally driven by the
+        # client's layerOffloadPercent field (krea2 defaults to 100 there).
+        # This kicks in for requests predating that field (job resumes) when
+        # low_vram is on. Why offloading at all: Krea 2's fp8 DiT is
+        # ~12.3 GB resident — ModelConfig.low_vram alone only parks it on
+        # CPU *between* phases, so on a 16 GB card training spills into
+        # driver sysmem fallback (~4 min/step measured; 50% offload still
+        # spilled on backward-pass activation peaks at ~79 s/step). Full
+        # streaming matches ai-toolkit's own UI slider default.
         "low_vram_layer_offloading": {"transformer_percent": 1.0},
         "train_defaults": {
             "noise_scheduler": "flowmatch",

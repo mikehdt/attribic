@@ -93,18 +93,37 @@ class TestModelKwargs:
 
 
 class TestLayerOffloading:
-    def test_krea2_low_vram_engages_layer_offloading(self):
-        block = model_block(make_request({"low_vram": True}))
+    def test_percent_drives_layer_offloading(self):
+        block = model_block(make_request({"layer_offload_percent": 100}))
         assert block["layer_offloading"] is True
         assert block["layer_offloading_transformer_percent"] == 1.0
         assert block["layer_offloading_text_encoder_percent"] == 0.0
 
-    def test_krea2_without_low_vram_stays_full_speed(self):
+    def test_partial_percent_scales(self):
+        block = model_block(make_request({"layer_offload_percent": 40}))
+        assert block["layer_offloading_transformer_percent"] == 0.4
+
+    def test_zero_percent_disables(self):
+        # An explicit 0 wins even with low_vram on — the field is
+        # authoritative once the client sends it.
+        block = model_block(
+            make_request({"layer_offload_percent": 0, "low_vram": True})
+        )
+        assert "layer_offloading" not in block
+
+    def test_legacy_request_falls_back_to_catalogue(self):
+        # A resumed job's stored hyperparameters predate the field: krea2
+        # with low_vram must keep offloading via the catalogue default.
+        block = model_block(make_request({"low_vram": True}))
+        assert block["layer_offloading"] is True
+        assert block["layer_offloading_transformer_percent"] == 1.0
+
+    def test_legacy_request_without_low_vram_stays_full_speed(self):
         block = model_block(make_request({"low_vram": False}))
         assert "layer_offloading" not in block
 
-    def test_models_that_fit_do_not_offload(self):
-        # Z-Image's fp8 DiT fits in 16 GB — low_vram alone suffices there.
+    def test_legacy_models_without_catalogue_entry_do_not_offload(self):
+        # Z-Image's fp8 DiT fits in 16 GB — no catalogue fallback there.
         block = model_block(
             make_request({"low_vram": True}, base_model="zimage-turbo")
         )

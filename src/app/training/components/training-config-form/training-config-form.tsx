@@ -323,6 +323,7 @@ const TrainingConfigFormComponent = ({
             bucketNoUpscale={state.bucketNoUpscale}
             blocksToSwap={state.blocksToSwap}
             lowVram={state.lowVram}
+            layerOffloadPercent={state.layerOffloadPercent}
             hasChanges={sectionHasChanges.performance}
             defaults={defaults}
             visibleFields={visibleFields}
