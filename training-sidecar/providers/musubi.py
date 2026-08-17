@@ -756,6 +756,18 @@ class MusubiProvider(SdScriptsProvider):
         blocks_to_swap = int(hp.get("blocks_to_swap", 0) or 0)
         if blocks_to_swap > 0:
             args.append(f"--blocks_to_swap={blocks_to_swap}")
+            # Plain block swap round-trips every swapped block over pageable
+            # memory each step — measured at ~30 s/it on Krea 2 (16 of 28
+            # blocks, 16 GB card) with CPU memory churn to match. We only
+            # ever train frozen-base LoRAs, so the H2D-only stream offloader
+            # applies: a pinned CPU master copy streamed into a double-
+            # buffered GPU ring, no device-to-host copies at all. It requires
+            # gradient checkpointing (the ring's in-place loads advance the
+            # autograd weight version; recompute re-reads them), so fall back
+            # to plain-but-pinned swap in the rare checkpointing-off case.
+            args.append("--use_pinned_memory_for_block_swap")
+            if hp.get("gradient_checkpointing", True):
+                args.append("--block_swap_h2d_only")
 
         # Optimizer args: our weight_decay emission merged with the user's
         # freeform pairs, theirs winning on key collision (same policy as the

@@ -264,9 +264,29 @@ class TestBuildCliArgs:
         request = make_request(tmp_path, {"blocks_to_swap": 20})
         args = build_args(provider, request, tmp_path)
         assert "--blocks_to_swap=20" in args
+        # Frozen-base LoRA training always gets the fast swap flavour:
+        # pinned CPU memory + H2D-only streaming (checkpointing is on by
+        # default, which h2d_only requires).
+        assert "--use_pinned_memory_for_block_swap" in args
+        assert "--block_swap_h2d_only" in args
         assert "--blocks_to_swap=0" not in build_args(
             provider, make_request(tmp_path), tmp_path
         )
+
+    def test_block_swap_flags_absent_without_swap(self, provider, tmp_path):
+        args = build_args(provider, make_request(tmp_path), tmp_path)
+        assert "--use_pinned_memory_for_block_swap" not in args
+        assert "--block_swap_h2d_only" not in args
+
+    def test_h2d_only_requires_gradient_checkpointing(self, provider, tmp_path):
+        # musubi raises when h2d_only is passed without checkpointing, so the
+        # builder must drop it (pinned plain swap remains).
+        request = make_request(
+            tmp_path, {"blocks_to_swap": 20, "gradient_checkpointing": False}
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--use_pinned_memory_for_block_swap" in args
+        assert "--block_swap_h2d_only" not in args
 
     def test_save_cadence_and_retention(self, provider, tmp_path):
         request = make_request(
