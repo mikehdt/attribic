@@ -120,6 +120,9 @@ const PROVIDER_CAPABILITIES: Record<
   // verticalFlip (no such augmentation).
   musubi: new Set([...SD_SCRIPTS_FAMILY, 'blockSwap', 'quantization']),
   'ai-toolkit': new Set([
+    // SaveConfig.dtype takes the same fp16/bf16/fp32 spellings the form
+    // sends; the provider passed a hardcoded float16 until 2026-08-17.
+    'saveFormat',
     'ema',
     'lossType',
     'timestepBias',

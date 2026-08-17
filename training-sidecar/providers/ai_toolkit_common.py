@@ -173,6 +173,18 @@ SUPPORTED_MODELS = [
             "text_encoder_path": "te_repo",
             "vae_path": "vae_repo",
         },
+        # What "Low VRAM mode" must actually mean for this model. Krea 2's
+        # fp8 DiT is ~12.3 GB resident — ModelConfig.low_vram alone only
+        # parks it on CPU *between* phases, the whole model still lands on
+        # the GPU for training, and with activations on top a 16 GB card
+        # spills into driver sysmem fallback (~4 min/step, measured).
+        # ai-toolkit's real mechanism is MemoryManager layer offloading
+        # (async CPU streaming with pinned-memory prefetch), which its own
+        # UI exposes for krea2. Streaming half the 28 blocks keeps ~6 GB
+        # resident with seconds-per-step streaming cost. TE percent stays 0:
+        # the TE only occupies the GPU during embedding caching, while
+        # low_vram holds the transformer on CPU — no contention.
+        "low_vram_layer_offloading": {"transformer_percent": 0.5},
         "train_defaults": {
             "noise_scheduler": "flowmatch",
             "optimizer": "adamw8bit",

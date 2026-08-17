@@ -1170,6 +1170,16 @@ def _build_config_dict(
     # `model_kwargs: {}` is harmless but noise.
     model_kwargs = resolve_model_kwargs(model_def, hp)
 
+    # Models whose weights outsize low_vram's park-on-CPU trick get real layer
+    # offloading when the user asks for Low VRAM mode (see the catalogue entry
+    # for the why). ModelConfig coerces the quanto qtype to the
+    # offload-compatible format itself when layer_offloading is set.
+    layer_offloading = (
+        model_def.get("low_vram_layer_offloading")
+        if hp.get("low_vram", False)
+        else None
+    )
+
     return {
         "job": "extension",
         "config": {
@@ -1225,7 +1235,10 @@ def _build_config_dict(
                         ),
                     },
                     "save": {
-                        "dtype": "float16",
+                        # Checkpoint dtype. ai-toolkit's get_torch_dtype reads
+                        # the client's fp16/bf16/fp32 spellings directly; the
+                        # fallback mirrors SaveConfig's own float16 default.
+                        "dtype": hp.get("save_format", "fp16"),
                         "save_every": resolve_save_every_steps(
                             hp,
                             hp.get("epochs", 10),
@@ -1388,6 +1401,21 @@ def _build_config_dict(
                         ) == "float8",
                         # Low-VRAM mode (ModelConfig.low_vram).
                         "low_vram": hp.get("low_vram", False),
+                        **(
+                            {
+                                "layer_offloading": True,
+                                "layer_offloading_transformer_percent": (
+                                    layer_offloading["transformer_percent"]
+                                ),
+                                "layer_offloading_text_encoder_percent": (
+                                    layer_offloading.get(
+                                        "text_encoder_percent", 0.0
+                                    )
+                                ),
+                            }
+                            if layer_offloading
+                            else {}
+                        ),
                         **(
                             {"assistant_lora_path": training_adapter}
                             if training_adapter

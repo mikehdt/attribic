@@ -92,6 +92,36 @@ class TestModelKwargs:
         assert block["quantize"] is True
 
 
+class TestLayerOffloading:
+    def test_krea2_low_vram_engages_layer_offloading(self):
+        block = model_block(make_request({"low_vram": True}))
+        assert block["layer_offloading"] is True
+        assert block["layer_offloading_transformer_percent"] == 0.5
+        assert block["layer_offloading_text_encoder_percent"] == 0.0
+
+    def test_krea2_without_low_vram_stays_full_speed(self):
+        block = model_block(make_request({"low_vram": False}))
+        assert "layer_offloading" not in block
+
+    def test_models_that_fit_do_not_offload(self):
+        # Z-Image's fp8 DiT fits in 16 GB — low_vram alone suffices there.
+        block = model_block(
+            make_request({"low_vram": True}, base_model="zimage-turbo")
+        )
+        assert "layer_offloading" not in block
+
+
+class TestSaveBlock:
+    def test_save_format_passes_through(self):
+        request = make_request({"save_format": "bf16"})
+        process = _build_config_dict(request)["config"]["process"][0]
+        assert process["save"]["dtype"] == "bf16"
+
+    def test_save_format_defaults_to_fp16(self):
+        process = _build_config_dict(make_request())["config"]["process"][0]
+        assert process["save"]["dtype"] == "fp16"
+
+
 class TestSampleBlock:
     def test_neg_is_always_a_string(self):
         # SampleConfig defaults a missing `neg` to the bool False, which

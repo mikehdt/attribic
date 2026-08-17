@@ -879,7 +879,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     },
     tips: [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
-      'The ~24 GB bf16 DiT needs fp8 quantisation plus block swap on 16 GB cards — 16 blocks is the default, raise towards the max of 26 if VRAM still overflows',
+      'The ~24 GB bf16 DiT needs fp8 quantisation plus offloading on 16 GB cards — Musubi block-swaps 16 blocks by default (max 26); AI Toolkit streams half the layers while Low VRAM mode is on',
       'Sample images run real CFG against a default negative prompt; without CFG, RAW output is blurry by design',
     ],
     availableResolutions: [512, 768, 1024, 1280],
