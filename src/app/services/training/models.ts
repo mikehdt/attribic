@@ -26,7 +26,22 @@ export type ModelComponentType =
    * path when the backend is switched. (Z-Image predates this and carries its
    * pipeline directory under `checkpoint`; it has only ever had one backend.)
    */
-  | 'diffusers';
+  | 'diffusers'
+  /**
+   * An HF-format (transformers) text-encoder directory — config + tokenizer +
+   * sharded weights, loaded via `from_pretrained`. Distinct from `qwen` for
+   * the same reason `diffusers` is distinct from `checkpoint`: a model can
+   * need both shapes depending on the backend (Krea 2's TE is a single-file
+   * Comfy repack under musubi but an HF directory under ai-toolkit), and the
+   * two must not overwrite each other's path when the backend is switched.
+   */
+  | 'te_repo'
+  /**
+   * An HF diffusers-format VAE directory — specifically a repo root that
+   * *contains* a `vae/` subfolder, matching how ai-toolkit loads it
+   * (`from_pretrained(path, subfolder="vae")`).
+   */
+  | 'vae_repo';
 
 export type ModelComponent = {
   type: ModelComponentType;
@@ -167,7 +182,7 @@ export type TrainingDefaults = {
   networkArgs: string;
   /** Kohya-only: raw --optimizer_args key=value pairs, space-separated. */
   optimizerArgs: string;
-  /** Kohya-only (anima): transformer blocks to offload to CPU. 0 = disabled. */
+  /** Kohya (anima) + musubi: transformer blocks to offload to CPU. 0 = disabled. */
   blocksToSwap: number;
   /** ai-toolkit-only: LoKr decomposition factor. -1 = auto-detect largest. */
   lokrFactor: number;
@@ -806,10 +821,16 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     architecture: 'krea2',
     description:
       'Krea 2 RAW — aesthetic-focused MMDiT with a Qwen3-VL text encoder',
-    // Musubi trains the RAW single-file DiT with split VAE/TE weights;
-    // ai-toolkit loads the same DiT file and auto-downloads its own copies of
-    // the TE (Qwen/Qwen3-VL-4B-Instruct) and VAE (Qwen/Qwen-Image) from HF on
-    // first run — hence the checkpoint-only component list on that path.
+    // Musubi trains the RAW single-file DiT with split VAE/TE weights.
+    // ai-toolkit loads the same DiT file, but its Krea2Model wants the TE and
+    // VAE as HF-format *directories* (`from_pretrained`) — the single-file
+    // Comfy repacks musubi reads are the wrong shape — so that path carries
+    // its own component pair (te_repo/vae_repo), pointed at Krea2Model's
+    // `model_kwargs.text_encoder_path` / `vae_path` overrides. Deliberately
+    // optional: left unset, ai-toolkit downloads its own copies into the HF
+    // cache on first run and reuses them from there ever after, so a user who
+    // has already trained Krea 2 on ai-toolkit must not be blocked at the
+    // start gate for paths the backend can resolve itself.
     providers: ['musubi', 'ai-toolkit', 'mock'],
     components: [
       {
@@ -839,13 +860,26 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
           label: 'Krea 2 RAW DiT',
           required: true,
           downloadId: 'dl-krea2-raw',
-          hint: 'ai-toolkit fetches the text encoder and VAE from HuggingFace itself on first run',
+        },
+        {
+          type: 'te_repo',
+          label: 'Qwen3-VL 4B Text Encoder (HF)',
+          required: false,
+          downloadId: 'dl-krea2-te-hf',
+          hint: 'HF-format directory (not the single-file Musubi encoder). Leave empty and ai-toolkit downloads its own copy to the HF cache on first run',
+        },
+        {
+          type: 'vae_repo',
+          label: 'Qwen-Image VAE (HF)',
+          required: false,
+          downloadId: 'dl-krea2-vae-hf',
+          hint: 'Diffusers-format directory (not the single-file Musubi VAE). Leave empty and ai-toolkit downloads its own copy to the HF cache on first run',
         },
       ],
     },
     tips: [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
-      'The ~24 GB bf16 DiT wants fp8 quantisation plus block swap (max 26) on 16 GB cards — expect it to be tight',
+      'The ~24 GB bf16 DiT needs fp8 quantisation plus block swap on 16 GB cards — 16 blocks is the default, raise towards the max of 26 if VRAM still overflows',
       'Sample images run real CFG against a default negative prompt; without CFG, RAW output is blurry by design',
     ],
     availableResolutions: [512, 768, 1024, 1280],
@@ -882,6 +916,11 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // Krea's reference guidance is offset by one: official 4.5 == 5.5 here.
       guidanceScale: 5.5,
       sampleSteps: 28,
+      // Musubi-only (ai-toolkit uses low_vram instead). The fp8-quantised DiT
+      // is ~12 GB of weights alone; without swap a default run on a 16 GB
+      // card spills into system RAM. 16 of the 28 blocks (cap 26) keeps it
+      // comfortable while costing much less speed than the full swap.
+      blocksToSwap: 16,
     },
   },
   {

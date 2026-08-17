@@ -536,9 +536,12 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
   },
 
   // --- Krea 2 (musubi-tuner + ai-toolkit) ---
-  // The RAW (undistilled) DiT both backends train against. ai-toolkit loads
-  // this same single file and fetches its own TE/VAE copies from HF at run
-  // time; musubi takes the shared Qwen3-VL 4B and Qwen-Image VAE components.
+  // The RAW (undistilled) DiT both backends train against. Musubi takes the
+  // shared Qwen3-VL 4B and Qwen-Image VAE single-file components; ai-toolkit
+  // loads this same DiT file but wants the TE/VAE as HF-format directories —
+  // the two bundles below. `dependencies` stays the musubi pair (it can't be
+  // provider-conditional, and the single files are the smaller default);
+  // the ai-toolkit bundles are offered per-component in Model Setup.
   {
     id: 'dl-krea2-raw',
     name: 'Krea 2 RAW',
@@ -553,6 +556,67 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
       url: 'https://huggingface.co/krea/Krea-2-Raw',
       name: 'Krea 2 Community Licence',
     },
+  },
+  // ai-toolkit's Krea2Model loads its TE and VAE with `from_pretrained`, so
+  // it needs the full HF repo layouts — config + tokenizer + sharded weights
+  // for the TE, and a repo root containing a `vae/` subfolder for the VAE.
+  // The single-file Comfy repacks musubi reads (shared-qwen3vl-4b /
+  // shared-qwen-image-vae) are the wrong shape, so these are second copies of
+  // the same weights. Without them ai-toolkit silently downloads its own into
+  // the HF cache on first run.
+  //
+  // Both bundles land at models/krea2/ beside raw.safetensors — the TE's
+  // files at the root, the VAE under vae/ — occupying disjoint subpaths, the
+  // same coexistence arrangement as the Z-Image pipeline + adapter. Both
+  // resolve to the models/krea2 directory, which is exactly what
+  // `text_encoder_path` (config.json at its root) and `vae_path` (contains
+  // vae/) each need to be.
+  {
+    id: 'dl-krea2-te-hf',
+    name: 'Qwen3-VL 4B Text Encoder (HF, for ai-toolkit)',
+    repoId: 'Qwen/Qwen3-VL-4B-Instruct',
+    feature: 'training',
+    architecture: 'krea2',
+    componentType: 'te_repo',
+    description:
+      'HF-format Qwen3-VL 4B for ai-toolkit Krea 2 training (~8.3 GB)',
+    files: [
+      { name: 'config.json', size: 1_505 },
+      { name: 'generation_config.json', size: 269 },
+      { name: 'model.safetensors.index.json', size: 64_742 },
+      {
+        name: 'model-00001-of-00002.safetensors',
+        size: 4_967_229_296,
+      },
+      {
+        name: 'model-00002-of-00002.safetensors',
+        size: 3_908_490_048,
+      },
+      { name: 'tokenizer.json', size: 7_032_403 },
+      { name: 'tokenizer_config.json', size: 10_868 },
+      { name: 'vocab.json', size: 2_776_833 },
+      { name: 'merges.txt', size: 1_671_839 },
+      { name: 'chat_template.json', size: 5_502 },
+      { name: 'preprocessor_config.json', size: 390 },
+      { name: 'video_preprocessor_config.json', size: 385 },
+    ],
+  },
+  {
+    id: 'dl-krea2-vae-hf',
+    name: 'Qwen-Image VAE (HF, for ai-toolkit)',
+    repoId: 'Qwen/Qwen-Image',
+    feature: 'training',
+    architecture: 'krea2',
+    componentType: 'vae_repo',
+    description:
+      'Diffusers-format Qwen-Image VAE for ai-toolkit Krea 2 training (~242 MB)',
+    files: [
+      { name: 'vae/config.json', size: 730 },
+      {
+        name: 'vae/diffusion_pytorch_model.safetensors',
+        size: 253_806_966,
+      },
+    ],
   },
 
   // --- Qwen-Image (musubi-tuner) ---

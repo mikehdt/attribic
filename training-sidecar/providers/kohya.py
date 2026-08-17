@@ -544,17 +544,18 @@ class KohyaProvider(SdScriptsProvider):
                 f"--discrete_flow_shift={_num(hp.get('discrete_flow_shift', defaults.get('discrete_flow_shift', 1.0)))}"
             )
 
-        # Min-SNR loss weighting and noise offset are DDPM-only mechanisms —
-        # Anima (flow-matching) overrides post_process_loss to a no-op and
-        # samples noise without an offset, so these flags are inert on that
-        # path. Still safe to emit generically since sd-scripts' base
-        # train_network.py owns both regardless of architecture; the UI hides
-        # them for Anima so users aren't misled into thinking they do
-        # anything there.
-        if float(hp.get("min_snr_gamma", 0) or 0) > 0:
-            args.append(f"--min_snr_gamma={_num(hp['min_snr_gamma'])}")
-        if float(hp.get("noise_offset", 0) or 0) > 0:
-            args.append(f"--noise_offset={_num(hp['noise_offset'])}")
+        # Min-SNR loss weighting and noise offset are DDPM-only mechanisms, so
+        # they're gated to non-flow-matching archs rather than emitted
+        # generically: sd-scripts' base train_network.py accepts both anywhere,
+        # but on the flow-matching paths they're inert at best (Anima overrides
+        # post_process_loss to a no-op and samples noise without an offset),
+        # and a stale config carrying values must not smuggle them into a Flux
+        # run. The UI hides both fields for these models; this is the backstop.
+        if not model_def.get("flow_matching"):
+            if float(hp.get("min_snr_gamma", 0) or 0) > 0:
+                args.append(f"--min_snr_gamma={_num(hp['min_snr_gamma'])}")
+            if float(hp.get("noise_offset", 0) or 0) > 0:
+                args.append(f"--noise_offset={_num(hp['noise_offset'])}")
 
         # Keep the VAE in fp32 for archs whose VAE is fp16-unstable (SDXL).
         if model_def.get("no_half_vae"):

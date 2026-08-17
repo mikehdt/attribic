@@ -236,7 +236,8 @@ export function buildSidecarStartRequest(config: TrainingStartBody): {
     max_saves_to_keep: config.maxSavesToKeep,
     save_state: config.saveState,
     resume_state: config.resumeState || undefined,
-    // Expert-tier extras. Kohya-only: raw arg strings + block swap.
+    // Expert-tier extras. Raw arg strings are Kohya-only; block swap is
+    // Kohya (anima) + musubi.
     network_args: config.networkArgs,
     optimizer_args: config.optimizerArgs,
     blocks_to_swap: config.blocksToSwap,

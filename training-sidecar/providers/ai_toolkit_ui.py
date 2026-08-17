@@ -43,6 +43,7 @@ from providers.ai_toolkit_common import (
     SUPPORTED_MODELS,
     find_model,
     first_resolution,
+    resolve_model_kwargs,
     resolve_sample_sampler,
     resolve_save_every_steps,
     split_csv,
@@ -1064,10 +1065,17 @@ class AiToolkitUiProvider(TrainingProvider):
             return []
 
         hp = request.hyperparameters
+        errors = []
         resolved = hp.get("model_path") or model_def.get("model_path")
         if resolved and Path(resolved).is_absolute() and not Path(resolved).exists():
-            return [f"Model path does not exist: {resolved}"]
-        return []
+            errors.append(f"Model path does not exist: {resolved}")
+        # Same rule for model_kwargs path overrides (Krea 2's local TE/VAE
+        # directories): a sent-but-missing local path fails here rather than
+        # minutes later inside ai-toolkit's loader.
+        for kwarg, path in resolve_model_kwargs(model_def, hp).items():
+            if Path(path).is_absolute() and not Path(path).exists():
+                errors.append(f"{kwarg} does not exist: {path}")
+        return errors
 
 
 # ---------------------------------------------------------------------------
@@ -1155,6 +1163,12 @@ def _build_config_dict(
     # adapter is configured; `assistant_lora_path: None` would still send
     # ai-toolkit down its load path.
     training_adapter = (hp.get("model_paths") or {}).get("training_adapter")
+
+    # Local overrides for components the model would otherwise fetch from the
+    # HF hub (Krea 2's TE/VAE directories). Empty for models with no
+    # `model_kwargs_paths`, and omitted from the config entirely then — a bare
+    # `model_kwargs: {}` is harmless but noise.
+    model_kwargs = resolve_model_kwargs(model_def, hp)
 
     return {
         "job": "extension",
@@ -1379,11 +1393,24 @@ def _build_config_dict(
                             if training_adapter
                             else {}
                         ),
+                        **(
+                            {"model_kwargs": model_kwargs}
+                            if model_kwargs
+                            else {}
+                        ),
                     },
                     **(
                         {
                             "sample": {
                                 "sampler": resolve_sample_sampler(hp, defaults),
+                                # SampleConfig defaults a missing `neg` to the
+                                # *bool* False, which flows into encode_prompt
+                                # when cache_text_embeddings pre-caches sample
+                                # prompts — and Krea 2's encoder concatenates
+                                # it onto a template string (TypeError).
+                                # ai-toolkit's own UI always writes a string
+                                # here; so do we.
+                                "neg": "",
                                 "sample_every": _resolve_sample_every_steps(
                                     hp, defaults
                                 ),

@@ -152,9 +152,11 @@ SUPPORTED_MODELS = [
     },
     # Krea 2 RAW — also trains on the musubi backend from the same single-file
     # DiT. ai-toolkit's Krea2Model accepts a bare .safetensors path (its
-    # custom loader reads the MMDiT state dict directly) and fetches its own
-    # TE (Qwen/Qwen3-VL-4B-Instruct) and VAE (Qwen/Qwen-Image) from HF at run
-    # time, so the client only ever sends the checkpoint. The Turbo variant
+    # custom loader reads the MMDiT state dict directly). Its TE
+    # (Qwen/Qwen3-VL-4B-Instruct) and VAE (Qwen/Qwen-Image) default to HF-hub
+    # downloads, overridable per `model_kwargs_paths` below — the client sends
+    # local HF-format directories under those component keys when the user has
+    # them installed; absent keys fall back to the hub fetch. The Turbo variant
     # (assistant-LoRA de-distillation, as with Z-Image Turbo) is deliberately
     # not offered: musubi's docs confirm a RAW-trained LoRA applies to Turbo
     # at inference.
@@ -164,6 +166,13 @@ SUPPORTED_MODELS = [
         "architecture": "krea2",
         "model_path": "krea/Krea-2-Raw",
         "config": {"arch": "krea2", "quantize": True},
+        # model.model_kwargs entry <- hp["model_paths"] component key. Only
+        # emitted when the client sent a path for the component (see
+        # `resolve_model_kwargs`).
+        "model_kwargs_paths": {
+            "text_encoder_path": "te_repo",
+            "vae_path": "vae_repo",
+        },
         "train_defaults": {
             "noise_scheduler": "flowmatch",
             "optimizer": "adamw8bit",
@@ -270,6 +279,25 @@ def find_model(model_id: str) -> Optional[dict]:
     return None
 
 # --- Config helpers ---
+
+def resolve_model_kwargs(model_def: dict, hp: dict) -> dict:
+    """The `model.model_kwargs` block for models that take path overrides.
+
+    `model_kwargs_paths` on a catalogue entry maps a Krea2Model-style
+    model_kwargs key (e.g. `text_encoder_path`) to the `hp["model_paths"]`
+    component the client sends it under (e.g. `te_repo`). Components the
+    client didn't send are simply absent — ai-toolkit then falls back to its
+    own HF-hub download for that piece, so a user without the local copies
+    still trains.
+    """
+    model_paths = hp.get("model_paths") or {}
+    kwargs = {}
+    for kwarg, component in (model_def.get("model_kwargs_paths") or {}).items():
+        path = model_paths.get(component)
+        if path:
+            kwargs[kwarg] = path
+    return kwargs
+
 
 def steps_per_epoch(save_every_n_epochs: int, epochs: int, total_steps: int) -> int:
     """Convert save-every-N-epochs to save-every-N-steps."""
