@@ -96,7 +96,7 @@ class TestLayerOffloading:
     def test_krea2_low_vram_engages_layer_offloading(self):
         block = model_block(make_request({"low_vram": True}))
         assert block["layer_offloading"] is True
-        assert block["layer_offloading_transformer_percent"] == 0.5
+        assert block["layer_offloading_transformer_percent"] == 1.0
         assert block["layer_offloading_text_encoder_percent"] == 0.0
 
     def test_krea2_without_low_vram_stays_full_speed(self):

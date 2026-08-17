@@ -179,12 +179,15 @@ SUPPORTED_MODELS = [
         # the GPU for training, and with activations on top a 16 GB card
         # spills into driver sysmem fallback (~4 min/step, measured).
         # ai-toolkit's real mechanism is MemoryManager layer offloading
-        # (async CPU streaming with pinned-memory prefetch), which its own
-        # UI exposes for krea2. Streaming half the 28 blocks keeps ~6 GB
-        # resident with seconds-per-step streaming cost. TE percent stays 0:
-        # the TE only occupies the GPU during embedding caching, while
-        # low_vram holds the transformer on CPU — no contention.
-        "low_vram_layer_offloading": {"transformer_percent": 0.5},
+        # (RamTorch-style async CPU streaming with pinned-memory prefetch),
+        # which its own UI exposes for krea2 — with the offload slider
+        # defaulting to 100%. Match that: at 0.5 the ~6 GB still resident
+        # collided with backward-pass activation peaks and kept spilling
+        # (~79 s/step measured, vs ~260 unoffloaded). Full offload keeps
+        # only working buffers + LoRA + optimizer on the GPU. TE percent
+        # stays 0: the TE only occupies the GPU during embedding caching,
+        # while low_vram holds the transformer on CPU — no contention.
+        "low_vram_layer_offloading": {"transformer_percent": 1.0},
         "train_defaults": {
             "noise_scheduler": "flowmatch",
             "optimizer": "adamw8bit",
