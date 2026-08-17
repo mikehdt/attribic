@@ -887,7 +887,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     },
     tips: [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
-      'The ~24 GB bf16 DiT needs fp8 quantisation plus offloading on 16 GB cards — Musubi block-swaps 16 blocks by default (max 26); AI Toolkit streams half the layers while Low VRAM mode is on',
+      'The ~24 GB bf16 DiT needs fp8 quantisation plus offloading on 16 GB cards — Musubi streams 26 of 28 blocks by default (fewer spills into system RAM and crawls); AI Toolkit streams its layers via the Transformer Offload % setting',
       'Sample images run real CFG against a default negative prompt; without CFG, RAW output is blurry by design',
     ],
     availableResolutions: [512, 768, 1024, 1280],
@@ -925,11 +925,13 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       guidanceScale: 5.5,
       sampleSteps: 28,
       // Musubi-only (ai-toolkit uses layer offloading below). The
-      // fp8-quantised DiT is ~12 GB of weights alone; without swap a default
-      // run on a 16 GB card spills into system RAM. 16 of the 28 blocks
-      // (cap 26) keeps it comfortable while costing much less speed than the
-      // full swap.
-      blocksToSwap: 16,
+      // fp8-quantised DiT is ~12 GB of weights alone, plus the bf16
+      // text-fusion transformer and ring buffers — swapping only 16 of the
+      // 28 blocks measured 15.9/16.4 GB resident and sysmem-spilled to
+      // ~80 s/it on a 16 GB card. 24 swapped measured 5-6 s/it at 14.7 GB;
+      // the documented max of 26 buys sampling headroom for near-zero cost
+      // (the H2D ring streams either way).
+      blocksToSwap: 26,
       // ai-toolkit-only. Full streaming matches ai-toolkit's own UI default
       // for its layer-offloading slider; 50% measured as still spilling on
       // 16 GB (backward-pass activation peaks) at ~79 s/step.
