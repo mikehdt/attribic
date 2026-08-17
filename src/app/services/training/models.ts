@@ -847,7 +847,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
       'The ~24 GB bf16 DiT wants fp8 quantisation plus block swap (max 26) on 16 GB cards — expect it to be tight',
       'Sample images run real CFG against a default negative prompt; without CFG, RAW output is blurry by design',
-      'Gated HuggingFace repo — accept the licence and set your HF token first',
     ],
     availableResolutions: [512, 768, 1024, 1280],
     hiddenFields: [

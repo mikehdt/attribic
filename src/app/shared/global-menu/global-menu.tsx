@@ -68,9 +68,9 @@ const GlobalMenuComponent = () => {
             onClick={handleToggleActivityPanel}
           />
 
-          <KeepAwakeToggle enabled={isOpen} />
-
           <SidecarControls enabled={isOpen} />
+
+          <KeepAwakeToggle enabled={isOpen} />
 
           {showBackToProjects && (
             <MenuItem

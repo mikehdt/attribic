@@ -39,7 +39,7 @@ export const KeepAwakeToggle = ({ enabled }: KeepAwakeToggleProps) => {
         }`}
       >
         <CoffeeIcon className="h-5 w-5 shrink-0" />
-        Prevent Sleep While Busy
+        Prevent Sleep During GPU Use
         <span
           aria-hidden
           className={`ml-auto flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
