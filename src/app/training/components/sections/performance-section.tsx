@@ -225,7 +225,7 @@ const PerformanceSectionComponent = ({
             <div>
               <FieldTitle
                 field="transformerQuantization"
-                label="Transformer Quantization"
+                label="Transformer Quantisation"
                 value={transformerQuantization}
                 defaults={defaults}
                 onFieldChange={onFieldChange}
@@ -239,7 +239,7 @@ const PerformanceSectionComponent = ({
                     val as FormState['transformerQuantization'],
                   )
                 }
-                aria-label="Transformer quantization"
+                aria-label="Transformer quantisation"
               />
               <p className="mt-1 text-xs text-slate-400">
                 Quantise weights to save VRAM
@@ -251,7 +251,7 @@ const PerformanceSectionComponent = ({
             <div>
               <FieldTitle
                 field="textEncoderQuantization"
-                label="Text Encoder Quantization"
+                label="Text Encoder Quantisation"
                 value={textEncoderQuantization}
                 defaults={defaults}
                 onFieldChange={onFieldChange}
@@ -265,7 +265,7 @@ const PerformanceSectionComponent = ({
                     val as FormState['textEncoderQuantization'],
                   )
                 }
-                aria-label="Text encoder quantization"
+                aria-label="Text encoder quantisation"
               />
               <p className="mt-1 text-xs text-slate-400">
                 T5, CLIP or Qwen encoders
