@@ -347,8 +347,10 @@ function seedJobFromSidecar(
  *
  * Prefers the client's own config summary, stored on the record at launch, so a
  * run redisplays exactly as it did live. Records predating that field fall back
- * to rebuilding the config from the persisted launch request, which is lossy —
- * no datasets, a single resolution, no expert settings.
+ * to rebuilding the config from the persisted launch request — only the fields
+ * {@link TrainingJobConfig} actually carries, read straight off the raw request
+ * dump rather than defaulted, so a pre-existing record renders what it really
+ * was run with instead of a plausible-looking guess.
  *
  * The project the run belongs to and the launch form are likewise carried on
  * the record rather than derived, precisely so they survive this trip.
@@ -396,27 +398,14 @@ function trainingJobFromSidecar(entry: SidecarJobEntry): TrainingJob {
     project: entry.project ?? undefined,
     formSnapshot: entry.form_snapshot ?? undefined,
     config: entry.client_config ?? {
-      projectPath: (cfg.project_path as string) ?? '',
       provider,
-      baseModel: (cfg.base_model as string) ?? '',
-      modelPaths: {},
-      outputPath: (cfg.output_path as string) ?? '',
       outputName: (cfg.output_name as string) ?? 'unnamed-lora',
-      datasets: [],
       hyperparameters: {
         learningRate: (hp.lr as number) ?? 1e-4,
         epochs: (hp.epochs as number) ?? 0,
-        batchSize: (hp.batch_size as number) ?? 1,
-        resolution: 1024,
         networkDim: (hp.network_dim as number) ?? 16,
-        networkAlpha: (hp.network_alpha as number) ?? 16,
-        optimizer: (hp.optimizer as string) ?? 'adamw8bit',
         scheduler: (hp.scheduler as string) ?? 'constant',
         warmupSteps: (hp.warmup_steps as number) ?? 0,
-        saveEveryNEpochs: 1,
-        sampleEveryNSteps: 250,
-        gradientAccumulationSteps: 1,
-        mixedPrecision: 'bf16',
         extra: {
           numRestarts: (hp.num_restarts as number) ?? 1,
           maxSavesToKeep: (hp.max_saves_to_keep as number) ?? 0,
@@ -583,27 +572,14 @@ function ensureProgressSocket(
 
 function snapshotClientConfig(config: TrainingStartBody): TrainingJobConfig {
   return {
-    projectPath: '',
     provider: config.provider,
-    baseModel: config.modelId,
-    modelPaths: config.modelPaths,
-    outputPath: '',
     outputName: config.outputName,
-    datasets: [],
     hyperparameters: {
       learningRate: config.learningRate,
       epochs: config.epochs,
-      batchSize: config.batchSize,
-      resolution: config.resolution[0] ?? 1024,
       networkDim: config.networkDim,
-      networkAlpha: config.networkAlpha,
-      optimizer: config.optimizer,
       scheduler: config.scheduler,
       warmupSteps: config.warmupSteps,
-      saveEveryNEpochs: config.saveEveryEpochs,
-      sampleEveryNSteps: config.sampleEverySteps,
-      gradientAccumulationSteps: config.gradientAccumulationSteps,
-      mixedPrecision: config.mixedPrecision,
       extra: {
         numRestarts: config.numRestarts,
         maxSavesToKeep: config.maxSavesToKeep,

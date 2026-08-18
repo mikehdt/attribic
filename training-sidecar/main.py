@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import os
+import re
 import sys
 import time
 import uuid
@@ -47,12 +48,60 @@ from validation import RequestValidationError
 from ws_manager import WebSocketManager
 
 # Origins allowed to open WebSocket connections or issue mutating (POST/
-# DELETE) HTTP requests. Mirrors the CORS middleware's allow_origins below —
-# kept as a separate constant because Starlette's CORS middleware doesn't run
-# for WebSocket upgrades, and doesn't gate "simple" cross-origin POSTs either
-# (no preflight is triggered for those), so without an explicit check any web
-# page could fire requests at this listening localhost port.
-_ALLOWED_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
+# DELETE) HTTP requests. Used both by the CORS middleware's allow_origin_regex
+# below and by the manual check further down — kept as one pattern (rather
+# than two lists that have to be kept in sync) because Starlette's CORS
+# middleware doesn't run for WebSocket upgrades, and doesn't gate "simple"
+# cross-origin POSTs either (no preflight is triggered for those), so without
+# an explicit check any web page could fire requests at this listening
+# localhost port.
+#
+# This used to be a fixed ("http://localhost:3000", "http://127.0.0.1:3000")
+# allow-list. That broke in two ways that both silently killed every live
+# WebSocket (training/caption/download progress) while leaving the Node API
+# routes — which don't go through this check — working fine, so the failure
+# was invisible until someone noticed progress bars had stopped moving:
+#   1. `next dev` moves to 3001+ whenever 3000 is already taken (a second dev
+#      server, or a stale process holding the port), so the page's real
+#      origin silently stops matching.
+#   2. The sidecar is spawned detached and can be reconnected to as an orphan
+#      across a Node restart (see sidecar-manager.ts `tryReconnect`) — by a
+#      Node process that may be listening on a *different* port than whoever
+#      spawned it. A value baked in at spawn time (an env var or CLI arg) can
+#      go stale the moment that happens, with no signal to the sidecar that
+#      it should stop trusting its old origin.
+#
+# Rather than chase the real port through spawn-time plumbing that can still
+# go stale, this matches any loopback origin — localhost/127.0.0.1 on any
+# port. That's a deliberately weaker check, but it doesn't weaken the thing
+# the check actually defends against: a browser sets the `Origin` header to
+# the requesting page's own origin and cannot forge it, so a page served from
+# anywhere other than this machine can never present a loopback Origin — the
+# remote-attacker case the check exists for stays blocked. What it newly
+# allows is a *local* process serving a page on some other loopback port
+# reaching this sidecar, which is an acceptable trade for a single-user,
+# local-only app (see "Local app only; No over-the-network" in CLAUDE.md).
+# `[::1]` is in there because a browser pointed at the IPv6 loopback sends
+# `http://[::1]:3000` as its Origin, which is the same machine by any measure
+# — leaving it out would reproduce the exact silent-4403 failure this pattern
+# exists to cure, just for a different way of typing "localhost".
+_LOOPBACK_ORIGIN_RE = re.compile(
+    r"^http://(?:localhost|127\.0\.0\.1|\[::1\]):\d+$"
+)
+
+
+def _is_allowed_origin(origin: str) -> bool:
+    """Whether `origin` may open a WebSocket or issue a mutating request.
+
+    Pulled out as a pure function (rather than inlined at each call site) so
+    the matching rule is unit-testable without spinning up FastAPI/Starlette.
+
+    `fullmatch` rather than `match` so the whole header has to be a loopback
+    origin — and so this agrees with Starlette's CORS middleware, which
+    fullmatches the same pattern. (`$` alone would also accept a trailing
+    newline, which is not a distinction worth relying on in a security check.)
+    """
+    return _LOOPBACK_ORIGIN_RE.fullmatch(origin) is not None
 
 # --- Globals initialised at startup ---
 ws_manager = WebSocketManager()
@@ -238,16 +287,21 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
         jm.register_provider("musubi", provider)
         print(f"[sidecar] Registered musubi provider at {musubi_path}")
 
+    # Registered before the mock provider so the "any real backend?" check
+    # below is a snapshot of what config.json actually gave us.
+    real_backends_registered = bool(jm.providers)
+
     # Mock provider is always registered — it needs no external tooling and
     # lets the UI be exercised end-to-end (including GPU-busy blocking)
     # without a real training backend installed.
     jm.register_provider("mock", MockProvider())
     print("[sidecar] Registered mock provider")
 
-    if not jm.providers:
+    if not real_backends_registered:
         print(
-            "[sidecar] Warning: No training backends configured. "
-            "Add paths to config.json under 'trainingBackends'.",
+            "[sidecar] Warning: No real training backends configured — only "
+            "the mock provider is available. Add paths to config.json under "
+            "'trainingBackends'.",
             file=sys.stderr,
         )
 
@@ -359,10 +413,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Training Sidecar", version="0.1.0", lifespan=lifespan)
 
-# Allow connections from the Next.js dev server
+# Allow connections from the Next.js dev server, on whatever loopback port it
+# ended up on — see _LOOPBACK_ORIGIN_RE above.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(_ALLOWED_ORIGINS),
+    allow_origin_regex=_LOOPBACK_ORIGIN_RE.pattern,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -373,16 +428,16 @@ async def _stamp_activity(request, call_next):
     """Any request counts as a client being present (keeps the sidecar alive).
 
     Also rejects mutating (POST/DELETE) requests whose Origin header is
-    present but outside `_ALLOWED_ORIGINS` — CORS' preflight doesn't cover
-    "simple" cross-origin POSTs, so this is the only thing stopping an
-    arbitrary web page from hitting this localhost port. A request with no
-    Origin (curl, the sidecar's own tooling, tests) is left alone; GET is
-    left alone regardless of Origin since it's read-only.
+    present but not a loopback origin (see `_is_allowed_origin`) — CORS'
+    preflight doesn't cover "simple" cross-origin POSTs, so this is the only
+    thing stopping an arbitrary web page from hitting this localhost port. A
+    request with no Origin (curl, the sidecar's own tooling, tests) is left
+    alone; GET is left alone regardless of Origin since it's read-only.
     """
     global _last_activity_at
     if request.method in ("POST", "DELETE"):
         origin = request.headers.get("origin")
-        if origin is not None and origin not in _ALLOWED_ORIGINS:
+        if origin is not None and not _is_allowed_origin(origin):
             return JSONResponse({"error": "Origin not allowed"}, status_code=403)
     _last_activity_at = time.monotonic()
     return await call_next(request)
@@ -542,7 +597,7 @@ async def delete_job(job_id: str):
 @app.websocket("/ws/progress")
 async def ws_progress(websocket: WebSocket):
     origin = websocket.headers.get("origin")
-    if origin is not None and origin not in _ALLOWED_ORIGINS:
+    if origin is not None and not _is_allowed_origin(origin):
         await websocket.close(code=4403)
         return
     await ws_manager.connect(websocket)
@@ -747,7 +802,7 @@ async def clear_download(job_id: str):
 async def ws_downloads(websocket: WebSocket):
     """Progress stream for model downloads."""
     origin = websocket.headers.get("origin")
-    if origin is not None and origin not in _ALLOWED_ORIGINS:
+    if origin is not None and not _is_allowed_origin(origin):
         await websocket.close(code=4403)
         return
     await download_ws_manager.connect(websocket)
@@ -771,7 +826,7 @@ async def unload_caption_model():
 async def ws_caption(websocket: WebSocket):
     """WebSocket for streaming caption batch progress."""
     origin = websocket.headers.get("origin")
-    if origin is not None and origin not in _ALLOWED_ORIGINS:
+    if origin is not None and not _is_allowed_origin(origin):
         await websocket.close(code=4403)
         return
     await caption_ws_manager.connect(websocket)

@@ -171,6 +171,32 @@ class TestCacheFingerprint:
         )
         assert self.cache_dir_of(provider, request, tmp_path) != base
 
+    def test_resolution_list_dedups_to_effective_resolution(
+        self, provider, tmp_path
+    ):
+        # generate_config only ever writes the single largest value from a
+        # multi-resolution list into the TOML's `resolution` key (see
+        # `max_res`) — so [512, 768, 1024] and [1024] produce byte-identical
+        # latent/text-encoder caches and must share one cache dir, not two.
+        # Fingerprinting the full requested list (as this used to) gave them
+        # separate directories despite that, duplicating multi-GB caches.
+        base = self.cache_dir_of(provider, make_request(tmp_path), tmp_path)
+        multi = self.cache_dir_of(
+            provider,
+            make_request(tmp_path, {"resolution": [512, 768, 1024]}),
+            tmp_path,
+        )
+        assert multi == base
+
+        # A multi-value list whose *effective* (largest) resolution actually
+        # differs must still get its own dir.
+        different_max = self.cache_dir_of(
+            provider,
+            make_request(tmp_path, {"resolution": [512, 768]}),
+            tmp_path,
+        )
+        assert different_max != base
+
     def test_each_dataset_gets_its_own_dir(self, provider, tmp_path):
         request = make_request(
             tmp_path,
@@ -478,12 +504,34 @@ class TestSampleArgs:
         )
         assert "--fs " not in zline
 
-    def test_cadence_defaults_to_250_steps(self, provider, tmp_path):
+    def test_cadence_step_value_passes_through(self, provider, tmp_path):
+        request = make_request(
+            tmp_path,
+            {"sample_every_n_steps": 100},
+            sample_prompts=["a cat"],
+        )
+        args = provider._sample_args(
+            request, str(tmp_path), {"train_defaults": {}}
+        )
+        assert "--sample_every_n_steps=100" in args
+
+    def test_zero_cadence_omits_flag_rather_than_fabricating_one(
+        self, provider, tmp_path
+    ):
+        # A 0/0 cadence used to fall back to a fabricated
+        # --sample_every_n_steps=250 — a schedule the UI's predictor
+        # (deriveSampleSteps/predict_sample_steps) never showed the user, and
+        # which would crash musubi outright if 0 were ever passed through
+        # literally (should_sample_images does steps % sample_every_n_steps
+        # with no <=0 guard). Omitting both flags matches the predictor's "no
+        # samples" prediction and can never divide by zero.
         request = make_request(tmp_path, sample_prompts=["a cat"])
         args = provider._sample_args(
             request, str(tmp_path), {"train_defaults": {}}
         )
-        assert "--sample_every_n_steps=250" in args
+        joined = " ".join(args)
+        assert "--sample_every_n_steps" not in joined
+        assert "--sample_every_n_epochs" not in joined
 
 
 # --------------------------------------------------------------------------

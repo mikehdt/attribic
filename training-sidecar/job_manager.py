@@ -57,12 +57,22 @@ _MAX_LOSS_POINTS = 1000
 _PERSIST_THROTTLE_SECONDS = 5.0
 
 # Upper bound on a single gap between consecutive TRAINING-status ticks that we
-# still count as training time. Ticks normally arrive ~1/sec, and a legitimate
-# between-step pause (checkpoint save, sample generation) is still TRAINING and
-# should count — but only up to this cap, past which the gap is treated as a
-# stall / clock jump / discontinuity and dropped, so a frozen or backgrounded
-# process can't inflate the figure. Bounds the per-gap error to this many
-# seconds.
+# still count in full. Ticks normally arrive ~1/sec, and a legitimate
+# between-step pause (a slow step, checkpoint save, sample generation) is
+# still TRAINING and should count. Past this cap the gap is CLAMPED, not
+# dropped: providers only tick on a step/state change (see
+# providers/ai_toolkit_ui.py's `elif aitk_status == "running"` branch), so on
+# a genuinely slow run — e.g. the ~4 min/step low-VRAM case documented in
+# providers/ai_toolkit_common.py:180 — the inter-tick gap *is* the step time,
+# and every gap would exceed a smaller cap. Dropping such gaps entirely would
+# zero out `training_seconds` for the whole run, hiding the exact slowdown
+# this readout exists to surface. Clamping instead bounds the per-gap error
+# to this many seconds no matter how the gap arose, so the same single cap
+# serves a slow step (small overshoot, barely clamped) and a frozen/
+# backgrounded process or system sleep (huge overshoot, still only ever
+# contributes the cap) — a second, larger "this is definitely a stall"
+# threshold isn't worth the extra knob, since it wouldn't change the error
+# bound on that pathological case.
 _MAX_TRAINING_GAP_SECONDS = 180.0
 
 # Matches a trainer-reported iteration rate like "2.30it/s" or "23.01 s/it".
@@ -101,7 +111,17 @@ def _predict_cadence_steps(
 ) -> list[int]:
     """Step positions implied by a steps-or-epochs cadence (0/0 = disabled).
 
-    Steps take precedence, matching what the providers pass to their backends.
+    Steps take precedence here. That matches the providers' *save* cadence
+    (`if save_every_n_steps > 0 … elif save_every_n_epochs > 0`) but not their
+    *sample* cadence, which prefers epochs — so this function and the sampling
+    emission would disagree if both units were ever non-zero at once. They
+    can't be: the Node side sends exactly one, zeroing the other (see
+    `resolveSaveCadence` / `resolveSampleCadence` in
+    src/app/services/training/cadence.ts), which is the invariant that makes a
+    single shared predictor correct for both. Stated explicitly because the
+    previous wording claimed a blanket agreement with the providers that only
+    ever held for saves.
+
     Epoch-based positions land on the trainer's own epoch rhythm: whole epochs
     of `steps_per_epoch` counted from step 0, with the last epoch cut short by
     a max-steps cap.
@@ -192,6 +212,25 @@ def _lifecycle_from_training(status: JobStatus) -> LifecycleStatus:
     if status == JobStatus.CANCELLED:
         return LifecycleStatus.CANCELLED
     return LifecycleStatus.RUNNING
+
+
+def _training_gap_contribution(delta: float) -> float:
+    """Seconds a single TRAINING-tick gap contributes to `training_seconds`.
+
+    Clamped to `_MAX_TRAINING_GAP_SECONDS` rather than dropped when it
+    exceeds the cap — see the comment above that constant for why a clamp
+    (not a drop, and not a second stall-specific threshold) is the right
+    instrument. A non-positive delta (a duplicate tick at the same monotonic
+    timestamp, or the clock running backwards) contributes nothing; there's
+    no elapsed gap to attribute to training.
+
+    Split out from `_accumulate_progress` so it's a plain function the tests
+    can pin without spinning up a `JobManager` and a full progress-tick
+    sequence.
+    """
+    if delta <= 0:
+        return 0.0
+    return min(delta, _MAX_TRAINING_GAP_SECONDS)
 
 
 def _new_accumulator(
@@ -607,17 +646,18 @@ class JobManager:
 
         # Accumulate active-training wall-time. Every TRAINING update (step ticks
         # *and* between-step activity like saving/sampling, which stay TRAINING)
-        # advances the clock by the gap since the previous TRAINING tick, capped
-        # so a stall/clock-jump can't inflate it. Any non-training status
+        # advances the clock by the gap since the previous TRAINING tick, clamped
+        # per-gap (see `_training_gap_contribution`) so a stall/clock-jump/slow
+        # step can't distort the total. Any non-training status
         # (pending/preparing/terminal) drops the anchor so its span isn't
         # counted when training resumes.
         now = time.monotonic()
         if progress.status == JobStatus.TRAINING:
             last_tick = acc.get("last_tick")
             if last_tick is not None:
-                delta = now - last_tick
-                if 0 < delta <= _MAX_TRAINING_GAP_SECONDS:
-                    acc["training_seconds"] += delta
+                acc["training_seconds"] += _training_gap_contribution(
+                    now - last_tick
+                )
             acc["last_tick"] = now
         else:
             acc["last_tick"] = None

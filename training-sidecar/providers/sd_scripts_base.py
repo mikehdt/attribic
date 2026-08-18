@@ -129,6 +129,234 @@ STREAM_READ_TIMEOUT_S = 300
 _EOF = object()
 
 
+# --- Superseding a previous run under the same output name ---
+#
+# sd-scripts and musubi-tuner both write straight into the shared
+# `--output_dir`/`--output_name` pair — no per-run subfolder, unlike
+# ai-toolkit (see providers/ai_toolkit_ui._supersede_previous_checkpoints for
+# that provider's version of this problem). A run that reuses a finished
+# run's output name writes its checkpoints and `--save_state` dirs at exactly
+# the paths the old run used, and the moment training reaches a step/epoch
+# number the old run also saved at, that write clobbers the old file outright
+# — no prompt, no backup.
+#
+# Unlike ai-toolkit, neither backend auto-resumes from whatever it finds lying
+# around: a fresh run without an explicit `--resume` always starts from the
+# base model regardless of what's sitting in `output_dir`. So this is scoped
+# to *not destroying the user's files* — there's no silent-continuation risk
+# to guard against here, unlike the ai-toolkit case this mirrors.
+
+SUPERSEDED_DIRNAME = "_superseded"
+
+# The part of a checkpoint/state-dir name that follows `{output_name}-`:
+# either a plain zero-padded count (epoch) or `step` + a zero-padded count
+# (step). Anchoring on this shape — rather than a bare `startswith` on
+# `{output_name}-` — is what stops an output name that's a prefix of another,
+# e.g. "demo" and "demo-v2", from matching each other's files: "demo-v2" would
+# pass a naive `startswith("demo-")` check, but "v2" doesn't fit this shape so
+# it's correctly left alone.
+_RUN_SUFFIX_RE = re.compile(r"^(?:step)?\d+$")
+
+
+def _matched_run_name(stem: str, output_name: str) -> Optional[str]:
+    """The actual on-disk spelling of `output_name` that `stem` (a
+    filename/dirname minus its known suffix) matches, or None if it doesn't
+    match this run at all — per the shape `_RUN_SUFFIX_RE` documents.
+
+    Matched case-insensitively, unconditionally (not just on Windows).
+    NTFS — the platform this sidecar mainly runs on — already treats
+    "demo.safetensors" and "Demo.safetensors" as the same file, so a
+    case-sensitive comparison here would miss exactly the collision this
+    machinery exists to prevent: relaunching a finished run "Demo" as
+    "demo" would find nothing stale, and kohya's very first checkpoint
+    write would then land on the old file in place, silently. Doing this
+    unconditionally rather than gating it on `sys.platform == "win32"` also
+    keeps it consistent with the in-flight name-collision check
+    (validation.py's `.strip().lower()` comparison), which already treats
+    output names as case-insensitive identities regardless of host OS —
+    itself following `validate_output_name`'s reasoning that these names are
+    validated as Windows-safe because the files they name commonly get
+    copied to/from a Windows machine. The cost on a genuinely case-sensitive
+    host (Linux) is a same-named-but-different-case run's files getting
+    moved into `_superseded/` too eagerly; bounded, since that's a move, not
+    a delete, and reported in the run's log prelude (see
+    `_supersede_previous_run`) rather than done silently.
+
+    Returned in its on-disk casing (not `output_name`'s), so a caller can
+    tell the user the real name a case-variant match pulled in — e.g. that a
+    stale "Demo.safetensors" is what a run named "demo" just superseded.
+    """
+    stem_lower = stem.lower()
+    name_lower = output_name.lower()
+    if stem_lower == name_lower:
+        return stem
+    prefix_len = len(output_name) + 1
+    if stem_lower[:prefix_len] == f"{name_lower}-" and _RUN_SUFFIX_RE.match(
+        stem[prefix_len:]
+    ):
+        return stem[: len(output_name)]
+    return None
+
+
+def _matches_run_name(stem: str, output_name: str) -> bool:
+    """Whether `stem` names this run. See `_matched_run_name`."""
+    return _matched_run_name(stem, output_name) is not None
+
+
+def _is_run_checkpoint(name: str, output_name: str) -> bool:
+    """Whether `name` is one of this run's saved safetensors checkpoints.
+
+    Both backends share the same filename grammar (sd-scripts'
+    library/checkpoint_io.py, musubi-tuner's utils/train_utils.py, verified
+    against both checkouts): the final save is exactly
+    `{output_name}.safetensors`, and every intermediate save is
+    `{output_name}-<number>.safetensors` (zero-padded epoch, or `step` +
+    zero-padded step) — see `_RUN_SUFFIX_RE`.
+    """
+    if not name.endswith(".safetensors"):
+        return False
+    return _matches_run_name(name[: -len(".safetensors")], output_name)
+
+
+def _is_run_state_dir(name: str, output_name: str) -> bool:
+    """Whether `name` is one of this run's `--save_state` resume directories.
+
+    Same three shapes `training_time._state_dir_step` already parses:
+    `{output_name}-state` (final), `{output_name}-NNNNNN-state` (epoch), and
+    `{output_name}-stepNNNNNNNN-state` (step) — see that module's docstring
+    for the source templates.
+    """
+    if not name.endswith("-state"):
+        return False
+    return _matches_run_name(name[: -len("-state")], output_name)
+
+
+@dataclass
+class _SupersedeScan:
+    """What `_move_stale_run_files` found and managed to move.
+
+    `dest` is set if and only if at least one entry actually landed there —
+    never for an empty scan, and never for a total failure (see `failed`
+    below), so a caller can treat `dest is not None` as "there is now a
+    `_superseded/` folder with something in it" without also checking the
+    counts.
+
+    `failed` counts stale entries that were found but NOT moved, for any
+    reason (locked by another process, permissions, path too long). It's
+    tracked separately from the moved counts because a non-zero value means
+    the caller must not stay quiet: those files are still sitting exactly
+    where this run is about to write, so the overwrite this machinery exists
+    to prevent is still live for them.
+    """
+
+    moved_ckpts: int = 0
+    moved_states: int = 0
+    dest: Optional[Path] = None
+    failed: int = 0
+    # Distinct on-disk spelling(s) of `output_name` among what actually
+    # moved, case as found (see `_matched_run_name`) — differs from the
+    # `output_name` a caller passed in only when the match was case-variant.
+    # Empty when nothing moved.
+    real_names: tuple[str, ...] = ()
+
+
+def _move_stale_run_files(output_path: str, output_name: str) -> _SupersedeScan:
+    """Move a previous run's checkpoints and state dirs into a stash folder.
+
+    Scans `output_path` non-recursively — so the ever-growing `sample/`
+    subfolder isn't touched; its PNGs are timestamped and never collide (see
+    `_scan_sample_files`) — for files/dirs this output name owns, and moves
+    them into `<output_path>/_superseded/<output_name>[-N]/`. Moved rather
+    than deleted: they're the user's trained weights, and reusing an output
+    name isn't necessarily a mistake — the same call ai-toolkit's version of
+    this makes. `-N` disambiguates a name that has already been superseded
+    once before (e.g. two runs of the same name finished back to back).
+
+    Returns a `_SupersedeScan` — see its docstring for what `dest` and
+    `failed` mean and how they combine (nothing found; total success;
+    partial failure with some entries left behind; total failure with the
+    stash dir removed again so an empty `_superseded/<name>/` isn't left
+    lying around).
+    """
+    root = Path(output_path)
+    if not root.exists():
+        return _SupersedeScan()
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return _SupersedeScan()
+
+    stale_ckpts = [
+        p
+        for p in entries
+        if p.is_file() and _is_run_checkpoint(p.name, output_name)
+    ]
+    stale_states = [
+        p
+        for p in entries
+        if p.is_dir() and _is_run_state_dir(p.name, output_name)
+    ]
+    if not stale_ckpts and not stale_states:
+        return _SupersedeScan()
+
+    stash_dir = root / SUPERSEDED_DIRNAME / output_name
+    attempt = 1
+    while stash_dir.exists():
+        attempt += 1
+        stash_dir = root / SUPERSEDED_DIRNAME / f"{output_name}-{attempt}"
+    try:
+        stash_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Couldn't even create somewhere to put them — every stale entry
+        # counts as failed so the caller warns instead of starting quiet.
+        return _SupersedeScan(failed=len(stale_ckpts) + len(stale_states))
+
+    # (path, stem-with-suffix-stripped, is-a-state-dir) for every stale
+    # entry, so the move loop below is one pass regardless of kind.
+    candidates = [
+        (p, p.name[: -len(".safetensors")], False) for p in stale_ckpts
+    ] + [(p, p.name[: -len("-state")], True) for p in stale_states]
+
+    moved_ckpts = 0
+    moved_states = 0
+    failed = 0
+    real_names: set[str] = set()
+    for p, stem, is_state in candidates:
+        try:
+            p.rename(stash_dir / p.name)
+        except OSError:
+            # Leave what we can't move; the run still starts, but the
+            # non-zero `failed` count this leaves behind is what turns into
+            # a warning in `_supersede_previous_run` rather than silence.
+            failed += 1
+            continue
+        if is_state:
+            moved_states += 1
+        else:
+            moved_ckpts += 1
+        matched = _matched_run_name(stem, output_name)
+        if matched:
+            real_names.add(matched)
+
+    if moved_ckpts == 0 and moved_states == 0:
+        # Total failure: nothing landed, so don't report a dest the caller
+        # would read as "moved successfully", and don't leave an empty
+        # `_superseded/<name>/` behind from the attempt.
+        try:
+            stash_dir.rmdir()
+        except OSError:
+            pass
+        return _SupersedeScan(failed=failed)
+
+    return _SupersedeScan(
+        moved_ckpts=moved_ckpts,
+        moved_states=moved_states,
+        dest=stash_dir,
+        failed=failed,
+        real_names=tuple(sorted(real_names)),
+    )
+
+
 def _log_key(line: str) -> str:
     """Comparison key for repeat detection: the line minus timestamp/padding."""
     return LOG_TIMESTAMP_PATTERN.sub("", line).strip()
@@ -309,10 +537,12 @@ class SdScriptsProvider(TrainingProvider):
     def __init__(self, scripts_path: str):
         self._scripts_path = Path(scripts_path)
         self._runs: dict[str, SubprocessRun] = {}
-        # What caption composition did for a job, written during
-        # generate_config and read once when its run starts (see
-        # `_compose_captions`). Keyed by job id because the provider is a
-        # singleton and two runs can be composing at the same time.
+        # Notes queued during generate_config for this job's run-start log
+        # prelude, read once when its run starts (see `_caption_prelude`).
+        # Caption composition (`_compose_captions`) and superseding a reused
+        # output name (`_supersede_previous_run`) both write here. Keyed by
+        # job id because the provider is a singleton and two runs can be
+        # composing/superseding at the same time.
         self._caption_notes: dict[str, list[str]] = {}
 
     # --- Caption composition ---
@@ -361,13 +591,84 @@ class SdScriptsProvider(TrainingProvider):
         return extensions
 
     def _caption_prelude(self, job_id: str) -> list[str]:
-        """This run's composition notes, consumed once.
+        """This run's queued setup notes (captions, supersede), consumed once.
 
         Popped rather than read so a re-run under a recycled id can't inherit
         the previous run's notes, and so the dict doesn't grow for the life of
         the sidecar.
         """
         return self._caption_notes.pop(job_id, [])
+
+    # --- Superseding a previous run under the same output name ---
+
+    def _supersede_previous_run(
+        self, request: StartJobRequest, job_id: str
+    ) -> None:
+        """Move a previous run's checkpoints/state dirs aside if reused.
+
+        See the module-level comment above `SUPERSEDED_DIRNAME` for why this
+        exists and how it differs from ai-toolkit's version of the same
+        problem, and `_move_stale_run_files` for the scan/move itself.
+
+        Skipped entirely when this run is itself resuming (`resume_state`
+        set): the files it would move are exactly the ones the user pointed
+        the run at, so touching them would undermine the very resume being
+        asked for. Called from `generate_config`, same as `_compose_captions`
+        — before this method runs, `output_dir` still holds whatever the last
+        run under this name left behind.
+
+        Queues a note onto the same per-job list `_compose_captions` writes
+        to, so it surfaces in the same run-start log prelude (see
+        `_caption_prelude`) rather than a second, separate one. A move
+        failure (partial or total — see `_SupersedeScan.failed`) queues a
+        "Warning: ..." note instead, in the same "surface it before the run
+        rather than after" style `_compose_captions` uses for its own
+        non-fatal warnings — silence would be wrong here, since it would
+        mean the user's old weights are still sitting exactly where this run
+        is about to write.
+        """
+        if request.hyperparameters.get("resume_state"):
+            return
+
+        scan = _move_stale_run_files(request.output_path, request.output_name)
+        notes: list[str] = []
+
+        if scan.dest is not None:
+            parts = []
+            if scan.moved_ckpts:
+                parts.append(f"{scan.moved_ckpts} checkpoint file(s)")
+            if scan.moved_states:
+                parts.append(f"{scan.moved_states} resume-state folder(s)")
+            rel_dest = scan.dest.relative_to(Path(request.output_path))
+            # The match is case-insensitive (see `_matched_run_name`), so
+            # what actually moved may be spelled differently on disk than
+            # this run's own name — say so, or "moved from an earlier run of
+            # 'demo'" reads as a claim that the old run was also called
+            # exactly "demo" when it might have been "Demo".
+            variants = [n for n in scan.real_names if n != request.output_name]
+            spelling_note = (
+                f" (found on disk as {', '.join(repr(v) for v in variants)})"
+                if variants
+                else ""
+            )
+            notes.append(
+                f"Moved {' and '.join(parts)} from an earlier run of "
+                f"'{request.output_name}'{spelling_note} into {rel_dest} so "
+                "this run doesn't overwrite them"
+            )
+
+        if scan.failed:
+            where = "the rest of them" if scan.dest is not None else "them"
+            notes.append(
+                f"Warning: found {scan.failed} checkpoint file(s)/"
+                f"resume-state folder(s) from an earlier run of "
+                f"'{request.output_name}' but could not move {where} out of "
+                "the way (locked, permissions, or path too long) — this run "
+                "may overwrite them"
+            )
+
+        if notes:
+            self._caption_notes.setdefault(job_id, []).extend(notes)
 
     # --- Subclass hooks ---
 
@@ -1139,7 +1440,13 @@ class SdScriptsProvider(TrainingProvider):
 
         if run.cancelled:
             # cancel_training() owns killing the process and the manager emits
-            # the CANCELLED update; nothing left to report here.
+            # the CANCELLED update; nothing left to report here. Still drop
+            # the handle before returning — every other exit from this
+            # function (and from `_stream_training_progress`) clears
+            # `run.process` once it stops owning the subprocess, and this was
+            # the one path that didn't, leaving a dead handle a second cancel
+            # or a diagnostic read could mistake for a live process.
+            run.process = None
             return
 
         return_code = await proc.wait()

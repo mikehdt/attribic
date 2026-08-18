@@ -151,6 +151,31 @@ class TestFluxSampleArgs:
         # flux_train_network ignores --sample_sampler (hard-wired Euler).
         assert not any(a.startswith("--sample_sampler") for a in args)
 
+    def test_cadence_step_value_passes_through(self, provider, tmp_path):
+        request = make_request(
+            tmp_path,
+            {"sample_every_n_steps": 100},
+            sample_prompts=["a cat"],
+        )
+        _, args = self._prompt_line_and_args(provider, request, tmp_path)
+        assert "--sample_every_n_steps=100" in args
+
+    def test_zero_cadence_omits_flag_rather_than_fabricating_one(
+        self, provider, tmp_path
+    ):
+        # A 0/0 cadence used to fall back to a fabricated
+        # --sample_every_n_steps=250 — a schedule the UI's predictor
+        # (deriveSampleSteps/predict_sample_steps) never showed the user.
+        # sd-scripts itself disables a literal 0 (library/args.py logs a
+        # warning and sets it to None), so omitting the flag reaches the same
+        # outcome without the warning noise, and keeps the UI's "no predicted
+        # samples" claim true.
+        request = make_request(tmp_path, sample_prompts=["a cat"])
+        _, args = self._prompt_line_and_args(provider, request, tmp_path)
+        joined = " ".join(args)
+        assert "--sample_every_n_steps" not in joined
+        assert "--sample_every_n_epochs" not in joined
+
     def test_sdxl_still_gets_sampler_and_l(self, provider, tmp_path):
         request = make_request(
             tmp_path,

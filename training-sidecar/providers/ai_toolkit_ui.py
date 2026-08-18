@@ -31,6 +31,7 @@ import sqlite3
 import sys
 import uuid
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -538,16 +539,123 @@ async def _wait_for_pid_exit(
     return False
 
 
+@dataclass
+class AiToolkitRun:
+    """State for one in-flight ai-toolkit run, keyed by the manager's job id.
+
+    Mirrors `SdScriptsProvider`'s `SubprocessRun`: the provider is a
+    singleton, so anything per-run has to live here rather than on the
+    instance — otherwise cancelling one job could stop another's, and two
+    concurrent runs would clobber each other's `cancelled` flag.
+
+    `aitk_id` starts unset because setup (dataset manifests, superseding a
+    previous run's checkpoints, waiting up to 180s for `ensure_running()` to
+    bring the ai-toolkit server up) all happens before we ever POST
+    `/api/jobs` — there is nothing to identify yet. A cancel landing during
+    that window has nothing to stop; setting `cancelled` alone is enough,
+    because `_run` checks it at each point before it would otherwise talk to
+    ai-toolkit and simply never creates the job.
+    """
+
+    aitk_id: Optional[str] = None
+    # Set by cancel_training() so `_run` can refuse to create/start a job it
+    # hasn't gotten to yet, and so the poll loop can stop watching a run the
+    # manager has already terminalised instead of blocking the queue worker
+    # for however long ai-toolkit takes to actually finish it.
+    cancelled: bool = False
+
+
+async def _stop_ai_toolkit_job(client: httpx.AsyncClient, aitk_id: str) -> None:
+    """Make sure ai-toolkit will never launch — or keep running — `aitk_id`.
+
+    Used everywhere `_run`/`cancel_training` discover a cancel against a row
+    that already exists. ai-toolkit exposes two different "make it stop"
+    endpoints and they are NOT interchangeable:
+
+    * `GET /api/jobs/<id>/stop` (ui/src/app/api/jobs/[jobID]/stop/route.ts)
+      unconditionally sets `stop: true` and `info`, but sets
+      `status: 'stopped'` ONLY inside its `if (job.pid != null)` branch. On a
+      row with no pid yet — freshly created (status 'stopped', the schema
+      default) or already queued but not yet claimed by ai-toolkit's cron
+      worker (status 'queued', pid null) — the status is left exactly as it
+      was. A 'queued' row left that way is still live in ai-toolkit's queue
+      table: `processQueue.ts` will pick it up, `startJob.ts` resets
+      `stop: false`, and a full detached training run launches with nothing
+      in the sidecar watching it — the ghost-run hole this function exists to
+      close. `/stop` IS the right call once a pid exists: it's what signals
+      the trainer for a graceful shutdown, and must keep being used there.
+    * `GET /api/jobs/<id>/mark_stopped`
+      (ui/src/app/api/jobs/[jobID]/mark_stopped/route.ts) unconditionally
+      writes `status: 'stopped', stop: true, pid: null` with no signal sent —
+      the endpoint ai-toolkit's own UI uses to remove a *queued* job from the
+      queue (ui/src/utils/jobs.ts). It's the wrong call for a row that's
+      actually running: it would lie about status out from under a live
+      trainer that was never asked to exit.
+
+    Nothing cached on `AiToolkitRun` can be trusted to choose between them —
+    the poll loop only samples the row once a second, and a cancel can land
+    in the gap — so we read the row fresh and decide from its live `pid`. A
+    pid can still appear between our read and our call (the worker claims the
+    job mid-cleanup), so we re-read afterwards and escalate to `/stop` if the
+    row turns out to be running after all — closing that race without ever
+    leaving a live trainer un-signalled.
+
+    Best-effort throughout: every caller here has already reported the job
+    cancelled to the manager, so a transient HTTP failure is logged, not
+    raised.
+    """
+
+    async def _row() -> Optional[dict]:
+        try:
+            res = await client.get("/api/jobs", params={"id": aitk_id})
+            return res.json() if res.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            return None
+
+    async def _call(path: str) -> None:
+        try:
+            await client.get(f"/api/jobs/{aitk_id}/{path}")
+        except httpx.HTTPError as err:
+            print(f"[ai-toolkit-ui] cleanup {path} for {aitk_id} failed: {err}")
+
+    row = await _row()
+    if row is None:
+        # Couldn't read it back (deleted out from under us, or a transient
+        # failure) — /stop is the safer of the two blind guesses:
+        # mark_stopped's `pid: null` would be a lie if the row turns out to
+        # still be running.
+        await _call("stop")
+        return
+
+    if row.get("pid"):
+        await _call("stop")
+        return
+
+    # No pid: mark_stopped is the only endpoint that actually keeps
+    # processQueue.ts from launching this row later. (A pre-`/start` row is
+    # already inert — status 'stopped' is never picked up regardless, see
+    # `_run`'s create-then-start comment — but calling this here anyway costs
+    # nothing and keeps this function's contract the same for every caller.)
+    await _call("mark_stopped")
+
+    # Close the create/claim race: the worker may have picked the job up
+    # between our read above and the mark_stopped call, in which case it now
+    # has a pid that mark_stopped never signalled.
+    row = await _row()
+    if row is not None and row.get("pid"):
+        await _call("stop")
+
+
 class AiToolkitUiProvider(TrainingProvider):
     """ai-toolkit provider that uses the UI server's HTTP API."""
 
     def __init__(self, toolkit_path: str, server: AiToolkitServer):
         self._toolkit_path = Path(toolkit_path)
         self._server = server
-        # Manager job id → ai-toolkit's own job id, one entry per in-flight run.
-        # The provider is a singleton, so this can't be a single field: cancel
-        # has to stop the run it was asked about, not whichever started last.
-        self._aitk_ids: dict[str, str] = {}
+        # Manager job id → this run's state, one entry per in-flight run. The
+        # provider is a singleton, so this can't be a single field: cancel has
+        # to stop the run it was asked about, not whichever started last.
+        self._runs: dict[str, AiToolkitRun] = {}
 
     async def validate_environment(self) -> tuple[bool, Optional[str]]:
         ui_dir = self._toolkit_path / "ui"
@@ -574,19 +682,23 @@ class AiToolkitUiProvider(TrainingProvider):
         gpu_id: int = 0,
         job_id: Optional[str] = None,
     ) -> AsyncGenerator[JobProgress, None]:
-        # Own the `_aitk_ids` entry's lifetime here so it's dropped however the
-        # run ends — completion, failure, or the consumer abandoning the
-        # generator — rather than only on the normal path through the poll loop.
-        # The manager always passes its id; the fallback key only matters for a
-        # standalone run, which nothing cancels.
+        # Register the run before yielding anything, so a cancel arriving at
+        # any point during setup or polling finds it — and own its lifetime
+        # here so it's dropped however the run ends (completion, failure, or
+        # the consumer abandoning the generator), not only on the normal path
+        # through the poll loop. The manager always passes its id; the
+        # fallback key only matters for a standalone run, which nothing
+        # cancels.
         run_key = job_id or request.output_name
-        inner = self._run(request, config_path, gpu_id, job_id, run_key)
+        run = AiToolkitRun()
+        self._runs[run_key] = run
+        inner = self._run(request, config_path, gpu_id, job_id, run)
         try:
             async for progress in inner:
                 yield progress
         finally:
             await inner.aclose()
-            self._aitk_ids.pop(run_key, None)
+            self._runs.pop(run_key, None)
 
     async def _run(
         self,
@@ -594,9 +706,9 @@ class AiToolkitUiProvider(TrainingProvider):
         config_path: str,
         gpu_id: int,
         job_id: Optional[str],
-        run_key: str,
+        run: AiToolkitRun,
     ) -> AsyncGenerator[JobProgress, None]:
-        """The run itself — see `start_training`, which owns the id mapping."""
+        """The run itself — see `start_training`, which owns `run`'s lifetime."""
         # The local job_id used by the parent JobManager is opaque to us;
         # ai-toolkit assigns its own id when we POST /api/jobs. We use
         # the parent id as the human-readable name and remember the
@@ -667,8 +779,23 @@ class AiToolkitUiProvider(TrainingProvider):
                     "so this run starts from scratch"
                 )
 
+        if run.cancelled:
+            # Dataset manifests and supersede-checkpoints above are pure
+            # local filesystem work — nothing ai-toolkit-side exists yet, so
+            # there's nothing to stop or clean up. Checked here, before
+            # paying for `ensure_running()`'s up-to-180s server cold start,
+            # so a cancel landing during setup doesn't still boot (and then
+            # immediately discard) the whole ai-toolkit UI server.
+            return
+
         yield _emit("Starting ai-toolkit server...")
         await self._server.ensure_running()
+        if run.cancelled:
+            # Nothing has talked to ai-toolkit yet (ensure_running only starts
+            # its server, not a job), so there is nothing to stop or clean up
+            # — the flag alone is enough. The manager already emitted the
+            # CANCELLED update; stay quiet, same as SdScriptsProvider.
+            return
         yield _emit("ai-toolkit server ready")
 
         config_dict = _build_config_dict(request, gpu_id, manifests)
@@ -681,6 +808,9 @@ class AiToolkitUiProvider(TrainingProvider):
             base_url=self._server.base_url, timeout=30.0
         ) as client:
             yield _emit(f"Submitting job to ai-toolkit (gpu {gpu_id})...")
+            if run.cancelled:
+                return
+
             # 1. Create the job row
             create_res = await client.post(
                 "/api/jobs",
@@ -697,9 +827,22 @@ class AiToolkitUiProvider(TrainingProvider):
                 )
             created = create_res.json()
             aitk_id: str = created["id"]
-            self._aitk_ids[run_key] = aitk_id
+            run.aitk_id = aitk_id
 
             yield _emit(f"Job created: {aitk_id}")
+
+            if run.cancelled:
+                # A cancel landed in the create -> start window. If it
+                # arrived before the line above, cancel_training() saw no
+                # aitk_id and had nothing to call. The row is provably inert
+                # right now regardless — freshly created rows default to
+                # status 'stopped' (schema default) and `/start` is the only
+                # thing that ever flips one to 'queued', so processQueue.ts
+                # could not pick it up even if we did nothing here. We clean
+                # up anyway for uniformity with the post-`/start` cases below,
+                # where the row genuinely is live in the queue.
+                await _stop_ai_toolkit_job(client, aitk_id)
+                return
 
             # 2. Queue the job
             start_res = await client.get(f"/api/jobs/{aitk_id}/start")
@@ -708,6 +851,17 @@ class AiToolkitUiProvider(TrainingProvider):
                     f"ai-toolkit /api/jobs/{aitk_id}/start returned "
                     f"{start_res.status_code}: {start_res.text[:300]}"
                 )
+
+            if run.cancelled:
+                # `/start` has now succeeded: the row is 'queued', pid null —
+                # genuinely live in ai-toolkit's queue table and picked up by
+                # processQueue.ts the moment anything flips that GPU's queue
+                # to running (including a later, unrelated job). `/stop`
+                # alone would leave it exactly in that state — only
+                # mark_stopped actually dequeues it; see
+                # `_stop_ai_toolkit_job`.
+                await _stop_ai_toolkit_job(client, aitk_id)
+                return
 
             # 3. Make sure the queue itself is running. ai-toolkit's Queue
             # rows have an `is_running` flag; if it's false the worker
@@ -720,6 +874,15 @@ class AiToolkitUiProvider(TrainingProvider):
                     f"ai-toolkit /api/queue/{gpu_id}/start returned "
                     f"{queue_res.status_code}: {queue_res.text[:300]}"
                 )
+
+            if run.cancelled:
+                # Same "queued, pid null, genuinely live" state as the
+                # /start-window check above — this is the window the queue
+                # worker is most likely to actually win the race in, since
+                # flipping the queue's `is_running` on is what wakes
+                # processQueue.ts up to look for a next job at all.
+                await _stop_ai_toolkit_job(client, aitk_id)
+                return
 
             yield _emit("Waiting for worker to pick up job...")
 
@@ -761,6 +924,18 @@ class AiToolkitUiProvider(TrainingProvider):
 
             while True:
                 await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                if run.cancelled:
+                    # cancel_training() already saw this aitk_id (it exists by
+                    # now on every path that reaches the poll loop) and has
+                    # already run `_stop_ai_toolkit_job` for it — genuinely
+                    # dequeuing a still-'queued' row via mark_stopped, or
+                    # gracefully /stop-ing a row that's actually running. We
+                    # don't need to see that finish — the manager has already
+                    # reported the job as cancelled — so stop polling now
+                    # rather than holding the queue worker's `await runner()`
+                    # open for however long ai-toolkit takes to actually wind
+                    # the run down.
+                    return
                 res = await client.get("/api/jobs", params={"id": aitk_id})
                 if res.status_code != 200:
                     # Transient — keep polling.
@@ -1033,17 +1208,34 @@ class AiToolkitUiProvider(TrainingProvider):
                     break
 
     async def cancel_training(self, job_id: str) -> None:
-        """Cancel the run the manager knows as `job_id`. No-op if unknown."""
-        aitk_id = self._aitk_ids.get(job_id)
-        if not aitk_id:
+        """Cancel the run the manager knows as `job_id`. No-op if unknown.
+
+        Sets `run.cancelled` unconditionally — before checking whether an
+        ai-toolkit job id exists yet — mirroring SdScriptsProvider's
+        flag-then-kill shape. A cancel used to be a total no-op for as long as
+        setup took (dataset manifests, superseding a previous run's
+        checkpoints, and `ensure_running()`'s up-to-180s server cold start):
+        `_run` now checks the flag at each point before it would otherwise
+        talk to ai-toolkit, so setting it here is enough even when there's
+        nothing yet to act on. When an id does exist, `_stop_ai_toolkit_job`
+        picks whichever of ai-toolkit's `/stop` or `mark_stopped` endpoints
+        actually stops that row given its live state — a plain `/stop` is not
+        enough on a 'queued', pid-less row (see that function's docstring):
+        it would leave the row exactly as ai-toolkit's own worker would
+        launch it later, unwatched by anything in the sidecar.
+        """
+        run = self._runs.get(job_id)
+        if run is None:
             return
-        try:
-            async with httpx.AsyncClient(
-                base_url=self._server.base_url, timeout=10.0
-            ) as client:
-                await client.get(f"/api/jobs/{aitk_id}/stop")
-        except httpx.HTTPError as err:
-            print(f"[ai-toolkit-ui] cancel failed: {err}")
+        run.cancelled = True
+        if not run.aitk_id:
+            # Nothing ai-toolkit-side to stop yet — `_run` will notice the
+            # flag itself and never create or start the job.
+            return
+        async with httpx.AsyncClient(
+            base_url=self._server.base_url, timeout=10.0
+        ) as client:
+            await _stop_ai_toolkit_job(client, run.aitk_id)
 
     def get_supported_models(self) -> list[dict]:
         return [
@@ -1087,14 +1279,30 @@ class AiToolkitUiProvider(TrainingProvider):
 def _resolve_sample_every_steps(hp: dict, defaults: dict) -> int:
     """Resolve the sampling cadence in *steps* — ai-toolkit's native unit.
 
-    Mirrors `resolve_save_every_steps`: the Node side sends
-    `sample_every_n_steps` for step cadence or `sample_every_n_epochs` for
-    epoch cadence (the inactive unit zeroed). ai-toolkit's `sample_every` is
-    steps-only, so an epoch cadence is converted with the same steps-per-epoch
-    math the save cadence and duration epoch-faking already use
-    (`steps_per_epoch`). With no epoch count `steps_per_epoch` returns the
+    Mirrors `resolve_save_every_steps`'s dual-field precedence: the Node side
+    sends `sample_every_n_steps` for step cadence or `sample_every_n_epochs`
+    for epoch cadence (the inactive unit zeroed). ai-toolkit's `sample_every`
+    is steps-only, so an epoch cadence is converted with the same
+    steps-per-epoch math the save cadence and duration epoch-faking already
+    use (`steps_per_epoch`). With no epoch count `steps_per_epoch` returns the
     total step count, so epoch cadence on a steps-only duration samples once
-    at the end; the step value (default 250) is only the last-resort fallback.
+    at the end.
+
+    A 0/0 cadence means the client-side predictor (job_manager.
+    predict_sample_steps) already reports no upcoming samples — the form's
+    cadence field has a hard min of 1, so reaching here with 0/0 means a
+    hand-edited/stale saved config, not the form. The kohya and musubi
+    providers make the same call by omitting their sampling flag entirely on
+    0/0; this backend has no flag to omit (`sample_every` is a required key
+    in the process config), but 0 is itself ai-toolkit's "never sample":
+    `BaseSDTrainProcess`'s own gate is
+    `self.sample_config.sample_every and self.step_num % ... == 0`, which
+    short-circuits before the modulo, so a literal 0 never raises and never
+    fires — verified in jobs/process/BaseSDTrainProcess.py, no config-side
+    guard needed the way `resolve_save_every_steps` needs its "push past the
+    end" trick. Previously this fell back to an invented 250-step cadence —
+    sampling the user was never told to expect, and no longer in agreement
+    with what predict_sample_steps promised the UI.
     """
     sample_every_steps = int(hp.get("sample_every_n_steps", 0) or 0)
     sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
@@ -1106,7 +1314,41 @@ def _resolve_sample_every_steps(hp: dict, defaults: dict) -> int:
         )
         if converted > 0:
             return converted
-    return sample_every_steps or 250
+    return sample_every_steps
+
+
+def _aitk_prompt_line_has_flag(line: str, flag: str) -> bool:
+    r"""Whether `line` already sets `--{flag}` in ai-toolkit's own prompt-line
+    syntax.
+
+    Mirrors `SampleConfig._process_prompt_string` (toolkit/config_modules.py
+    ~1395-1425) exactly: the whole line is split on a bare `--` (NOT
+    sd-scripts' `" --"` — a flag can immediately follow non-space text there),
+    and the flag name is everything up to the first space, compared
+    CASE-SENSITIVELY (`if flag == 'w'`, `elif flag == 'h'`, ...). This is
+    deliberately a local copy rather than a reuse of
+    `providers.sd_scripts_base._prompt_line_has_flag`: that helper lowercases
+    before comparing (right for sd-scripts, whose own parser matches
+    case-insensitively) and splits on `" --"` — both wrong here. It was
+    borrowed anyway in an earlier pass; the consequence was a user's
+    "--W 512" being treated as "already set" even though ai-toolkit's real
+    parser only recognises lowercase `w`, so width silently fell back to the
+    run-level sample size instead of the user's per-prompt override.
+
+    Like the sd-scripts helper, a flag with no following value doesn't count
+    as "set": ai-toolkit's own parser would still try to consume a bare
+    trailing "--w" (`int('')` on the empty value) and raise, so a line like
+    that is malformed either way. We choose to treat it as unset so our own
+    resolved value still gets appended, rather than leaving the run with no
+    width override at all.
+    """
+    for segment in line.split("--")[1:]:
+        head = segment.split(" ")[0].strip()
+        if head != flag:
+            continue
+        if segment[len(head):].strip():
+            return True
+    return False
 
 
 def _sample_prompt_lines(request: StartJobRequest, default_res: int) -> list[str]:
@@ -1114,16 +1356,21 @@ def _sample_prompt_lines(request: StartJobRequest, default_res: int) -> list[str
 
     ai-toolkit's sample block carries a single width/height for the whole run,
     but its prompt parser (`SampleConfig._process_prompt_string`) understands
-    the same per-line flags sd-scripts does, so per-prompt shapes ride on the
-    prompt itself. A prompt the user already flagged by hand keeps their value.
+    per-line `--w`/`--h` flags, so per-prompt shapes ride on the prompt
+    itself. A prompt the user already flagged by hand keeps their value —
+    detected with `_aitk_prompt_line_has_flag`, which mirrors that real parser
+    (case-sensitive, split on a bare `--`) rather than a naive
+    `" --w " not in f" {prompt} "` substring search (case-sensitive in the
+    wrong direction, and fooled by a bare trailing "--w" into thinking it was
+    already set).
     """
     lines: list[str] = []
     for i, prompt in enumerate(request.sample_prompts):
         width, height = request.sample_size_at(i, default_res, default_res)
         flags = ""
-        if " --w " not in f" {prompt} ":
+        if not _aitk_prompt_line_has_flag(prompt, "w"):
             flags += f" --w {width}"
-        if " --h " not in f" {prompt} ":
+        if not _aitk_prompt_line_has_flag(prompt, "h"):
             flags += f" --h {height}"
         lines.append(f"{prompt}{flags}")
     return lines

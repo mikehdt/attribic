@@ -135,42 +135,57 @@ export type TrainingProgress = {
 
 // --- Hyperparameters ---
 
+/**
+ * The headline hyperparameters the activity panel and run-history actually
+ * render — a summary, not a full record of the launch config. Deliberately
+ * narrower than the launch form: this type previously carried
+ * form-shaped fields (`resolution`, `batchSize`, `networkAlpha`, `optimizer`,
+ * `saveEveryNEpochs`, `sampleEveryNSteps`, `gradientAccumulationSteps`,
+ * `mixedPrecision`) that nothing ever read back, so `snapshotClientConfig`
+ * and `trainingJobFromSidecar` (training-runtime.ts) were fabricating
+ * plausible-looking values for them — `resolution` in particular collapsing
+ * a list down to one entry, and readback filling in constants (1024, 1, 250,
+ * 'bf16') that had nothing to do with the run. If a consumer starts reading
+ * one of those again, add it back deliberately, sourced truthfully — don't
+ * resurrect a fabricated placeholder.
+ */
 type TrainingHyperparameters = {
   learningRate: number;
   epochs: number;
-  batchSize: number;
-  resolution: number;
   networkDim: number; // LoRA rank
-  networkAlpha: number; // LoRA alpha
-  optimizer: string; // e.g. 'adamw8bit', 'prodigy'
   scheduler: string; // e.g. 'cosine', 'constant'
   warmupSteps: number;
-  saveEveryNEpochs: number;
-  sampleEveryNSteps: number;
-  gradientAccumulationSteps: number;
-  mixedPrecision: 'fp16' | 'bf16';
-  extra: Record<string, unknown>; // Provider-specific extras
-};
-
-// --- Dataset ---
-
-type TrainingDataset = {
-  path: string;
-  numRepeats: number;
+  extra: Record<string, unknown>; // Provider-specific extras (numRestarts, maxSavesToKeep, ...)
 };
 
 // --- Job Configuration ---
 
 export type ModelPaths = Partial<Record<ModelComponentType, string>>;
 
+/**
+ * Client-owned summary of a launched run, snapshotted at launch time and
+ * stored verbatim on the sidecar's job record (`client_config`) so a run
+ * redisplays exactly as it did live, including after a page reload or a
+ * sidecar restart. It is a *display* summary for the activity panel and run
+ * history, not a rebuildable launch config — {@link FormState} in
+ * `store/training-config/types.ts` is what `formSnapshot` carries for that.
+ *
+ * Only fields an activity-panel/run-history consumer actually reads belong
+ * here (see the {@link TrainingHyperparameters} comment) — this list, not the
+ * launch form, is the contract. `datasets`, `projectPath`, `baseModel`,
+ * `modelPaths` and `outputPath` were removed for the same reason: nothing
+ * read them, and `datasets` was always populated with `[]` regardless of the
+ * run's actual dataset list.
+ *
+ * Sidecar job records written before this narrowing still have the wider
+ * JSON shape on disk — `client_config` round-trips through
+ * `fetchJson`/`JSON.parse` with no runtime validation, so the extra fields
+ * simply ride along unread rather than breaking anything (see
+ * `trainingJobFromSidecar` in training-runtime.ts).
+ */
 export type TrainingJobConfig = {
-  projectPath: string;
   provider: TrainingProvider;
-  baseModel: string;
-  modelPaths: ModelPaths;
-  outputPath: string;
   outputName: string;
-  datasets: TrainingDataset[];
   hyperparameters: TrainingHyperparameters;
   samplePrompts: string[];
 };

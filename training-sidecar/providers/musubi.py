@@ -447,6 +447,12 @@ class MusubiProvider(SdScriptsProvider):
         # contract as the Kohya provider (see _parse_native_resolution).
         native = _parse_native_resolution(hp.get("native_resolution"))
         enable_bucket = not native
+        # What actually lands in the TOML's `resolution` key below — `[W, H]`
+        # for a native run, `[max_res]` otherwise (the rest of a multi-value
+        # `resolution` list is discarded; only the max is ever written). This
+        # is also what the cache dir gets fingerprinted on — see `_cache_dir`
+        # for why that has to be the effective value, not the requested list.
+        effective_resolution = list(native) if native else [max_res]
 
         dropped = [
             ds.path
@@ -478,6 +484,11 @@ class MusubiProvider(SdScriptsProvider):
             lines.append(f"bucket_no_upscale = {_toml_bool(bucket_no_upscale)}")
         lines.append("")
 
+        # A re-run under the same output name must not silently overwrite the
+        # previous run's checkpoints or --save_state dirs (see
+        # `_supersede_previous_run`), before anything below starts writing.
+        self._supersede_previous_run(request, job_id)
+
         # Compose hybrid captions into run-scoped files beside the images, and
         # point the datasets that got them at the extension they were written
         # under. `caption_extension` is one of the keys musubi accepts in either
@@ -493,7 +504,7 @@ class MusubiProvider(SdScriptsProvider):
                 request,
                 model_def,
                 ds.path,
-                native,
+                effective_resolution,
                 enable_bucket,
                 model_paths,
                 # Only folders we actually composed have captions that depend
@@ -521,7 +532,7 @@ class MusubiProvider(SdScriptsProvider):
         request: StartJobRequest,
         model_def: dict,
         dataset_path: str,
-        native: Optional[tuple[int, int]],
+        effective_resolution: list[int],
         enable_bucket: bool,
         model_paths: dict,
         caption_emission: Optional[str] = None,
@@ -529,10 +540,23 @@ class MusubiProvider(SdScriptsProvider):
         """Resolve (and create) the shared cache dir for one dataset folder.
 
         Fingerprinted on everything that changes what the cache scripts would
-        write — dataset path, effective resolution, bucketing, the VAE and TE
-        files, the architecture — so a settings change gets a fresh dir while
-        image-content changes are left to the scripts' own up-to-date checks.
-        Stale dirs are inert (a cleanup sweep can come later).
+        write — dataset path, the resolution actually written into the
+        dataset TOML, bucketing, the VAE and TE files, the architecture — so a
+        settings change gets a fresh dir while image-content changes are left
+        to the scripts' own up-to-date checks. Stale dirs are inert (a cleanup
+        sweep can come later; it matters more now that dedup actually works,
+        but is still out of scope here).
+
+        `effective_resolution` must be exactly what `generate_config` writes
+        into the TOML's `resolution` key for this run — `[W, H]` for a native
+        WxH run, `[max(resolution)]` otherwise. Fingerprinting on the
+        *requested* resolution list instead (as this used to) gave a
+        multi-value run like `[512, 768, 1024]` a different cache dir from an
+        equivalent `[1024]` run, even though `generate_config` only ever
+        writes the single largest value into the TOML for a non-native run —
+        the two configs produce byte-identical latent and text-encoder
+        caches, so the mismatch was pure duplication (multi-GB per dataset
+        folder for a bucketed dataset).
 
         The emission is in there because the text-encoder cache is computed
         from the captions: two runs over the same folder wanting different
@@ -540,13 +564,10 @@ class MusubiProvider(SdScriptsProvider):
         and overwrite each other's embeddings.
         """
         hp = request.hyperparameters
-        resolution = native or hp.get("resolution", [1024])
         fingerprint_src = json.dumps(
             {
                 "dataset": str(dataset_path),
-                "resolution": list(resolution)
-                if isinstance(resolution, (list, tuple))
-                else [resolution],
+                "resolution": list(effective_resolution),
                 "bucket": enable_bucket,
                 "bucket_no_upscale": bool(hp.get("bucket_no_upscale", False)),
                 # Flux.2 carries its autoencoder under `ae` (see _pre_train).
@@ -898,12 +919,28 @@ class MusubiProvider(SdScriptsProvider):
             f.write("\n".join(prompt_lines))
 
         args = [f"--sample_prompts={prompt_file}"]
+        # A 0/0 cadence means the client-side predictors (job_manager.
+        # predict_sample_steps / cadence.ts's deriveSampleSteps) already
+        # report no upcoming samples — the form's cadence field has a hard min
+        # of 1 and every model default is >= 250, so reaching here with 0/0
+        # means a hand-edited/stale saved config, not the form. Emitting
+        # neither flag keeps that "no samples" promise true.
+        #
+        # This matters more for musubi than for Kohya: sd-scripts guards a
+        # literal `--sample_every_n_steps=0` itself (library/args.py disables
+        # it with a warning), but musubi-tuner's `should_sample_images`
+        # (training/sampling_prompts.py) does `steps % args.sample_every_n_steps`
+        # with no such guard — a literal 0 would raise ZeroDivisionError on the
+        # very first step and crash the run. Previously this sent a fabricated
+        # 250-step cadence instead of 0, which avoided that crash but sampled
+        # on a schedule the UI never predicted; omitting the flag is what's
+        # both safe and honest.
         sample_every_steps = int(hp.get("sample_every_n_steps", 0) or 0)
         sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
         if sample_every_epochs > 0:
             args.append(f"--sample_every_n_epochs={sample_every_epochs}")
-        else:
-            args.append(f"--sample_every_n_steps={sample_every_steps or 250}")
+        elif sample_every_steps > 0:
+            args.append(f"--sample_every_n_steps={sample_every_steps}")
         return args
 
     def _train_command(

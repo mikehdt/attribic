@@ -58,6 +58,313 @@ def provider() -> KohyaProvider:
 
 
 # --------------------------------------------------------------------------
+# Superseding a previous run under the same output name
+# --------------------------------------------------------------------------
+
+
+def _flux_request(
+    tmp_path: Path, output_name: str = "demo", resume_state: str = None
+) -> StartJobRequest:
+    hp = {
+        "model_paths": {
+            "checkpoint": str(tmp_path / "flux1-dev.safetensors"),
+            "clip_l": str(tmp_path / "clip_l.safetensors"),
+            "t5": str(tmp_path / "t5xxl.safetensors"),
+            "ae": str(tmp_path / "ae.safetensors"),
+        },
+    }
+    if resume_state:
+        hp["resume_state"] = resume_state
+    return StartJobRequest(
+        project_path=str(tmp_path),
+        provider=ProviderType.KOHYA,
+        base_model="flux-dev",
+        output_path=str(tmp_path / "loras"),
+        output_name=output_name,
+        datasets=[DatasetEntry(path=str(tmp_path / "imgs"), num_repeats=1)],
+        hyperparameters=hp,
+    )
+
+
+class TestMoveStaleRunFiles:
+    """`_move_stale_run_files` / `_is_run_checkpoint` / `_is_run_state_dir`:
+    the scan-and-move behind `SdScriptsProvider._supersede_previous_run` (see
+    Finding 1 — kohya/musubi previously overwrote a finished run's weights
+    outright on a reused output name, unlike ai-toolkit's own supersede)."""
+
+    def test_moves_checkpoints_and_state_dirs(self, tmp_path):
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"final")
+        (loras / "demo-000005.safetensors").write_bytes(b"epoch5")
+        (loras / "demo-step00000250.safetensors").write_bytes(b"step250")
+        (loras / "demo-state").mkdir()
+        (loras / "demo-step00000250-state").mkdir()
+        # A sibling run whose name is a prefix-extension of ours must survive
+        # untouched — this is exactly the "demo" vs "demo-v2" collision the
+        # suffix-shape check (_RUN_SUFFIX_RE) exists to avoid.
+        (loras / "demo-v2.safetensors").write_bytes(b"other run")
+        (loras / "demo-v2-state").mkdir()
+        # Sample PNGs are timestamped and never collide — must be left alone.
+        (loras / "sample").mkdir()
+        (loras / "sample" / "demo_000250_00_20260101000000.png").write_bytes(b"x")
+
+        scan = sd_scripts_base._move_stale_run_files(str(loras), "demo")
+
+        assert scan.moved_ckpts == 3
+        assert scan.moved_states == 2
+        assert scan.failed == 0
+        assert scan.dest == loras / "_superseded" / "demo"
+        assert scan.real_names == ("demo",)
+        for name in (
+            "demo.safetensors",
+            "demo-000005.safetensors",
+            "demo-step00000250.safetensors",
+        ):
+            assert not (loras / name).exists()
+            assert (scan.dest / name).exists()
+        for name in ("demo-state", "demo-step00000250-state"):
+            assert not (loras / name).exists()
+            assert (scan.dest / name).is_dir()
+        # Untouched: the sibling run and the sample PNG.
+        assert (loras / "demo-v2.safetensors").exists()
+        assert (loras / "demo-v2-state").is_dir()
+        assert (
+            loras / "sample" / "demo_000250_00_20260101000000.png"
+        ).exists()
+
+    def test_no_stale_files_is_a_noop(self, tmp_path):
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        scan = sd_scripts_base._move_stale_run_files(str(loras), "demo")
+        assert scan == sd_scripts_base._SupersedeScan()
+
+    def test_missing_output_dir_is_a_noop(self, tmp_path):
+        scan = sd_scripts_base._move_stale_run_files(
+            str(tmp_path / "does-not-exist"), "demo"
+        )
+        assert scan == sd_scripts_base._SupersedeScan()
+
+    def test_repeated_supersede_gets_a_disambiguated_dir(self, tmp_path):
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"run one")
+        sd_scripts_base._move_stale_run_files(str(loras), "demo")
+
+        (loras / "demo.safetensors").write_bytes(b"run two")
+        scan = sd_scripts_base._move_stale_run_files(str(loras), "demo")
+
+        assert scan.dest == loras / "_superseded" / "demo-2"
+
+    # --- Finding 1: case-variant output names on a case-insensitive host ---
+
+    def test_matches_a_differently_cased_output_name(self, tmp_path):
+        """The exact scenario from the review: a finished run "Demo" left
+        Demo.safetensors/Demo-state behind, and a new run is launched as
+        "demo". On NTFS those are the SAME path, so if this match were
+        case-sensitive, `_move_stale_run_files` would report nothing stale
+        and kohya's first checkpoint write would silently land on (and
+        destroy) the old file. Reverting `_matched_run_name` to a bare `==`
+        makes this fail: 0 moved instead of 1.
+
+        Also plants "Demo-v2" alongside it — case-folding the comparison
+        must not resurrect the prefix-collision bug `_RUN_SUFFIX_RE` exists
+        to prevent ("demo" vs "demo-v2", see the module constant's docstring)
+        just because case-folding is now in the mix too. A case-insensitive
+        match implemented as a naive `startswith` (dropping the suffix-shape
+        check) would fail this half: "Demo-v2" would wrongly get swept up as
+        this run's own file.
+        """
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "Demo.safetensors").write_bytes(b"finished run")
+        (loras / "Demo-state").mkdir()
+        (loras / "Demo-v2.safetensors").write_bytes(b"other run")
+        (loras / "Demo-v2-state").mkdir()
+
+        scan = sd_scripts_base._move_stale_run_files(str(loras), "demo")
+
+        assert scan.moved_ckpts == 1
+        assert scan.moved_states == 1
+        assert not (loras / "Demo.safetensors").exists()
+        # The moved file keeps its real on-disk spelling...
+        assert (scan.dest / "Demo.safetensors").exists()
+        # ...and the scan reports it separately from the (lowercase) name
+        # that was searched for, so a caller can tell the two apart.
+        assert scan.real_names == ("Demo",)
+        # The differently-shaped sibling survives untouched.
+        assert (loras / "Demo-v2.safetensors").exists()
+        assert (loras / "Demo-v2-state").is_dir()
+
+    # --- Finding 2: some/all rename() calls raise ---
+
+    def test_total_rename_failure_reports_failed_and_no_dest(
+        self, tmp_path, monkeypatch
+    ):
+        """If every rename() raises, nothing moved: `dest` must be None (not
+        the stash dir — that would contradict the "None means nothing to
+        move" contract and read as success), `failed` must say so, and the
+        empty stash dir created for the attempt must not be left behind.
+        Reverting the fix makes this fail: the old code returned
+        `(0, 0, dest)` with `dest` non-None here."""
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"final")
+
+        def raise_oserror(self, target):
+            raise OSError("file is locked")
+
+        monkeypatch.setattr(Path, "rename", raise_oserror)
+
+        scan = sd_scripts_base._move_stale_run_files(str(loras), "demo")
+
+        assert scan.moved_ckpts == 0
+        assert scan.moved_states == 0
+        assert scan.failed == 1
+        assert scan.dest is None
+        # The per-run stash dir created for the attempt is cleaned up again
+        # (its `_superseded` container may still exist, empty, which is
+        # harmless — it's the per-name dir that must not linger empty).
+        assert not (loras / "_superseded" / "demo").exists()
+        # The file itself was never moved.
+        assert (loras / "demo.safetensors").exists()
+
+    def test_partial_rename_failure_keeps_dest_and_reports_failed(
+        self, tmp_path, monkeypatch
+    ):
+        """One file moves, one doesn't: `dest` should still point at the
+        stash dir (something genuinely landed there) while `failed` flags
+        the leftover so the caller still warns about it."""
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"final")
+        (loras / "demo-000005.safetensors").write_bytes(b"epoch5")
+
+        real_rename = Path.rename
+
+        def flaky_rename(self, target):
+            if self.name == "demo-000005.safetensors":
+                raise OSError("file is locked")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", flaky_rename)
+
+        scan = sd_scripts_base._move_stale_run_files(str(loras), "demo")
+
+        assert scan.moved_ckpts == 1
+        assert scan.failed == 1
+        assert scan.dest is not None
+        assert (scan.dest / "demo.safetensors").exists()
+        assert (loras / "demo-000005.safetensors").exists()
+
+
+class TestSupersedePreviousRun:
+    """`SdScriptsProvider._supersede_previous_run` — the generate_config-time
+    call both KohyaProvider and MusubiProvider make."""
+
+    def test_queues_a_prelude_note(self, provider, tmp_path):
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"final")
+
+        provider._supersede_previous_run(_flux_request(tmp_path), "job1")
+
+        notes = provider._caption_prelude("job1")
+        assert any("Moved" in n and "demo" in n for n in notes)
+        # Popped, not just read — a second call finds nothing left to report.
+        assert provider._caption_prelude("job1") == []
+
+    def test_no_note_when_nothing_to_move(self, provider, tmp_path):
+        (tmp_path / "loras").mkdir()
+        provider._supersede_previous_run(_flux_request(tmp_path), "job1")
+        assert provider._caption_prelude("job1") == []
+
+    def test_resume_state_skips_supersede_entirely(self, provider, tmp_path):
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"final")
+        resume_dir = loras / "demo-state"
+        resume_dir.mkdir()
+
+        request = _flux_request(tmp_path, resume_state=str(resume_dir))
+        provider._supersede_previous_run(request, "job2")
+
+        # The checkpoint and the dir the run was told to resume from are both
+        # left exactly where the run expects to find them.
+        assert (loras / "demo.safetensors").exists()
+        assert resume_dir.is_dir()
+        assert provider._caption_prelude("job2") == []
+
+    def test_note_names_the_real_on_disk_spelling_for_a_case_variant(
+        self, provider, tmp_path
+    ):
+        """Finding 1's other half: the note text must not claim the old run
+        was also called "demo" when it was actually "Demo" — that would be
+        confusing next to a `_superseded/demo/Demo.safetensors` the user can
+        see has a different spelling than the folder it's sitting in."""
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "Demo.safetensors").write_bytes(b"finished run")
+
+        provider._supersede_previous_run(_flux_request(tmp_path), "job1")
+
+        notes = provider._caption_prelude("job1")
+        assert any("Moved" in n and "Demo" in n for n in notes)
+
+    def test_total_move_failure_queues_a_warning_not_a_false_success(
+        self, provider, tmp_path, monkeypatch
+    ):
+        """Finding 2, at the `_supersede_previous_run` level: when every move
+        fails, the queued note must be a warning that the overwrite risk is
+        still live — not the old grammatically-broken, factually-false
+        "Moved  from an earlier run of 'demo' into _superseded/demo" note
+        the empty-`parts` bug produced. Reverting the fix makes this fail:
+        the old code emitted a "Moved" note with an empty `parts` list here."""
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"final")
+
+        monkeypatch.setattr(
+            Path, "rename", lambda self, target: (_ for _ in ()).throw(
+                OSError("file is locked")
+            )
+        )
+
+        provider._supersede_previous_run(_flux_request(tmp_path), "job1")
+
+        notes = provider._caption_prelude("job1")
+        assert len(notes) == 1
+        assert notes[0].startswith("Warning:")
+        assert "demo" in notes[0]
+        assert "Moved" not in notes[0]
+        # The file is still exactly where the run is about to write.
+        assert (loras / "demo.safetensors").exists()
+
+    def test_partial_move_failure_queues_both_a_move_note_and_a_warning(
+        self, provider, tmp_path, monkeypatch
+    ):
+        loras = tmp_path / "loras"
+        loras.mkdir()
+        (loras / "demo.safetensors").write_bytes(b"final")
+        (loras / "demo-000005.safetensors").write_bytes(b"epoch5")
+
+        real_rename = Path.rename
+
+        def flaky_rename(self, target):
+            if self.name == "demo-000005.safetensors":
+                raise OSError("file is locked")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", flaky_rename)
+
+        provider._supersede_previous_run(_flux_request(tmp_path), "job1")
+
+        notes = provider._caption_prelude("job1")
+        assert any(n.startswith("Moved") for n in notes)
+        assert any(n.startswith("Warning:") for n in notes)
+
+
+# --------------------------------------------------------------------------
 # Fake subprocess
 # --------------------------------------------------------------------------
 
@@ -112,6 +419,40 @@ class FakeProcess:
     async def wait(self) -> int:
         self._returncode = self._exit_code
         return self._returncode
+
+
+class TestRunPhaseSubprocessCancelledPath:
+    """Finding: `_run_phase_subprocess` used to return on the cancelled path
+    without clearing `run.process`, the one exit from the function (and from
+    `_stream_training_progress`) that didn't uphold that invariant."""
+
+    def test_cancelled_path_clears_run_process(
+        self, provider, tmp_path, monkeypatch
+    ):
+        proc = FakeProcess()
+        proc.feed_lines(["steps:  25%|##        | 1/4 [00:01<00:03,  1.00it/s]"])
+        proc.close_streams()
+
+        async def fake_create_subprocess_exec(*args, **kwargs):
+            return proc
+
+        monkeypatch.setattr(
+            asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+        )
+
+        run = SubprocessRun()
+
+        async def go():
+            gen = provider._run_phase_subprocess(
+                "job-1", run, ["fake"], str(tmp_path), {}, "Caching latents"
+            )
+            async for _ in gen:
+                # Cancel arrives mid-phase, same as a user hitting stop while
+                # musubi's pre-cache subprocess is still running.
+                run.cancelled = True
+
+        asyncio.run(go())
+        assert run.process is None
 
 
 def make_request(tmp_path: Path, sample_prompts=()) -> StartJobRequest:

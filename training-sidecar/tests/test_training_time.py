@@ -10,6 +10,7 @@ fallback map used by the job-manager's lazy accumulator reseed.
 import json
 from pathlib import Path
 
+from job_manager import _MAX_TRAINING_GAP_SECONDS, _training_gap_contribution
 from training_time import (
     MARKER_NAME,
     PROVIDER_MARKER_POLICY_FALLBACK,
@@ -248,3 +249,42 @@ def test_marker_policy_for_provider_name_known_and_unknown():
     assert marker_policy_for_provider_name("unknown-future-backend") == (
         "single-root"
     )
+
+
+# --------------------------------------------------------------------------
+# Per-gap clamping of the training clock (job_manager._training_gap_contribution)
+#
+# `_accumulate_progress` sums these per-tick contributions into
+# `training_seconds`. A gap under the cap should count in full (a legitimate
+# between-step pause is still training); a gap over the cap must be clamped
+# to the cap, not dropped to zero — dropping would zero out the whole clock
+# on a run whose steps are individually slower than the cap (see the
+# _MAX_TRAINING_GAP_SECONDS comment in job_manager.py for the ai-toolkit
+# low-VRAM case this guards against).
+
+
+def test_gap_under_cap_counts_in_full():
+    assert _training_gap_contribution(1.0) == 1.0
+    assert _training_gap_contribution(90.0) == 90.0
+    assert _training_gap_contribution(_MAX_TRAINING_GAP_SECONDS) == (
+        _MAX_TRAINING_GAP_SECONDS
+    )
+
+
+def test_gap_over_cap_is_clamped_not_dropped():
+    over = _MAX_TRAINING_GAP_SECONDS + 60.0
+    assert _training_gap_contribution(over) == _MAX_TRAINING_GAP_SECONDS
+
+
+def test_gap_far_over_cap_still_contributes_only_the_cap():
+    # A multi-hour suspend/background gap must not inflate the clock any
+    # further than a merely-slow step would.
+    huge = _MAX_TRAINING_GAP_SECONDS * 1000
+    assert _training_gap_contribution(huge) == _MAX_TRAINING_GAP_SECONDS
+
+
+def test_zero_or_negative_gap_contributes_nothing():
+    # Duplicate tick at the same monotonic timestamp, or a clock jump
+    # backwards — neither is a real elapsed gap to attribute.
+    assert _training_gap_contribution(0.0) == 0.0
+    assert _training_gap_contribution(-5.0) == 0.0

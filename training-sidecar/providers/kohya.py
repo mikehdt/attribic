@@ -405,6 +405,11 @@ class KohyaProvider(SdScriptsProvider):
             lines.append(f"max_bucket_reso = {max_res}")
         lines.append("")
 
+        # A re-run under the same output name must not silently overwrite the
+        # previous run's checkpoints or --save_state dirs (see
+        # `_supersede_previous_run`), before anything below starts writing.
+        self._supersede_previous_run(request, job_id)
+
         # Compose hybrid captions into run-scoped files beside the images, and
         # point the subsets that got them at the extension they were written
         # under. `caption_extension` is in DB_SUBSET_ASCENDABLE_SCHEMA
@@ -761,12 +766,25 @@ class KohyaProvider(SdScriptsProvider):
         # dual field above. sd-scripts supports --sample_every_n_epochs
         # natively, so pass whichever unit the user chose (the Node side
         # zeroes the other). Epoch cadence wins when set.
+        #
+        # A 0/0 cadence (both zeroed) means the client-side predictors
+        # (job_manager.predict_sample_steps / cadence.ts's deriveSampleSteps)
+        # already report no upcoming samples at all — the form's cadence field
+        # has a hard min of 1 and every model default is >= 250, so reaching
+        # here with 0/0 means the request came from a hand-edited/stale saved
+        # config rather than the form. Emitting neither flag is what keeps
+        # that promise true: sd-scripts itself does the same thing on a
+        # literal 0 (library/args.py disables it with a warning when
+        # `sample_every_n_steps <= 0`), so this just skips the round trip
+        # through that warning rather than changing the outcome. Previously
+        # this invented a 250-step cadence instead — sampling the user was
+        # never told to expect.
         sample_every_steps = int(hp.get("sample_every_n_steps", 0) or 0)
         sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
         if sample_every_epochs > 0:
             args.append(f"--sample_every_n_epochs={sample_every_epochs}")
-        else:
-            args.append(f"--sample_every_n_steps={sample_every_steps or 250}")
+        elif sample_every_steps > 0:
+            args.append(f"--sample_every_n_steps={sample_every_steps}")
         # Flux's sampler lookup is commented out upstream (always flow-matching
         # Euler), so the flag is only emitted where it's actually consulted.
         if model_def.get("supports_sample_sampler", True):
