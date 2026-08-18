@@ -6,6 +6,7 @@ import {
   getVisibleFields,
   type TrainingFieldName,
 } from '@/app/services/training/field-registry';
+import { schedulerUsesWarmup } from '@/app/services/training/lr-schedule';
 import { getModelComponents } from '@/app/services/training/models';
 import {
   defaultSampleAspect,
@@ -85,8 +86,10 @@ const TrainingConfigFormComponent = ({
       state.modelId,
       state.selectedProvider,
     );
-    // Warmup steps are only meaningful for schedulers that use them
-    if (state.scheduler === 'constant') fields.delete('warmupSteps');
+    // Warmup steps are only meaningful for schedulers that use them — which
+    // on ai-toolkit is `constant_with_warmup` alone
+    if (!schedulerUsesWarmup(state.scheduler, state.selectedProvider))
+      fields.delete('warmupSteps');
     // Restarts only apply to cosine_with_restarts
     if (state.scheduler !== 'cosine_with_restarts')
       fields.delete('numRestarts');

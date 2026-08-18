@@ -32,6 +32,7 @@ import {
   getAllModelComponents,
   getModelById,
   isOptimizerSupported,
+  isSchedulerSupported,
   MODEL_DEFINITIONS,
   type ModelComponentType,
 } from '@/app/services/training/models';
@@ -313,14 +314,38 @@ const trainingConfigSlice = createSlice({
         state.form.selectedProvider === 'mock' &&
         nextModel?.providers.includes('mock');
 
-      // Preserve user's dataset and output choices across model switches.
+      // A model switch re-derives everything the architecture dictates — run
+      // length, LR, LoRA shape, precision, sampler — but carries across the
+      // choices that describe what the *user* wants from the run. Dropping
+      // those reads as a full reset of a form they only partly changed.
       const preserved = {
         outputName: state.form.outputName,
         datasets: state.form.datasets,
         extraFolders: state.form.extraFolders,
+
+        // Sampling: the prompts, whether to sample, and how often. Left to
+        // the new model's defaults are sampleSteps/guidanceScale/
+        // sampleSampler — properties of the architecture, not preferences
+        // (a distilled model samples in 4-8 steps at guidance 1 where an
+        // SDXL wants 25 at 7, so carrying those across produces mush).
+        samplingEnabled: state.form.samplingEnabled,
         samplePrompts: state.form.samplePrompts,
         samplePromptSizes: state.form.samplePromptSizes,
-      };
+        sampleMode: state.form.sampleMode,
+        sampleEveryEpochs: state.form.sampleEveryEpochs,
+        sampleEverySteps: state.form.sampleEverySteps,
+
+        // Saving: checkpoint cadence and retention are disk-budget choices.
+        // `saveFormat` is not preserved (some models are bf16-only), nor is
+        // `resumeState`, which points at a state folder written by the model
+        // being switched away from.
+        saveEnabled: state.form.saveEnabled,
+        saveMode: state.form.saveMode,
+        saveEveryEpochs: state.form.saveEveryEpochs,
+        saveEverySteps: state.form.saveEverySteps,
+        maxSavesToKeep: state.form.maxSavesToKeep,
+        saveState: state.form.saveState,
+      } satisfies Partial<FormState>;
 
       state.form = {
         ...defaultsToFormState(defaults, modelId),
@@ -338,6 +363,11 @@ const trainingConfigSlice = createSlice({
      * startup and raise when its package is missing (Lion is a kohya
      * dependency, Automagic is ai-toolkit's own), so leaving a stale value
      * would only surface as a run that dies seconds after launch.
+     *
+     * The scheduler gets the same treatment, for the opposite reason: an
+     * unsupported one (cosine_with_restarts on ai-toolkit) doesn't fail, it
+     * quietly runs as something else — so it can't be left sitting in the form
+     * showing a shape the run won't follow.
      */
     setProvider: (state, action: PayloadAction<TrainingProvider>) => {
       const provider = action.payload;
@@ -345,6 +375,7 @@ const trainingConfigSlice = createSlice({
       if (!isOptimizerSupported(state.form.optimizer, provider)) {
         state.form.optimizer = getDefaults(state.form.modelId).optimizer;
       }
+      state.form.scheduler = coerceScheduler(state.form).scheduler;
     },
 
     setModelPath: (
@@ -745,7 +776,7 @@ const trainingConfigSlice = createSlice({
         ...defaultsToFormState(getDefaults(incoming.modelId), incoming.modelId),
         ...incoming,
       };
-      const form = normalizeDatasets(coerceProvider(merged));
+      const form = normalizeDatasets(coerceScheduler(coerceProvider(merged)));
       state.form = form;
       state.loadedProject = action.payload.loadedProject;
       state.baselineSnapshot = form;
@@ -764,7 +795,7 @@ const trainingConfigSlice = createSlice({
         ...defaultsToFormState(getDefaults(incoming.modelId), incoming.modelId),
         ...incoming,
       };
-      state.form = normalizeDatasets(coerceProvider(merged));
+      state.form = normalizeDatasets(coerceScheduler(coerceProvider(merged)));
       state.loadedProject = null;
       state.baselineSnapshot = null;
     },
@@ -1064,6 +1095,23 @@ function coerceProvider(form: FormState): FormState {
     return { ...form, selectedProvider: model.providers[0] };
   }
   return form;
+}
+
+/**
+ * Ensure `form.scheduler` is one the selected backend can actually run. Mostly
+ * matters for configs saved before ai-toolkit gained scheduler support, when
+ * the picker offered cosine_with_restarts to every backend — ai-toolkit will
+ * accept the name and quietly run a single cosine cycle instead.
+ */
+function coerceScheduler(form: FormState): FormState {
+  if (isSchedulerSupported(form.scheduler, form.selectedProvider)) return form;
+  const fallback = getDefaults(form.modelId).scheduler;
+  return {
+    ...form,
+    scheduler: isSchedulerSupported(fallback, form.selectedProvider)
+      ? fallback
+      : 'constant',
+  };
 }
 
 /**

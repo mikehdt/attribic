@@ -288,7 +288,7 @@ const ModelSelectSectionComponent = ({
                   aria-label="Select base model"
                   footer={
                     hasHiddenModels ? (
-                      <div className="px-3 py-2">
+                      <div className="flex px-3 py-2">
                         <Checkbox
                           size="sm"
                           isSelected={showAll}

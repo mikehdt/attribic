@@ -16,6 +16,7 @@ import type { TrainingProvider } from './types';
  */
 export type ProviderCapability =
   | 'lrSchedulerControls' // scheduler, warmupSteps, numRestarts
+  | 'lrWarmupAnySchedule' // warmup composes with a decaying scheduler
   | 'optimizerExtraArgs' // weightDecay, optimizerArgs
   | 'networkExtraArgs' // networkArgs
   | 'scaleWeightNorms'
@@ -52,6 +53,7 @@ export type ProviderCapability =
  */
 const SD_SCRIPTS_FAMILY: readonly ProviderCapability[] = [
   'lrSchedulerControls',
+  'lrWarmupAnySchedule',
   'optimizerExtraArgs',
   'networkExtraArgs',
   'scaleWeightNorms',
@@ -70,6 +72,7 @@ const SD_SCRIPTS_FAMILY: readonly ProviderCapability[] = [
  */
 const CAPABILITY_SET: Record<ProviderCapability, true> = {
   lrSchedulerControls: true,
+  lrWarmupAnySchedule: true,
   optimizerExtraArgs: true,
   networkExtraArgs: true,
   scaleWeightNorms: true,
@@ -122,6 +125,13 @@ const PROVIDER_CAPABILITIES: Record<
   // verticalFlip (no such augmentation).
   musubi: new Set([...SD_SCRIPTS_FAMILY, 'blockSwap', 'quantization']),
   'ai-toolkit': new Set([
+    // `train.lr_scheduler` has always existed (toolkit/scheduler.py) — neither
+    // we nor ai-toolkit's own UI ever set it, so every run silently took the
+    // 'constant' default. Deliberately WITHOUT `lrWarmupAnySchedule`: it
+    // builds torch schedulers directly rather than diffusers'
+    // `get_*_schedule_with_warmup`, and only its `constant_with_warmup` branch
+    // has anywhere to put a warmup count.
+    'lrSchedulerControls',
     // SaveConfig.dtype takes the same fp16/bf16/fp32 spellings the form
     // sends; the provider passed a hardcoded float16 until 2026-08-17.
     'saveFormat',

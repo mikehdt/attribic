@@ -6,15 +6,45 @@
  * rather than only the steps observed so far.
  */
 
+import { hasCapability } from './provider-capabilities';
+import type { TrainingProvider } from './types';
+
 type LrScheduleArgs = {
   scheduler: string | undefined;
   totalSteps: number;
   warmupSteps?: number;
   /** Cycle count for cosine_with_restarts (Kohya's lr_scheduler_num_cycles). */
   numRestarts?: number;
+  /**
+   * Backend that will run the schedule. Omitted draws the ideal shape; passing
+   * it drops a warmup ramp the backend won't honour (see
+   * {@link schedulerUsesWarmup}).
+   */
+  provider?: TrainingProvider;
 };
 
 const CURVE_POINTS = 96;
+
+/**
+ * Whether `warmupSteps` changes anything for this backend/scheduler pair.
+ *
+ * sd-scripts backends route every scheduler through diffusers'
+ * `get_*_schedule_with_warmup`, so a warmup ramp precedes whatever decay
+ * follows. ai-toolkit builds torch schedulers directly
+ * (`toolkit/scheduler.py`) and only its `constant_with_warmup` branch takes a
+ * warmup count — `CosineAnnealingLR` and friends have nowhere to put one, so
+ * offering the field there would be a knob that does nothing.
+ */
+export function schedulerUsesWarmup(
+  scheduler: string,
+  provider?: TrainingProvider,
+): boolean {
+  if (scheduler === 'constant') return false;
+  if (provider && !hasCapability(provider, 'lrWarmupAnySchedule')) {
+    return scheduler === 'constant_with_warmup';
+  }
+  return true;
+}
 
 function decayFor(
   scheduler: string,
@@ -49,13 +79,17 @@ export function buildLrScheduleCurve({
   totalSteps,
   warmupSteps = 0,
   numRestarts = 1,
+  provider,
 }: LrScheduleArgs): number[] | null {
   if (!scheduler) return null;
   const decay = decayFor(scheduler, numRestarts);
   if (!decay) return null;
 
+  const effectiveWarmup = schedulerUsesWarmup(scheduler, provider)
+    ? warmupSteps
+    : 0;
   const warmupFrac =
-    totalSteps > 0 ? Math.min(Math.max(warmupSteps / totalSteps, 0), 1) : 0;
+    totalSteps > 0 ? Math.min(Math.max(effectiveWarmup / totalSteps, 0), 1) : 0;
   if (scheduler === 'constant' && warmupFrac === 0) return null;
 
   return Array.from({ length: CURVE_POINTS }, (_, i) => {

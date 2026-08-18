@@ -20,6 +20,7 @@ export function useLrScheduleCurve(
       totalSteps,
       warmupSteps: hp.warmupSteps ?? 0,
       numRestarts: Number(hp.extra?.numRestarts ?? 1) || 1,
+      provider: config.provider,
     });
   }, [config, totalSteps]);
 }

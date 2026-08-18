@@ -4,6 +4,7 @@ import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import {
   ADAPTIVE_OPTIMIZERS,
   getOptimizerOptions,
+  getSchedulerOptions,
   OPTIMIZER_OPTIONS,
   SCHEDULER_OPTIONS,
   type TrainingDefaults,
@@ -224,7 +225,7 @@ const LearningSectionComponent = ({
   );
 
   const schedulerItems = useMemo(() => {
-    return SCHEDULER_OPTIONS.map(
+    return getSchedulerOptions(selectedProvider).map(
       (sched) =>
         ({
           value: sched.value,
@@ -242,7 +243,7 @@ const LearningSectionComponent = ({
           ),
         }) satisfies DropdownItem<string>,
     );
-  }, []);
+  }, [selectedProvider]);
 
   const showDuration =
     visibleFields.has('durationMode') ||

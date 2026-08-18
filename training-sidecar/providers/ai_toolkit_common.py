@@ -354,6 +354,47 @@ def resolve_sample_sampler(hp: dict, defaults: dict) -> str:
     return hp.get("sample_sampler", model_scheduler)
 
 
+def resolve_lr_scheduler(hp: dict) -> dict:
+    """Build the `train.lr_scheduler` / `train.lr_scheduler_params` pair.
+
+    ai-toolkit builds torch schedulers by name in `toolkit/scheduler.py` and
+    defaults to "constant" — which we relied on implicitly until now by never
+    sending the key at all. Its factory understands constant, linear, cosine,
+    cosine_with_restarts, step and constant_with_warmup; the first five of
+    those are what the UI offers (`step` isn't, and would raise: StepLR has no
+    `total_iters` parameter, which `BaseSDTrainProcess` injects unconditionally).
+
+    Two branches need explicit params or they don't mean what the UI says:
+
+    - **linear** maps to `torch.optim.lr_scheduler.LinearLR`, whose defaults
+      (`start_factor=1/3`, `end_factor=1.0`) ramp the LR *up* over the run.
+      sd-scripts' "linear" — and the shape our picker draws — decays 1 → 0, so
+      the factors are pinned to match.
+    - **constant_with_warmup** maps to diffusers'
+      `get_constant_schedule_with_warmup`, which warns and substitutes 1000
+      steps when the count is missing, so it is always passed.
+
+    Warmup is the awkward one. sd-scripts routes every scheduler through
+    diffusers' `get_*_schedule_with_warmup`, so warmup composes with any decay
+    shape. ai-toolkit only has somewhere to put it on the
+    `constant_with_warmup` branch. The UI hides the field for every other
+    ai-toolkit scheduler, so nothing is silently dropped here that the user
+    could still see.
+
+    `cosine_with_restarts` is deliberately not offered for this backend either:
+    `BaseSDTrainProcess` overwrites `T_0` with the full step count, so its
+    first cycle would span the whole run and no restart would ever fire.
+    """
+    scheduler = str(hp.get("scheduler", "constant") or "constant")
+    params: dict = {}
+    if scheduler == "constant_with_warmup":
+        params["num_warmup_steps"] = int(hp.get("warmup_steps", 0) or 0)
+    elif scheduler == "linear":
+        params["start_factor"] = 1.0
+        params["end_factor"] = 0.0
+    return {"lr_scheduler": scheduler, "lr_scheduler_params": params}
+
+
 def split_csv(raw) -> list[str]:
     """Split a comma-separated UI string into a trimmed, non-empty list.
 

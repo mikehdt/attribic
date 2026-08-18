@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import {
   CAPTION_EMISSION_LABELS,
+  CAPTION_EMISSION_NAMES,
   type CaptionEmission,
   captionPreferenceForModel,
   isEmissionChoosable,
@@ -47,10 +48,9 @@ type CaptionEmissionControlProps = {
  * Which half of a hybrid caption this dataset trains on.
  *
  * Only hybrid projects get a choice — every other mode stores one thing, so
- * there is nothing to choose between and the icon is informational. It is still
- * worth showing: across a multi-project config it makes "what will this feed the
- * trainer" answerable at a glance, the same job the flip and regularisation
- * icons do on the folder rows.
+ * there is nothing to choose between and it renders as a plain readout. It is
+ * still worth showing: across a multi-project config it makes "what will this
+ * feed the trainer" answerable at a glance.
  */
 export function CaptionEmissionControl({
   captionMode,
@@ -64,13 +64,15 @@ export function CaptionEmissionControl({
 
   if (!isEmissionChoosable(captionMode)) {
     const emission = resolveCaptionEmission({ captionMode, pinned, modelId });
+    // Named rather than left as a bare icon: it sits beside the remove button,
+    // and an icon on its own there reads as something to click.
     return (
       <span
-        className="shrink-0 text-slate-400"
+        className="flex shrink-0 items-center gap-1.5 rounded-md border border-(--border-subtle) bg-(--surface)/50 px-2 py-1 text-sm text-slate-400"
         title={STATIC_TITLE[captionMode]}
       >
         {EMISSION_ICONS[emission]}
-        <span className="sr-only">{STATIC_TITLE[captionMode]}</span>
+        {CAPTION_EMISSION_NAMES[emission]}
       </span>
     );
   }

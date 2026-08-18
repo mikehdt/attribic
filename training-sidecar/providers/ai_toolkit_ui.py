@@ -43,6 +43,7 @@ from providers.ai_toolkit_common import (
     SUPPORTED_MODELS,
     find_model,
     first_resolution,
+    resolve_lr_scheduler,
     resolve_model_kwargs,
     resolve_sample_sampler,
     resolve_save_every_steps,
@@ -1340,6 +1341,7 @@ def _build_config_dict(
                             ),
                         },
                         "lr": hp.get("lr", defaults.get("lr", 1e-4)),
+                        **resolve_lr_scheduler(hp),
                         **(
                             {"lr_unet": hp["backbone_lr"]}
                             if hp.get("backbone_lr", 0) > 0

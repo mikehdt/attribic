@@ -26,6 +26,17 @@ export const CAPTION_EMISSION_LABELS: Record<CaptionEmission, string> = {
 };
 
 /**
+ * What each emission is, named so it stands on its own. The segment labels
+ * above are clipped to fit three of them side by side and only read as a set —
+ * "Natural" means nothing without "Tags" and "Both" beside it.
+ */
+export const CAPTION_EMISSION_NAMES: Record<CaptionEmission, string> = {
+  tags: 'Tags',
+  both: 'Tags and natural language',
+  natural: 'Natural language',
+};
+
+/**
  * What each architecture was trained on. A fact about the model rather than a
  * tunable, so it lives here and not in `TrainingDefaults` — everything in there
  * is a diffable form field with a reset affordance, which this is not.

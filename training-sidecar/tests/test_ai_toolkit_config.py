@@ -34,6 +34,10 @@ def model_block(request) -> dict:
     return _build_config_dict(request)["config"]["process"][0]["model"]
 
 
+def train_block(request) -> dict:
+    return _build_config_dict(request)["config"]["process"][0]["train"]
+
+
 class TestModelKwargs:
     def test_krea2_local_te_and_vae_become_model_kwargs(self):
         request = make_request(
@@ -139,6 +143,45 @@ class TestSaveBlock:
     def test_save_format_defaults_to_fp16(self):
         process = _build_config_dict(make_request())["config"]["process"][0]
         assert process["save"]["dtype"] == "fp16"
+
+
+class TestLrScheduler:
+    def test_defaults_to_constant_with_no_params(self):
+        train = train_block(make_request())
+        assert train["lr_scheduler"] == "constant"
+        assert train["lr_scheduler_params"] == {}
+
+    def test_cosine_needs_no_params(self):
+        # BaseSDTrainProcess injects `total_iters`, which toolkit/scheduler.py
+        # renames to CosineAnnealingLR's `T_max` — so the run's step count is
+        # already the annealing period and we must not fight it.
+        train = train_block(make_request({"scheduler": "cosine"}))
+        assert train["lr_scheduler"] == "cosine"
+        assert train["lr_scheduler_params"] == {}
+
+    def test_linear_pins_factors_to_decay(self):
+        # torch's LinearLR defaults ramp *up* (1/3 -> 1.0).
+        train = train_block(make_request({"scheduler": "linear"}))
+        assert train["lr_scheduler_params"] == {
+            "start_factor": 1.0,
+            "end_factor": 0.0,
+        }
+
+    def test_warmup_is_passed_for_constant_with_warmup(self):
+        train = train_block(
+            make_request(
+                {"scheduler": "constant_with_warmup", "warmup_steps": 120}
+            )
+        )
+        assert train["lr_scheduler_params"] == {"num_warmup_steps": 120}
+
+    def test_warmup_is_dropped_for_schedulers_that_cannot_use_it(self):
+        # ai-toolkit builds torch schedulers directly, so only the
+        # constant_with_warmup branch has anywhere to put a warmup count.
+        train = train_block(
+            make_request({"scheduler": "cosine", "warmup_steps": 120})
+        )
+        assert train["lr_scheduler_params"] == {}
 
 
 class TestSampleBlock:

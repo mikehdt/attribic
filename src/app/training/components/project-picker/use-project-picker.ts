@@ -79,7 +79,10 @@ export function useProjectPicker({
           folderHistograms,
           // Already on the list entry, so the dataset card can render its
           // caption control on the first paint rather than waiting for a rescan.
-          captionMode: project.captionMode,
+          // A project that has never had its mode switched has no key in its
+          // config, which means tags — the same fallback `scanDatasetFolders`
+          // applies. Without it the card would show nothing until a rescan.
+          captionMode: project.captionMode ?? 'tags',
         });
         close();
       } finally {

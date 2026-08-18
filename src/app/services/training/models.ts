@@ -249,7 +249,15 @@ const BASE_DEFAULTS: TrainingDefaults = {
   loraWeight: 1,
   isRegularization: false,
   seed: -1,
-  saveFormat: 'fp16',
+  // Match the architecture the LoRA will be used against, not the checkpoint's
+  // storage dtype — an fp8 or GGUF base dequantises to its compute dtype before
+  // the LoRA is applied, so the two never need to agree. Every flow-matching
+  // DiT here runs in bf16, and fp16 has bitten people on high-magnitude layers
+  // (modulation/norm), so bf16 is the safe default; the SDXL-lineage entries
+  // below override back to fp16, which is both their native dtype and what the
+  // SD1.5/SDXL tooling ecosystem expects. (Musubi's own --save_precision
+  // default is fp32 — the provider always passes this value instead.)
+  saveFormat: 'bf16',
   saveEvery: 1,
   maxSavesToKeep: 4,
   trainTextEncoder: false,
@@ -492,7 +500,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       networkDim: 32,
       networkAlpha: 32,
       resolution: [1024],
-      saveFormat: 'bf16',
       timestepType: 'flux2_shift',
       sampleEvery: 250,
       sampleSteps: 28,
@@ -551,7 +558,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       networkDim: 32,
       networkAlpha: 32,
       resolution: [1024],
-      saveFormat: 'bf16',
       timestepType: 'flux2_shift',
       sampleEvery: 250,
       sampleSteps: 28,
@@ -610,6 +616,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       transformerQuantization: 'none',
       textEncoderQuantization: 'none',
       trainTextEncoder: true,
+      saveFormat: 'fp16',
       guidanceScale: 7,
       sampleSteps: 25,
     },
@@ -659,6 +666,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       trainTextEncoder: true,
       transformerQuantization: 'none',
       textEncoderQuantization: 'none',
+      saveFormat: 'fp16',
       guidanceScale: 7,
       sampleSteps: 25,
     },
@@ -708,6 +716,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       trainTextEncoder: true,
       transformerQuantization: 'none',
       textEncoderQuantization: 'none',
+      saveFormat: 'fp16',
       guidanceScale: 7,
       sampleSteps: 25,
     },
@@ -814,9 +823,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       steps: 2500,
       epochs: 25,
       resolution: [1024],
-      // Musubi's own --save_precision default is fp32 — the provider always
-      // passes this instead.
-      saveFormat: 'bf16',
       // docs/zimage.md's recommended flow-matching baseline.
       timestepType: 'shift',
       discreteFlowShift: 2.0,
@@ -916,7 +922,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       networkDim: 32,
       networkAlpha: 32,
       resolution: [1024],
-      saveFormat: 'bf16',
       // docs/krea2.md: shift at 2.5 matches K2 inference at 1024x1024.
       timestepType: 'shift',
       discreteFlowShift: 2.5,
@@ -989,7 +994,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // docs/qwen_image.md's LoRA example trains at 5e-5, not the usual 1e-4.
       learningRate: 5e-5,
       resolution: [1024],
-      saveFormat: 'bf16',
       timestepType: 'shift',
       discreteFlowShift: 2.2,
       sampleEvery: 250,
@@ -1388,6 +1392,29 @@ export function getOptimizerOptions(
   })).filter((group) => group.items.length > 0);
 }
 
+/** Schedulers the backend can actually run, for the picker. */
+export function getSchedulerOptions(
+  provider: TrainingProvider,
+): SchedulerOption[] {
+  return SCHEDULER_OPTIONS.filter(
+    // The mock backend runs nothing, so it shows the unfiltered list.
+    (item) =>
+      provider === 'mock' ||
+      !item.providers ||
+      item.providers.includes(provider),
+  );
+}
+
+/** Whether `scheduler` is one the backend can run (unknown values pass). */
+export function isSchedulerSupported(
+  scheduler: string,
+  provider: TrainingProvider,
+): boolean {
+  const option = SCHEDULER_OPTIONS.find((s) => s.value === scheduler);
+  if (!option || !option.providers) return true;
+  return provider === 'mock' || option.providers.includes(provider);
+}
+
 /** Whether `optimizer` is one the backend can run (unknown values pass). */
 export function isOptimizerSupported(
   optimizer: string,
@@ -1419,6 +1446,13 @@ type SchedulerOption = {
   hint: string;
   /** Normalised values 0-1 for the sparkline, 16 points */
   curve: number[];
+  /**
+   * Backends whose scheduler factory can actually produce this shape. Omitted
+   * means every backend can. Unlike the optimiser list — where a wrong entry
+   * dies loudly at startup — a scheduler the backend silently flattens is
+   * worse: the run completes having ignored the setting.
+   */
+  providers?: TrainingProvider[];
 };
 
 export const SCHEDULER_OPTIONS: SchedulerOption[] = [
@@ -1451,6 +1485,12 @@ export const SCHEDULER_OPTIONS: SchedulerOption[] = [
       1, 0.75, 0.35, 0.05, 0.35, 0.75, 1, 0.75, 0.35, 0.05, 0.35, 0.75, 1, 0.75,
       0.35, 0.05,
     ],
+    // ai-toolkit can't run this. `BaseSDTrainProcess` injects `total_iters`
+    // into the scheduler params and `toolkit/scheduler.py` renames it to
+    // `T_0` — overwriting anything we pass — so the first cosine cycle always
+    // spans the entire run and no restart ever fires. Offering it there would
+    // draw waves the trainer isn't going to run.
+    providers: ['kohya', 'musubi'],
   },
   {
     value: 'linear',
