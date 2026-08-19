@@ -316,7 +316,7 @@ const SamplingSectionComponent = ({
                     max={100}
                     value={sampleSteps}
                     onChange={(val) => onFieldChange('sampleSteps', val)}
-                    className="w-full"
+                    className="w-20"
                   />
                 </div>
               )}
