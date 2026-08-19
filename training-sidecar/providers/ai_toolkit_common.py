@@ -156,10 +156,9 @@ SUPPORTED_MODELS = [
     # (Qwen/Qwen3-VL-4B-Instruct) and VAE (Qwen/Qwen-Image) default to HF-hub
     # downloads, overridable per `model_kwargs_paths` below — the client sends
     # local HF-format directories under those component keys when the user has
-    # them installed; absent keys fall back to the hub fetch. The Turbo variant
-    # (assistant-LoRA de-distillation, as with Z-Image Turbo) is deliberately
-    # not offered: musubi's docs confirm a RAW-trained LoRA applies to Turbo
-    # at inference.
+    # them installed; absent keys fall back to the hub fetch. RAW is the musubi
+    # route as well; the distilled Turbo checkpoint trains through an assistant
+    # LoRA and is the separate `krea2-turbo` entry below.
     {
         "id": "krea2",
         "name": "Krea 2",
@@ -196,6 +195,39 @@ SUPPORTED_MODELS = [
             "sample_steps": 28,
             # ai-toolkit's own krea2 UI preset sets `linear` — fallback only,
             # the client always sends the app-level default.
+            "timestep_type": "linear",
+        },
+    },
+    # Krea 2 Turbo — the distilled checkpoint, trainable only through
+    # ai-toolkit's assistant LoRA (client sends it as the `training_adapter`
+    # component -> `model.assistant_lora_path`; Krea2Model merges it at +1.0
+    # for training and applies it at -1.0 while sampling). Same arch class as
+    # RAW: ModelConfig strips the `:turbo` suffix ai-toolkit's own UI uses
+    # (config_modules.py), so it is cosmetic and we don't send it.
+    {
+        "id": "krea2-turbo",
+        "name": "Krea 2 Turbo",
+        "architecture": "krea2",
+        "model_path": "krea/Krea-2-Turbo",
+        "config": {"arch": "krea2", "quantize": True},
+        "model_kwargs_paths": {
+            "text_encoder_path": "te_repo",
+            "vae_path": "vae_repo",
+        },
+        # As for RAW: same ~12.3 GB fp8 DiT, same 16 GB budget.
+        "low_vram_layer_offloading": {"transformer_percent": 1.0},
+        "train_defaults": {
+            "noise_scheduler": "flowmatch",
+            "optimizer": "adamw8bit",
+            "lr": 1e-4,
+            "dtype": "bf16",
+            "resolution": [1024],
+            "steps": 2500,
+            # Guidance-distilled: the reference recipe is 9 steps at CFG off.
+            # The krea2 sampler passes `max(0, guidance_scale - 1)` to a
+            # 0-normalised CFG pipeline, so 1 here is what disables it.
+            "guidance_scale": 1,
+            "sample_steps": 9,
             "timestep_type": "linear",
         },
     },

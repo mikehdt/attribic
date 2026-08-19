@@ -5,8 +5,10 @@ import {
   FolderPlusIcon,
   FolderXIcon,
   GpuIcon,
+  SquareArrowOutUpRightIcon,
   StarIcon,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useCallback, useMemo } from 'react';
 
 import { Button } from '@/app/shared/button';
@@ -42,6 +44,7 @@ const FavouritesHeading = () => (
 
 export const ProjectList = () => {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const {
     loading,
     error,
@@ -241,6 +244,15 @@ export const ProjectList = () => {
             <FolderPlusIcon />
             New Project
           </Button>
+          <Button
+            onClick={() => router.push('/training')}
+            variant="ghost"
+            size="md"
+            width="xl"
+          >
+            <SquareArrowOutUpRightIcon />
+            LoRA Training
+          </Button>
         </p>
 
         <NewProjectModal
@@ -321,6 +333,17 @@ export const ProjectList = () => {
               </span>
               Training Projects
             </h2>
+
+            <Button
+              size="sm"
+              width="md"
+              variant="ghost"
+              onClick={() => router.push('/training')}
+              className="ml-auto"
+            >
+              <SquareArrowOutUpRightIcon />
+              LoRA Training
+            </Button>
           </div>
 
           {trainingStatus === 'error' ? (
@@ -338,7 +361,7 @@ export const ProjectList = () => {
           ) : trainingProjects.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">
               No saved training projects yet — use <strong>Save As…</strong> in
-              the training workbench to create one.
+              the LoRA Training workbench to create one.
             </p>
           ) : (
             <>

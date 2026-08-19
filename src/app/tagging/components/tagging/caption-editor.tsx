@@ -209,10 +209,10 @@ const CaptionEditorComponent = ({
         >
           {draft ? (
             renderBackdropText(draft, triggerPhrases)
-          ) : isActive ? (
-            // Non-breaking space keeps the backdrop at one line height when empty
-            '\u00A0'
           ) : (
+            // Behaves like a native placeholder: it survives hover and focus,
+            // and only gives way once there's text to show. It also holds the
+            // backdrop at one line height while the caption is empty.
             <span className="text-slate-400 dark:text-slate-600">
               Click to add caption...
             </span>

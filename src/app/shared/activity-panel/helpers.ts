@@ -139,6 +139,64 @@ export function formatPct(value: number, max: number): string {
   return (Math.min(1, value / max) * 100).toFixed(1);
 }
 
+const TQDM_RE = /(\d+)\/(\d+)\s+\[/;
+
+/**
+ * Turn the most recent sidecar log lines into a short, readable phase label so
+ * the activity card can show "Caching latents (3/4)" instead of a raw tqdm
+ * string or a silent "Preparing…". Walks backwards through the log tail to pick
+ * up the latest progress bar, classifying it from nearby context when the bar
+ * itself has no prefix.
+ *
+ * Shared by the activity card and the detail modal so both name the same phase
+ * for the same run — the modal is the card enlarged, not a second opinion.
+ */
+export function derivePreparingPhase(
+  lines: string[] | undefined,
+): string | null {
+  if (!lines || lines.length === 0) return null;
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    const tqdm = line.match(TQDM_RE);
+    if (tqdm) {
+      const counter = `${tqdm[1]}/${tqdm[2]}`;
+      const context = [line, ...lines.slice(Math.max(0, i - 5), i)]
+        .join(' ')
+        .toLowerCase();
+      if (/cach.*latent/.test(context)) return `Caching latents (${counter})`;
+      if (/text.*(encod|embed)|cach.*text/.test(context))
+        return `Encoding text (${counter})`;
+      return `Processing (${counter})`;
+    }
+
+    const l = line.toLowerCase();
+    // Sidecar-emitted setup phases (before the training backend starts).
+    if (/starting.*(ai-toolkit|server)/.test(l)) return 'Starting backend';
+    if (/server ready/.test(l)) return 'Backend ready';
+    if (/submitting/.test(l)) return 'Submitting job';
+    if (/job created/.test(l)) return 'Job created';
+    if (/waiting.*worker/.test(l)) return 'Waiting for worker';
+    // Training backend phases.
+    if (/load.*(model|transformer|pipeline)/.test(l)) return 'Loading model';
+    if (/quantiz/.test(l)) return 'Quantizing';
+    if (/cach.*latent/.test(l)) return 'Caching latents';
+    if (/text.*(encod|embed)/.test(l)) return 'Encoding text';
+    if (/start.*train|begin.*train/.test(l)) return 'Starting training';
+  }
+
+  return null;
+}
+
+/**
+ * The phase label without the "(3/4)" {@link derivePreparingPhase} appends, for
+ * the readouts that print the counts themselves — otherwise the same numbers
+ * land on the row twice.
+ */
+export function stripPhaseCounter(phase: string): string {
+  return phase.replace(/\s*\(\d+\/\d+\)$/, '');
+}
+
 /** Format a loss value with enough precision to be useful at typical LoRA loss magnitudes. */
 export function formatLoss(loss: number): string {
   if (!Number.isFinite(loss)) return '—';
@@ -411,6 +469,18 @@ export function formatDuration(ms: number): string {
   if (minutes < 60) return `${minutes}m ${seconds}s`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
+}
+
+/**
+ * A transfer rate as "8.4 MB/s". Sub-megabyte rates get no decimal — a link
+ * doing 340 KB/s doesn't hold a tenth of a kilobyte steady long enough for the
+ * digit to be anything but noise.
+ */
+export function formatSpeed(bytesPerSecond: number): string {
+  if (bytesPerSecond >= 1000 * 1000) {
+    return `${(bytesPerSecond / (1000 * 1000)).toFixed(1)} MB/s`;
+  }
+  return `${Math.round(bytesPerSecond / 1000)} KB/s`;
 }
 
 export function formatBytes(bytes: number): string {

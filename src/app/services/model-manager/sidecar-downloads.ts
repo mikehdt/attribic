@@ -52,6 +52,9 @@ export type SidecarDownload = {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  /** Measured live by the sidecar; null until it has a usable sample span. */
+  speed_bps: number | null;
+  eta_seconds: number | null;
 };
 
 const TIMEOUT_MS = 10_000;

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -51,9 +53,57 @@ CANCELLED = "cancelled"
 
 TERMINAL_STATUSES = (COMPLETED, FAILED, CANCELLED)
 
+# Transfer rate is measured over a short rolling window rather than since the
+# job started. A resumed download credits everything already on disk in one
+# tick, and a lifetime average would carry that phantom gigabyte-per-second
+# forever; a window forgets it.
+SPEED_WINDOW_SECONDS = 10.0
+# Below this the sample span is too short for the numbers to mean anything —
+# ticks land ~every megabyte, so on a fast link dozens arrive per second.
+SPEED_MIN_SPAN_SECONDS = 0.75
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+class RateTracker:
+    """Rolling-window transfer rate for one download.
+
+    Fed cumulative byte counts; reports bytes/second over the trailing window.
+    Reset it whenever the counter jumps for a reason other than transfer (a new
+    file crediting its already-on-disk bytes), so the jump becomes a new
+    baseline instead of a spike.
+    """
+
+    def __init__(self) -> None:
+        self._samples: deque[tuple[float, int]] = deque()
+
+    def reset(self) -> None:
+        self._samples.clear()
+
+    def record(self, bytes_downloaded: int) -> None:
+        now = time.monotonic()
+        # The counter can go backwards: the engine optimistically credits a
+        # partial, then withdraws it if the server ignores our Range and sends
+        # the file from byte 0. Start over rather than report a negative rate.
+        if self._samples and bytes_downloaded < self._samples[-1][1]:
+            self.reset()
+        self._samples.append((now, bytes_downloaded))
+        cutoff = now - SPEED_WINDOW_SECONDS
+        # Always keep two samples, however old — on a slow link they're the
+        # only measurement there is.
+        while len(self._samples) > 2 and self._samples[0][0] < cutoff:
+            self._samples.popleft()
+
+    def bytes_per_second(self) -> Optional[float]:
+        if len(self._samples) < 2:
+            return None
+        (start, first), (end, last) = self._samples[0], self._samples[-1]
+        span = end - start
+        if span < SPEED_MIN_SPAN_SECONDS:
+            return None
+        return max(0.0, (last - first) / span)
 
 
 @dataclass
@@ -79,9 +129,24 @@ class DownloadState:
     # the sidecar — the Node side builds it.
     sidecar_meta: Optional[dict] = None
     sidecar_file_name: Optional[str] = None
-    # Not persisted — process-local runtime handles.
+    # Not persisted — process-local runtime handles and live measurements.
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     task: Optional[asyncio.Task] = None
+    speed_bps: Optional[float] = None
+    eta_seconds: Optional[float] = None
+    rate: RateTracker = field(default_factory=RateTracker)
+
+    def measure(self) -> None:
+        """Refresh speed/ETA from the current byte count."""
+        self.rate.record(self.bytes_downloaded)
+        speed = self.rate.bytes_per_second()
+        self.speed_bps = speed
+        remaining = self.total_bytes - self.bytes_downloaded
+        # Total is the registry's declared size, which is sometimes an
+        # estimate, so the ETA is an estimate too — but a useful one.
+        self.eta_seconds = (
+            remaining / speed if speed and speed > 0 and remaining > 0 else None
+        )
 
     def to_public(self) -> dict:
         """The shape both the WebSocket and the REST endpoints hand out."""
@@ -99,14 +164,22 @@ class DownloadState:
             "created_at": self.created_at,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
+            "speed_bps": self.speed_bps,
+            "eta_seconds": self.eta_seconds,
         }
 
     def to_record(self) -> dict:
         """Everything needed to rebuild and resume this download after a
         restart. No credentials: the HuggingFace token is read from config.json
         when a transfer needs it, never copied into a record."""
+        record = self.to_public()
+        # Measured live, meaningless once the process that measured them is
+        # gone — a restored record would otherwise show a stale rate until the
+        # first tick of the resumed transfer.
+        record.pop("speed_bps", None)
+        record.pop("eta_seconds", None)
         return {
-            **self.to_public(),
+            **record,
             "repo_id": self.repo_id,
             "target_dir": self.target_dir,
             "files": self.files,
@@ -237,6 +310,12 @@ class DownloadManager:
                 async for event in download_model_files(
                     spec, state.job_id, state.cancel_event, self._transport
                 ):
+                    # Each file starts by crediting whatever of it is already on
+                    # disk, which isn't bandwidth. Rebaseline on the boundary so
+                    # that credit doesn't read as a burst of speed.
+                    if event["file_index"] != state.file_index:
+                        state.rate.reset()
+
                     state.bytes_downloaded = event["bytes_downloaded"]
                     state.total_bytes = event["total_bytes"] or state.total_bytes
                     state.current_file = event["current_file"]
@@ -253,6 +332,7 @@ class DownloadManager:
                         return
 
                     ticks += 1
+                    state.measure()
                     self._maybe_persist_progress(state, ticks)
                     await self._broadcast(state)
 
@@ -298,6 +378,9 @@ class DownloadManager:
         state.status = status
         state.error = error
         state.completed_at = _now()
+        state.speed_bps = None
+        state.eta_seconds = None
+        state.rate.reset()
         self._persist(state)
         await self._broadcast(state)
 

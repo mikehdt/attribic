@@ -120,6 +120,55 @@ class TestModelKwargs:
         assert block["quantize"] is True
 
 
+class TestTrainingAdapter:
+    """`model.assistant_lora_path` — the de-distilling assistant LoRA the
+    distilled Turbo checkpoints (Krea 2 Turbo, Z-Image Turbo) must train
+    through. Sent as the `training_adapter` component path."""
+
+    def krea2_turbo(self, extra_paths=None, hyperparameters=None):
+        paths = {"checkpoint": "X:/models/krea2/turbo.safetensors"}
+        paths.update(extra_paths or {})
+        hp = {"model_paths": paths}
+        hp.update(hyperparameters or {})
+        return make_request(hp, base_model="krea2-turbo")
+
+    def test_adapter_path_becomes_assistant_lora_path(self):
+        block = model_block(
+            self.krea2_turbo(
+                {"training_adapter": "X:/models/krea2/krea2_turbo_v1.safetensors"}
+            )
+        )
+        assert (
+            block["assistant_lora_path"]
+            == "X:/models/krea2/krea2_turbo_v1.safetensors"
+        )
+        # Same arch class as RAW — ai-toolkit's `krea2:turbo` suffix is
+        # cosmetic (ModelConfig strips it), so we never send it.
+        assert block["arch"] == "krea2"
+        assert block["name_or_path"] == "X:/models/krea2/turbo.safetensors"
+
+    def test_missing_adapter_omits_the_key_entirely(self):
+        # A `None` would reach ModelConfig as a set-but-empty value; the key
+        # has to be absent so ai-toolkit takes its own default.
+        assert "assistant_lora_path" not in model_block(self.krea2_turbo())
+
+    def test_turbo_sample_defaults_disable_cfg(self):
+        # guidance_scale 1 is what turns CFG *off*: the krea2 sampler passes
+        # max(0, gs - 1) to a 0-normalised pipeline.
+        request = self.krea2_turbo()
+        request.sample_prompts = ["a photo of a cat"]
+        sample = _build_config_dict(request)["config"]["process"][0]["sample"]
+        assert sample["guidance_scale"] == 1
+        assert sample["sample_steps"] == 9
+
+    def test_turbo_shares_krea2_model_kwargs_paths(self):
+        block = model_block(self.krea2_turbo({"te_repo": "X:/models/krea2"}))
+        assert block["model_kwargs"] == {"text_encoder_path": "X:/models/krea2"}
+
+    def test_raw_krea2_sends_no_adapter(self):
+        assert "assistant_lora_path" not in model_block(make_request())
+
+
 class TestLayerOffloading:
     def test_percent_drives_layer_offloading(self):
         block = model_block(make_request({"layer_offload_percent": 100}))

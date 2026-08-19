@@ -17,6 +17,7 @@ import { SparklineDot, StatSparkline } from '../../stats/stat-sparkline';
 import { useStats } from '../../stats/use-stats';
 import {
   deriveExpectedCheckpointCount,
+  derivePreparingPhase,
   deriveSampleEventCount,
   deriveSampleImageSteps,
   deriveSavedCount,
@@ -28,6 +29,7 @@ import {
   formatPct,
   formatSamplingLabel,
   isSamplingPhase,
+  stripPhaseCounter,
 } from '../helpers';
 import { LossChart } from '../loss-chart/loss-chart';
 import {
@@ -188,6 +190,12 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
   // caching doesn't render as "Step 12 / 40" or skew the loss chart's x-axis.
   const prepStep = progress.currentStep ?? 0;
   const prepTotal = isPreparing ? (progress.totalSteps ?? 0) : 0;
+  const prepPct = formatPct(prepStep, prepTotal);
+  // Same label the activity card puts on a setup phase: the provider's own when
+  // it sends one, else scraped from the log tail. Cheap enough (a walk over the
+  // 50-line tail) to run past this component's early return without a memo.
+  const preparingPhase =
+    progress.phase ?? derivePreparingPhase(progress.logLines);
   const hasStepInfo = !isPreparing && (progress.totalSteps ?? 0) > 0;
   const currentStep = hasStepInfo ? (progress.currentStep ?? 0) : 0;
   const totalSteps = hasStepInfo ? (progress.totalSteps ?? 0) : 0;
@@ -400,8 +408,18 @@ export function TrainingDetailContent({ job }: { job: TrainingJob | null }) {
         />
       ) : prepTotal > 0 ? (
         // A setup phase with a countable bar (caching latents / text
-        // embeddings) — show its own progress rather than an idle spinner.
-        <ProgressBar value={prepStep} max={prepTotal} color="sky" size="md" />
+        // embeddings) — show its own progress rather than an idle spinner,
+        // with the same count/percentage readout the activity card carries.
+        <div>
+          <ProgressBar value={prepStep} max={prepTotal} color="sky" size="md" />
+          <div className="mt-2 flex items-baseline justify-between text-sm tabular-nums">
+            <span className="text-slate-500">
+              {preparingPhase ? stripPhaseCounter(preparingPhase) : 'Preparing'}{' '}
+              {`${prepStep.toLocaleString()} / ${prepTotal.toLocaleString()}`}
+            </span>
+            <span className="font-medium text-(--foreground)">{prepPct}%</span>
+          </div>
+        </div>
       ) : isRunning ? (
         <ProgressBar value={0} max={1} color="sky" indeterminate size="md" />
       ) : null}

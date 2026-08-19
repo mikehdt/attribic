@@ -26,22 +26,7 @@ export type ModelComponentType =
    * path when the backend is switched. (Z-Image predates this and carries its
    * pipeline directory under `checkpoint`; it has only ever had one backend.)
    */
-  | 'diffusers'
-  /**
-   * An HF-format (transformers) text-encoder directory — config + tokenizer +
-   * sharded weights, loaded via `from_pretrained`. Distinct from `qwen` for
-   * the same reason `diffusers` is distinct from `checkpoint`: a model can
-   * need both shapes depending on the backend (Krea 2's TE is a single-file
-   * Comfy repack under musubi but an HF directory under ai-toolkit), and the
-   * two must not overwrite each other's path when the backend is switched.
-   */
-  | 'te_repo'
-  /**
-   * An HF diffusers-format VAE directory — specifically a repo root that
-   * *contains* a `vae/` subfolder, matching how ai-toolkit loads it
-   * (`from_pretrained(path, subfolder="vae")`).
-   */
-  | 'vae_repo';
+  | 'diffusers';
 
 export type ModelComponent = {
   type: ModelComponentType;
@@ -838,13 +823,11 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     // Musubi trains the RAW single-file DiT with split VAE/TE weights.
     // ai-toolkit loads the same DiT file, but its Krea2Model wants the TE and
     // VAE as HF-format *directories* (`from_pretrained`) — the single-file
-    // Comfy repacks musubi reads are the wrong shape — so that path carries
-    // its own component pair (te_repo/vae_repo), pointed at Krea2Model's
-    // `model_kwargs.text_encoder_path` / `vae_path` overrides. Deliberately
-    // optional: left unset, ai-toolkit downloads its own copies into the HF
-    // cache on first run and reuses them from there ever after, so a user who
-    // has already trained Krea 2 on ai-toolkit must not be blocked at the
-    // start gate for paths the backend can resolve itself.
+    // Comfy repacks musubi reads are the wrong shape. Rather than offer a
+    // second ~8.5 GB copy of the same weights in our models folder, we let
+    // ai-toolkit resolve them itself: unset, `model_kwargs.text_encoder_path`
+    // and `vae_path` fall through to its own HF-hub defaults, cached on first
+    // run and reused ever after. The tip below tells the user that's happening.
     providers: ['musubi', 'ai-toolkit', 'mock'],
     components: [
       {
@@ -874,25 +857,13 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
           label: 'Krea 2 RAW DiT',
           required: true,
           downloadId: 'dl-krea2-raw',
-        },
-        {
-          type: 'te_repo',
-          label: 'Qwen3-VL 4B Text Encoder (HF)',
-          required: false,
-          downloadId: 'dl-krea2-te-hf',
-          hint: 'HF-format directory (not the single-file Musubi encoder). Leave empty and ai-toolkit downloads its own copy to the HF cache on first run',
-        },
-        {
-          type: 'vae_repo',
-          label: 'Qwen-Image VAE (HF)',
-          required: false,
-          downloadId: 'dl-krea2-vae-hf',
-          hint: 'Diffusers-format directory (not the single-file Musubi VAE). Leave empty and ai-toolkit downloads its own copy to the HF cache on first run',
+          hint: 'Train on RAW — the distilled Turbo checkpoint is for inference',
         },
       ],
     },
     tips: [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
+      'On AI Toolkit only the DiT is set here — it needs the text encoder and VAE as Hugging Face directories rather than single files, so it downloads its own copies to the HF cache on the first run and reuses them after that',
       'The ~24 GB bf16 DiT needs fp8 quantisation plus offloading on 16 GB cards — Musubi streams 26 of 28 blocks by default (fewer spills into system RAM and crawls); AI Toolkit streams its layers via the Transformer Offload % setting',
       'Sample images run real CFG against a default negative prompt; without CFG, RAW output is blurry by design',
     ],
@@ -940,6 +911,79 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // ai-toolkit-only. Full streaming matches ai-toolkit's own UI default
       // for its layer-offloading slider; 50% measured as still spilling on
       // 16 GB (backward-pass activation peaks) at ~79 s/step.
+      layerOffloadPercent: 100,
+    },
+  },
+  {
+    id: 'krea2-turbo',
+    name: 'Krea 2 Turbo',
+    architecture: 'krea2',
+    description:
+      'Distilled Krea 2, de-distilled by an adapter for the duration of training',
+    // ai-toolkit only. Turbo is step/guidance-distilled, so a LoRA trained
+    // straight against it comes out inert — ai-toolkit's answer is an assistant
+    // LoRA merged at +1.0 for training and applied at -1.0 while sampling
+    // (`Krea2Model.load_training_adapter`), the same mechanism Z-Image Turbo
+    // uses. Musubi has no equivalent, which is why its route is RAW (above).
+    // Train here when the LoRA is destined for Turbo at inference: a
+    // RAW-trained delta lands against weights Turbo has since moved away from,
+    // and attenuates.
+    providers: ['ai-toolkit', 'mock'],
+    components: [
+      {
+        type: 'checkpoint',
+        label: 'Krea 2 Turbo DiT',
+        required: true,
+        downloadId: 'dl-krea2-turbo',
+        hint: 'The distilled checkpoint — only trainable with the adapter below',
+      },
+      {
+        type: 'training_adapter',
+        label: 'Training Adapter',
+        required: true,
+        downloadId: 'dl-krea2-turbo-adapter',
+        hint: 'How ai-toolkit de-distils Turbo while training — without it the LoRA comes out inert',
+      },
+    ],
+    tips: [
+      'Pick this over Krea 2 RAW when the LoRA is for Turbo at inference — a RAW-trained delta attenuates against the distilled weights',
+      'The text encoder and VAE are not set here — AI Toolkit needs them as Hugging Face directories rather than single files, so it downloads its own copies to the HF cache on the first run and reuses them after that',
+      'Trained through a de-distilling adapter, so progress per step is slower than RAW — judge at 1,500+ steps, not on a short test run',
+      'The ~24.5 GB DiT needs fp8 quantisation plus full layer offloading on ~16 GB cards',
+    ],
+    availableResolutions: [512, 768, 1024, 1280],
+    hiddenFields: [
+      // Krea2Model freezes the text encoder — there is no TE-unfreeze path.
+      'trainTextEncoder',
+      'textEncoderLR',
+      // Flow-matching arch: the DDPM-only mechanisms don't exist here (also
+      // capability-gated off for ai-toolkit, but hidden per-model so the mock
+      // backend doesn't offer them for this model either).
+      'minSnrGamma',
+      'noiseOffset',
+      // Fixed per-arch sampler.
+      'sampleSampler',
+    ],
+    defaults: {
+      ...BASE_DEFAULTS,
+      steps: 2500,
+      epochs: 25,
+      networkDim: 32,
+      networkAlpha: 32,
+      resolution: [1024],
+      sampleEvery: 250,
+      // ai-toolkit's own krea2 presets set `linear`; `shift` (the Krea 2 RAW
+      // default) is a musubi spelling ai-toolkit doesn't recognise.
+      timestepType: 'linear',
+      // Turbo is guidance-distilled: 9 steps, CFG off. ai-toolkit's krea2
+      // sampler passes `max(0, guidance_scale - 1)` to a pipeline whose CFG is
+      // 0-normalised (`v = v_cond + scale * (v_cond - v_uncond)`), so 1 here is
+      // what disables it — the same arithmetic as Z-Image Turbo.
+      guidanceScale: 1,
+      sampleSteps: 9,
+      // Same weights budget as RAW: the fp8 DiT is ~12.3 GB resident, so a
+      // 16 GB card needs the full stream. Matches ai-toolkit's own slider
+      // default.
       layerOffloadPercent: 100,
     },
   },
@@ -1181,7 +1225,15 @@ export type OptimizerOption = {
 /**
  * Verified against each backend's optimiser factory and its declared
  * dependencies — `library/optimizer.py` + `requirements.txt` for kohya,
- * `toolkit/optimizer.py` + `requirements_base.txt` for ai-toolkit.
+ * `toolkit/optimizer.py` + `requirements_base.txt` for ai-toolkit,
+ * `training/trainer_base.py` (`get_optimizer`) + `pyproject.toml` for musubi.
+ *
+ * Musubi only special-cases adamw/adamw8bit/adafactor; every other name falls
+ * through to a generic loader that imports a dotted path (or reads a bare name
+ * off `torch.optim`). bitsandbytes is one of its declared dependencies, so the
+ * `bitsandbytes.optim.*` entries below need no extra install — but they must
+ * keep their exact casing, because that loader does `getattr` with the name as
+ * typed (the sidecar preserves case for dotted values for this reason).
  *
  * Deliberately absent: DAdaptation. Both factories have a branch for it, but
  * neither project depends on the `dadaptation` package, so it was an option
@@ -1228,6 +1280,22 @@ export const OPTIMIZER_OPTIONS: { group: string; items: OptimizerOption[] }[] =
       group: 'Memory-efficient',
       items: [
         { value: 'adafactor', label: 'Adafactor', hint: 'Lower VRAM usage' },
+        {
+          // bitsandbytes' Lion keeps one momentum buffer where AdamW keeps two,
+          // so its optimiser state is roughly half the size.
+          value: 'bitsandbytes.optim.Lion8bit',
+          label: 'Lion 8-bit',
+          hint: 'Half the optimiser state of AdamW; wants ~1/10 the LR',
+          providers: ['musubi'],
+        },
+        {
+          // Paged state lives in unified memory: under VRAM pressure it spills
+          // to system RAM instead of raising OOM. Slower when it does spill.
+          value: 'bitsandbytes.optim.PagedAdamW8bit',
+          label: 'AdamW 8-bit (paged)',
+          hint: 'AdamW 8-bit that spills to system RAM instead of OOMing',
+          providers: ['musubi'],
+        },
       ],
     },
     {
@@ -1241,6 +1309,15 @@ export const OPTIMIZER_OPTIONS: { group: string; items: OptimizerOption[] }[] =
           label: 'Lion',
           hint: 'Fast convergence',
           providers: ['kohya'],
+        },
+        {
+          // Two EMAs of the gradient — one fast, one slow — so old gradients
+          // keep contributing. The extra buffer costs a little more VRAM than
+          // plain AdamW 8-bit.
+          value: 'bitsandbytes.optim.AdEMAMix8bit',
+          label: 'AdEMAMix 8-bit',
+          hint: 'Keeps older gradients useful on long runs; a little more VRAM',
+          providers: ['musubi'],
         },
       ],
     },

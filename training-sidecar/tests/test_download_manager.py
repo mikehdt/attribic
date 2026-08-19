@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from downloads.manager import DownloadManager
+from downloads.manager import DownloadManager, RateTracker
 from models import DownloadFileSpec, StartDownloadRequest
 
 BODY = bytes(range(256)) * 40
@@ -380,6 +380,72 @@ def test_active_model_ids_covers_queued_and_running(tmp_path):
     during, after = asyncio.run(scenario())
     assert during == {"test-model"}
     assert after == set()
+
+
+# --- Speed and ETA ----------------------------------------------------------
+
+
+def test_rate_tracker_measures_over_the_window(monkeypatch):
+    clock = {"t": 100.0}
+    monkeypatch.setattr(
+        "downloads.manager.time.monotonic", lambda: clock["t"]
+    )
+    tracker = RateTracker()
+
+    tracker.record(0)
+    assert tracker.bytes_per_second() is None  # one sample says nothing
+
+    clock["t"] += 0.1
+    tracker.record(1_000_000)
+    # Span too short to be meaningful yet.
+    assert tracker.bytes_per_second() is None
+
+    clock["t"] += 1.9
+    tracker.record(4_000_000)
+    assert tracker.bytes_per_second() == pytest.approx(2_000_000)
+
+
+def test_rate_tracker_forgets_a_credited_partial(monkeypatch):
+    """A resume rewinds the counter when the server ignores our Range. That
+    must not read as a negative rate."""
+    clock = {"t": 0.0}
+    monkeypatch.setattr(
+        "downloads.manager.time.monotonic", lambda: clock["t"]
+    )
+    tracker = RateTracker()
+
+    tracker.record(5_000_000)
+    clock["t"] += 1.0
+    tracker.record(0)
+    assert tracker.bytes_per_second() is None
+
+    clock["t"] += 1.0
+    tracker.record(3_000_000)
+    assert tracker.bytes_per_second() == pytest.approx(3_000_000)
+
+
+def test_progress_broadcasts_carry_speed_but_records_do_not(tmp_path):
+    async def scenario():
+        manager, ws = make_manager(tmp_path)
+        await manager.start(request_for(tmp_path))
+        await drain(manager, "dl-1")
+        return ws
+
+    ws = asyncio.run(scenario())
+
+    # The fields are on the wire shape whether or not this small fixture
+    # transfers long enough to produce a number.
+    assert all("speed_bps" in m and "eta_seconds" in m for m in ws.sent)
+    # Terminal states clear them — a finished download has no rate.
+    assert ws.sent[-1]["speed_bps"] is None
+    assert ws.sent[-1]["eta_seconds"] is None
+
+    record = json.loads(
+        (tmp_path / "records" / "dl-1.json").read_text(encoding="utf-8")
+    )
+    # Transient measurements have no business surviving the process.
+    assert "speed_bps" not in record
+    assert "eta_seconds" not in record
 
 
 if __name__ == "__main__":

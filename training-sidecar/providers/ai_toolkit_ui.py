@@ -1013,7 +1013,17 @@ class AiToolkitUiProvider(TrainingProvider):
                             # BaseSDTrainProcess passes desc=self.job.name, and
                             # the trainer reads its name from the *config* we
                             # send (output_name), not the DB row's unique_name.
-                            prep_bar = None
+                            #
+                            # Snap the setup bar to full rather than dropping it:
+                            # training starting means the phase it was tracking
+                            # necessarily finished, and one poll can carry both
+                            # its last partial frame and this line — so clearing
+                            # here leaves the UI's last word on a bar stuck at
+                            # 38/40 before it flips to an indeterminate shimmer.
+                            # Held (not re-yielded) so it survives to the next
+                            # poll, which is what makes 100% actually paint.
+                            if prep_bar is not None:
+                                prep_bar = (prep_bar[0], prep_bar[2], prep_bar[2])
                             continue
                         prep_bar = (
                             _prep_phase_for_desc(desc),

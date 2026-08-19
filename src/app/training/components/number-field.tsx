@@ -54,7 +54,6 @@ export function NumberField<K extends NumericField>({
   validate,
   hint,
   placeholder,
-  className = 'w-full tabular-nums',
   ariaLabel,
 }: NumberFieldProps<K>) {
   const handleChange = useCallback(
@@ -79,7 +78,6 @@ export function NumberField<K extends NumericField>({
         max={max}
         validate={validate}
         placeholder={placeholder}
-        className={className}
         aria-label={ariaLabel}
       />
       {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}

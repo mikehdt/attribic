@@ -344,6 +344,18 @@ class TestBuildCliArgs:
         idx = args.index("--optimizer_args")
         assert args[idx + 1] == "weight_decay=0.01"
 
+    def test_dotted_optimizer_keeps_its_casing(self, provider, tmp_path):
+        """Musubi's fallback loader getattrs the name as typed, so lowercasing
+        a dotted path turns it into an AttributeError at optimizer setup."""
+        request = make_request(
+            tmp_path,
+            {"optimizer": "bitsandbytes.optim.PagedAdamW8bit", "weight_decay": 0.01},
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--optimizer_type=bitsandbytes.optim.PagedAdamW8bit" in args
+        idx = args.index("--optimizer_args")
+        assert args[idx + 1] == "weight_decay=0.01"
+
 
 class TestNewArchitectures:
     """Per-arch quirks of the entries beyond Z-Image: fp8 flag names,
@@ -553,6 +565,13 @@ class TestValidateRequest:
         request = make_request(tmp_path, {"optimizer": "prodigy"})
         errors = provider.validate_request(request)
         assert any("prodigy" in e for e in errors)
+
+    def test_dotted_bitsandbytes_optimizer_accepted(self, provider, tmp_path):
+        self.touch_components(tmp_path)
+        request = make_request(
+            tmp_path, {"optimizer": "bitsandbytes.optim.Lion8bit"}
+        )
+        assert provider.validate_request(request) == []
 
     def test_blocks_to_swap_capped(self, provider, tmp_path):
         self.touch_components(tmp_path)

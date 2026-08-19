@@ -86,7 +86,6 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
       spinner = false,
       step,
       onBlur,
-      className = '',
       ...props
     },
     ref,
@@ -146,7 +145,7 @@ export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(
         value={draft ?? String(value)}
         onChange={handleChange}
         onBlur={handleBlur}
-        className={`tabular-nums ${className}`}
+        className="tabular-nums"
         {...props}
       />
     );

@@ -84,6 +84,13 @@ export type DownloadJob = JobBase & {
     fileIndex?: number;
     /** Total number of files in this download. */
     totalFiles?: number;
+    /**
+     * Transfer rate over the sidecar's trailing window, and the ETA derived
+     * from it. Absent for the first second or so of a transfer, and once it
+     * has settled.
+     */
+    speedBps?: number;
+    etaSeconds?: number;
   } | null;
 };
 

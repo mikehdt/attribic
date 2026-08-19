@@ -12,6 +12,7 @@ import {
 import { ProgressBar } from '../progress-bar/progress-bar';
 import { ActionButton } from './action-button';
 import {
+  derivePreparingPhase,
   deriveSampleImageSteps,
   deriveSavedCount,
   formatDuration,
@@ -20,53 +21,10 @@ import {
   formatPct,
   formatSamplingLabel,
   isSamplingPhase,
+  stripPhaseCounter,
 } from './helpers';
 import { LossChart } from './loss-chart/loss-chart';
 import { useLrScheduleCurve } from './use-lr-schedule-curve';
-
-const TQDM_RE = /(\d+)\/(\d+)\s+\[/;
-
-/**
- * Turn the most recent sidecar log lines into a short, readable phase
- * label so the activity card can show "Caching latents (3/4)" instead of
- * a raw tqdm string or a silent "Preparing…". Walks backwards through
- * the log tail to pick up the latest progress bar, classifying it from
- * nearby context when the bar itself has no prefix.
- */
-function derivePreparingPhase(lines: string[] | undefined): string | null {
-  if (!lines || lines.length === 0) return null;
-
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    const tqdm = line.match(TQDM_RE);
-    if (tqdm) {
-      const counter = `${tqdm[1]}/${tqdm[2]}`;
-      const context = [line, ...lines.slice(Math.max(0, i - 5), i)]
-        .join(' ')
-        .toLowerCase();
-      if (/cach.*latent/.test(context)) return `Caching latents (${counter})`;
-      if (/text.*(encod|embed)|cach.*text/.test(context))
-        return `Encoding text (${counter})`;
-      return `Processing (${counter})`;
-    }
-
-    const l = line.toLowerCase();
-    // Sidecar-emitted setup phases (before the training backend starts).
-    if (/starting.*(ai-toolkit|server)/.test(l)) return 'Starting backend';
-    if (/server ready/.test(l)) return 'Backend ready';
-    if (/submitting/.test(l)) return 'Submitting job';
-    if (/job created/.test(l)) return 'Job created';
-    if (/waiting.*worker/.test(l)) return 'Waiting for worker';
-    // Training backend phases.
-    if (/load.*(model|transformer|pipeline)/.test(l)) return 'Loading model';
-    if (/quantiz/.test(l)) return 'Quantizing';
-    if (/cach.*latent/.test(l)) return 'Caching latents';
-    if (/text.*(encod|embed)/.test(l)) return 'Encoding text';
-    if (/start.*train|begin.*train/.test(l)) return 'Starting training';
-  }
-
-  return null;
-}
 
 export function TrainingJobCard({
   job,
@@ -288,7 +246,9 @@ export function TrainingJobCard({
             />
             <div className="mt-2 flex items-baseline justify-between text-xs tabular-nums">
               <span className="text-slate-500">
-                {preparingPhase ?? 'Preparing'}{' '}
+                {preparingPhase
+                  ? stripPhaseCounter(preparingPhase)
+                  : 'Preparing'}{' '}
                 {`${progress!.currentStep.toLocaleString()} / ${progress!.totalSteps.toLocaleString()}`}
               </span>
               <span className="font-medium text-(--foreground)">

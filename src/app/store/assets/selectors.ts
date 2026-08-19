@@ -82,19 +82,28 @@ const selectTagSortType = (state: RootState) =>
 const selectTagSortDirection = (state: RootState) =>
   state.project.config.tagSortDirection;
 
+// Result shape is compared field-by-field (see resultEqualityCheck below), so
+// an asset record that changed for an unrelated reason — a caption keystroke —
+// hands back the previous array and leaves the tag list unrendered.
+const tagsWithStatusEqual = (
+  a: { name: string; status: number }[],
+  b: { name: string; status: number }[],
+) =>
+  a.length === b.length &&
+  a.every((tag, i) => tag.name === b[i].name && tag.status === b[i].status);
+
 export const selectOrderedTagsWithStatus = createSelector(
-  // Input selectors
+  // Input selectors. Keyed on the single asset rather than the whole `images`
+  // array: every asset gets a new array reference on any mutation, so taking
+  // the list here would recompute this for every mounted row on every edit.
   [
-    selectAllImages,
-    selectImageIndexById,
+    selectAssetById,
     selectTagCounts,
     selectTagSortType,
     selectTagSortDirection,
-    (_, fileId: string) => fileId,
   ],
   // Result function
-  (images, indexById, tagCounts, sortType, sortDirection, fileId) => {
-    const selectedImage = images[indexById[fileId]];
+  (selectedImage, tagCounts, sortType, sortDirection) => {
     if (!selectedImage) return [];
 
     // Create an array of objects with tag name and status
@@ -129,7 +138,11 @@ export const selectOrderedTagsWithStatus = createSelector(
   },
   // weakMapMemoize caches per-argument-combination instead of a single slot,
   // preventing cache thrashing when multiple components call with different fileIds
-  { memoize: weakMapMemoize, argsMemoize: weakMapMemoize },
+  {
+    memoize: weakMapMemoize,
+    argsMemoize: weakMapMemoize,
+    memoizeOptions: { resultEqualityCheck: tagsWithStatusEqual },
+  },
 );
 
 export const selectImageSizes = createSelector([selectAllImages], (images) => {
@@ -487,14 +500,10 @@ const selectFilterTagsSet = createSelector(
 export const selectAssetHighlightedTags = wrapSelector(
   'selectAssetHighlightedTags',
   createSelector(
-    [
-      selectAllImages,
-      selectImageIndexById,
-      selectFilterTagsSet,
-      (_, assetId: string) => assetId,
-    ],
-    (imageAssets, indexById, filterTagsSet, assetId) => {
-      const asset = imageAssets[indexById[assetId]];
+    // Keyed on the single asset, not the whole `images` array — see the note on
+    // selectOrderedTagsWithStatus
+    [selectAssetById, selectFilterTagsSet],
+    (asset, filterTagsSet) => {
       if (!asset || filterTagsSet.size === 0) return new Set<string>();
 
       // Only return tags that exist on this asset AND are in the filter

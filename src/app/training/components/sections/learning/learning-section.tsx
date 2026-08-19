@@ -606,7 +606,6 @@ const LearningSectionComponent = ({
                   kind="int"
                   min={1}
                   max={8}
-                  className="w-full tabular-nums"
                   hint={
                     batchSize > 1 ? (
                       <span className="text-amber-500">
@@ -626,7 +625,7 @@ const LearningSectionComponent = ({
                   onFieldChange={onFieldChange}
                   kind="int"
                   min={-1}
-                  className="w-full tabular-nums"
+                  className="w-full"
                   hint="-1 for random, fixed for reproducibility. Seeds the training run, not sample generation."
                 />
               )}

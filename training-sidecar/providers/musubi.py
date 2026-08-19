@@ -302,12 +302,44 @@ SUPPORTED_MODELS = [
 ]
 
 # Optimizers musubi-tuner can construct. AdamW/AdamW8bit/Adafactor are handled
-# by its factory directly (bitsandbytes is a declared dependency); anything
-# else falls through to `getattr(torch.optim, name)`, so lion/prodigy — extra
-# packages neither declared nor importable by bare name — die at optimizer
-# construction. Checked in validate_request so a saved config carrying one
-# fails before enqueue rather than seconds into the run.
-_SUPPORTED_OPTIMIZERS = {"adamw", "adamw8bit", "adafactor"}
+# by its factory directly; everything else falls through to a generic loader
+# that imports a dotted path, or reads a bare name off `torch.optim`. So the
+# bitsandbytes classes below work unmodified (bitsandbytes is a declared
+# dependency) while lion/prodigy — extra packages neither declared nor
+# importable by bare name — die at optimizer construction. Checked in
+# validate_request so a saved config carrying one fails before enqueue rather
+# than seconds into the run.
+_BARE_OPTIMIZERS = {"adamw", "adamw8bit", "adafactor"}
+
+# Full paths handed to that generic loader. It resolves the class with getattr
+# on the name *as typed*, so these strings must reach the command line with
+# their casing intact — see _canonical_optimizer.
+_DOTTED_OPTIMIZERS = (
+    "bitsandbytes.optim.Lion8bit",
+    "bitsandbytes.optim.PagedAdamW8bit",
+    "bitsandbytes.optim.AdEMAMix8bit",
+)
+
+# Optimizers that accept a weight_decay kwarg, for the weight_decay emission.
+# Adafactor takes one too but musubi drives it through its own relative_step
+# path, so it stays out (unchanged behaviour).
+_WEIGHT_DECAY_OPTIMIZERS = {"adamw", "adamw8bit", *_DOTTED_OPTIMIZERS}
+
+
+def _canonical_optimizer(value: object) -> Optional[str]:
+    """The exact `--optimizer_type` string for `value`, or None if unsupported.
+
+    Musubi lowercases the name itself when matching its three special cases, so
+    bare names can go down as-is; dotted paths are restored to their canonical
+    casing because the fallback loader is case-sensitive.
+    """
+    lowered = str(value or "").strip().lower()
+    if lowered in _BARE_OPTIMIZERS:
+        return lowered
+    for dotted in _DOTTED_OPTIMIZERS:
+        if dotted.lower() == lowered:
+            return dotted
+    return None
 
 
 def _find_model(model_id: str) -> Optional[dict]:
@@ -382,11 +414,12 @@ class MusubiProvider(SdScriptsProvider):
             except ValueError as e:
                 errors.append(str(e))
 
-        optimizer = str(hp.get("optimizer", "adamw8bit")).lower()
-        if optimizer not in _SUPPORTED_OPTIMIZERS:
+        optimizer = hp.get("optimizer", "adamw8bit")
+        if _canonical_optimizer(optimizer) is None:
             errors.append(
                 f"Musubi Tuner cannot run the '{optimizer}' optimizer — "
-                "supported: " + ", ".join(sorted(_SUPPORTED_OPTIMIZERS))
+                "supported: "
+                + ", ".join(sorted(_BARE_OPTIMIZERS) + list(_DOTTED_OPTIMIZERS))
             )
 
         model_def = _find_model(request.base_model)
@@ -706,10 +739,12 @@ class MusubiProvider(SdScriptsProvider):
             if comp["key"] in paths
         ]
 
-        # Musubi's optimizer factory lowercases the name itself, so the app's
-        # values pass through as-is (validate_request already restricted them
-        # to the ones its environment can construct).
-        optimizer = str(hp.get("optimizer", "adamw8bit")).lower()
+        # validate_request already restricted this to the names musubi's
+        # environment can construct; canonicalising again keeps a dotted path's
+        # casing intact for its case-sensitive fallback loader.
+        optimizer = (
+            _canonical_optimizer(hp.get("optimizer", "adamw8bit")) or "adamw8bit"
+        )
 
         # Same duration rule as Kohya: epochs-mode lets the trainer derive the
         # true step total from its own bucket layout.
@@ -794,9 +829,9 @@ class MusubiProvider(SdScriptsProvider):
         # freeform pairs, theirs winning on key collision (same policy as the
         # Kohya builder).
         optimizer_args: list[str] = []
-        if float(hp.get("weight_decay", 0) or 0) > 0 and optimizer in (
-            "adamw",
-            "adamw8bit",
+        if (
+            float(hp.get("weight_decay", 0) or 0) > 0
+            and optimizer in _WEIGHT_DECAY_OPTIMIZERS
         ):
             optimizer_args.append(f'weight_decay={_num(hp["weight_decay"])}')
         user_optimizer_args = _parse_kv_args(hp.get("optimizer_args", ""))

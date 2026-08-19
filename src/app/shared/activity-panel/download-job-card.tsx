@@ -8,7 +8,11 @@ import { clearDownload } from '@/app/store/jobs/download-runtime';
 
 import { ProgressBar } from '../progress-bar/progress-bar';
 import { ActionButton } from './action-button';
-import { formatBytes } from './helpers';
+import { formatBytes, formatEta, formatSpeed } from './helpers';
+
+// Past this the estimate is being driven by a rate that's collapsed to nearly
+// nothing, and "18h left" is more alarming than informative.
+const MAX_USEFUL_ETA_SECONDS = 24 * 60 * 60;
 
 export function DownloadJobCard({
   job,
@@ -53,6 +57,20 @@ export function DownloadJobCard({
   const fileCountLabel = multiFile
     ? `File ${job.progress?.fileIndex ?? 1} of ${job.progress?.totalFiles}`
     : null;
+
+  // Both are measured by the sidecar, so they're absent for the first moment of
+  // a transfer and after it settles — hence the per-part guards rather than one
+  // check on `progress`.
+  const speed = job.progress?.speedBps;
+  const eta = job.progress?.etaSeconds;
+  const rateLabel = [
+    speed !== undefined && speed > 0 ? formatSpeed(speed) : null,
+    eta !== undefined && eta > 0 && eta < MAX_USEFUL_ETA_SECONDS
+      ? `${formatEta(Math.round(eta))} left`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const statusLabel = isInterrupted
     ? 'Interrupted'
@@ -101,8 +119,11 @@ export function DownloadJobCard({
             indeterminate={isRunning && !job.progress}
             className="mb-1"
           />
-          {isRunning && fileCountLabel && (
-            <p className="text-xs text-slate-400">{fileCountLabel}</p>
+          {isRunning && (fileCountLabel || rateLabel) && (
+            <div className="flex justify-between gap-2 text-xs text-slate-400 tabular-nums">
+              <span className="truncate">{fileCountLabel}</span>
+              <span className="shrink-0 text-right">{rateLabel}</span>
+            </div>
           )}
           <div className="flex justify-between text-xs text-slate-500 tabular-nums">
             <span className="truncate">{statusLabel}</span>
