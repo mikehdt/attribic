@@ -40,7 +40,7 @@ export const MoveToFolderModal = ({
     hasInvalidConstraints,
 
     selectedDestination,
-    setSelectedDestination,
+    chooseDestination,
     folderOptions,
     archiveOption,
     isArchiveMode,
@@ -167,7 +167,7 @@ export const MoveToFolderModal = ({
                       value={option.value}
                       checked={isSelected}
                       disabled={option.disabled}
-                      onChange={() => setSelectedDestination(option.value)}
+                      onChange={() => chooseDestination(option.value)}
                       className="sr-only"
                     />
 
@@ -262,7 +262,7 @@ export const MoveToFolderModal = ({
                 name="destination"
                 value={DESTINATION_NEW}
                 checked={isNewFolderMode}
-                onChange={() => setSelectedDestination(DESTINATION_NEW)}
+                onChange={() => chooseDestination(DESTINATION_NEW)}
                 className="sr-only"
               />
 
@@ -324,7 +324,7 @@ export const MoveToFolderModal = ({
                   value={DESTINATION_ARCHIVE}
                   checked={isArchiveMode}
                   disabled={archiveOption.disabled}
-                  onChange={() => setSelectedDestination(DESTINATION_ARCHIVE)}
+                  onChange={() => chooseDestination(DESTINATION_ARCHIVE)}
                   className="sr-only"
                 />
 

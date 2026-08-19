@@ -61,6 +61,9 @@ export const useMoveToFolderModal = ({
 
   // Destination state
   const [selectedDestination, setSelectedDestination] = useState('');
+  // Tracks a deliberate pick, so the seeded default can keep re-deriving as the
+  // scope settles without overwriting a choice the user actually made
+  const [hasPickedDestination, setHasPickedDestination] = useState(false);
   const [newRepeatCount, setNewRepeatCount] = useState(1);
   const [newLabel, setNewLabel] = useState('');
 
@@ -373,6 +376,7 @@ export const useMoveToFolderModal = ({
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional form reset on modal open
       setSelectedDestination('');
+      setHasPickedDestination(false);
       setNewRepeatCount(1);
       setNewLabel('');
       setRenameRepeatCount(1);
@@ -393,20 +397,51 @@ export const useMoveToFolderModal = ({
   // Seed and repair the destination selection. Nothing chosen — or a choice the
   // scope has since disabled — falls back to renaming the folder the assets are
   // already in, or to a new folder when that folder isn't renameable.
+  //
+  // Until the user picks something the default keeps re-deriving, because the
+  // scope checkboxes are seeded by the effect above and so only land a render
+  // after the modal opens. Freezing the default before then read the scope as
+  // empty, found nothing renameable, and left "New folder" selected on a folder
+  // that should have opened in rename mode.
   useEffect(() => {
-    if (!isOpen || selectedDestination === DESTINATION_NEW) return;
-    // A valid archive choice survives; a scope-disabled one falls through to
-    // the fallback below
-    if (selectedDestination === DESTINATION_ARCHIVE && !archiveOption.disabled)
-      return;
+    if (!isOpen) return;
 
-    const selected = folderOptions.find((o) => o.value === selectedDestination);
-    if (selected && !selected.disabled) return;
+    if (hasPickedDestination) {
+      if (selectedDestination === DESTINATION_NEW) return;
+      // A valid archive choice survives; a scope-disabled one falls through to
+      // the fallback below
+      if (
+        selectedDestination === DESTINATION_ARCHIVE &&
+        !archiveOption.disabled
+      )
+        return;
+
+      const selected = folderOptions.find(
+        (o) => o.value === selectedDestination,
+      );
+      if (selected && !selected.disabled) return;
+    }
 
     const renameable = folderOptions.find((o) => o.isCurrent);
+    const fallback = renameable ? renameable.value : DESTINATION_NEW;
+    if (fallback === selectedDestination) return;
+
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional default when no valid destination is selected
-    setSelectedDestination(renameable ? renameable.value : DESTINATION_NEW);
-  }, [isOpen, folderOptions, selectedDestination, archiveOption.disabled]);
+    setSelectedDestination(fallback);
+  }, [
+    isOpen,
+    hasPickedDestination,
+    folderOptions,
+    selectedDestination,
+    archiveOption.disabled,
+  ]);
+
+  // Every destination radio goes through this rather than the raw setter, so a
+  // deliberate pick stops the seeded default from re-deriving underneath it
+  const chooseDestination = useCallback((value: string) => {
+    setHasPickedDestination(true);
+    setSelectedDestination(value);
+  }, []);
 
   // Seed the rename fields from the folder being renamed
   useEffect(() => {
@@ -579,7 +614,7 @@ export const useMoveToFolderModal = ({
 
     // Destination
     selectedDestination,
-    setSelectedDestination,
+    chooseDestination,
     folderOptions,
     archiveOption,
     isArchiveMode,
