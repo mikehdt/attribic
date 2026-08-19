@@ -949,7 +949,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Pick this over Krea 2 RAW when the LoRA is for Turbo at inference — a RAW-trained delta attenuates against the distilled weights',
       'The text encoder and VAE are not set here — AI Toolkit needs them as Hugging Face directories rather than single files, so it downloads its own copies to the HF cache on the first run and reuses them after that',
       'Trained through a de-distilling adapter, so progress per step is slower than RAW — judge at 1,500+ steps, not on a short test run',
-      'The ~24.5 GB DiT needs fp8 quantisation plus full layer offloading on ~16 GB cards',
     ],
     availableResolutions: [512, 768, 1024, 1280],
     hiddenFields: [
