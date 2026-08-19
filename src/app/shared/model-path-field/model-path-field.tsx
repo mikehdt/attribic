@@ -141,7 +141,7 @@ export function ModelPathField({
   // pre-filling a path the user would only have to recognise and ignore.
   if (hasFallback && !isOverridden && !isOverriding) {
     return (
-      <InputTray size="md" tone="deep" width="full">
+      <InputTray size="md" tone="surface" width="full">
         <div className="flex w-full items-center gap-2 rounded-sm border border-slate-300 bg-white py-1.5 pl-2 dark:border-slate-700 dark:bg-slate-800">
           <CheckIcon className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
           <span className="shrink-0 text-sm text-slate-500 dark:text-slate-400">

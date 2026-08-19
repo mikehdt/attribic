@@ -566,6 +566,8 @@ const LearningSectionComponent = ({
                   onFieldChange={onFieldChange}
                   kind="int"
                   min={0}
+                  spinner
+                  step={10}
                   placeholder={String(defaults.warmupSteps)}
                   className="w-24"
                 />
@@ -580,8 +582,9 @@ const LearningSectionComponent = ({
                   onFieldChange={onFieldChange}
                   kind="int"
                   min={1}
+                  spinner
                   placeholder={String(defaults.numRestarts)}
-                  className="w-24"
+                  className="w-20"
                   hint="Cosine cycles"
                 />
               )}
@@ -606,6 +609,8 @@ const LearningSectionComponent = ({
                   kind="int"
                   min={1}
                   max={8}
+                  spinner
+                  className="w-20"
                   hint={
                     batchSize > 1 ? (
                       <span className="text-amber-500">
