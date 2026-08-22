@@ -591,3 +591,28 @@ class TestValidateRequest:
         # Paths are set but no files were created.
         errors = provider.validate_request(make_request(tmp_path))
         assert any("does not exist" in e for e in errors)
+
+
+class TestSchedulerAndOptimizer:
+    """Musubi inherits sd-scripts' scheduler factory and Adafactor branch, so
+    it has the same two late-failing traps as the Kohya builder."""
+
+    def test_constant_scheduler_drops_a_stale_warmup(self, provider, tmp_path):
+        request = make_request(
+            tmp_path, {"scheduler": "constant", "warmup_steps": 100}
+        )
+        args = build_args(provider, request, tmp_path)
+        assert not any(a.startswith("--lr_warmup_steps") for a in args)
+
+    def test_ramping_scheduler_keeps_its_warmup(self, provider, tmp_path):
+        request = make_request(
+            tmp_path, {"scheduler": "cosine", "warmup_steps": 100}
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--lr_warmup_steps=100" in args
+
+    def test_adafactor_pins_relative_step_off(self, provider, tmp_path):
+        request = make_request(tmp_path, {"optimizer": "adafactor"})
+        args = build_args(provider, request, tmp_path)
+        idx = args.index("--optimizer_args")
+        assert "relative_step=False" in args[idx + 1 :]

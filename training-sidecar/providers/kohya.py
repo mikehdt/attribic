@@ -570,14 +570,30 @@ class KohyaProvider(SdScriptsProvider):
         # Static per-arch extras (e.g. Anima's --vae_chunk_size).
         args.extend(model_def.get("extra_args", []))
 
-        # Optimizer args (--optimizer_args is nargs=*). Start with our
-        # weight_decay emission, then merge the user's freeform expert pairs.
-        # If the user supplied their own weight_decay (or any key we also emit),
-        # theirs wins — drop our duplicate so argparse doesn't see the key twice.
+        # Optimizer args (--optimizer_args is nargs=*). Start with our own
+        # emissions, then merge the user's freeform expert pairs. If the user
+        # supplied a key we also emit, theirs wins — drop our duplicate so
+        # argparse doesn't see the key twice.
         optimizer_args: list[str] = []
+        if optimizer == "Adafactor":
+            # Left to its defaults sd-scripts sets relative_step=True, which
+            # nulls args.learning_rate and rewrites args.lr_scheduler to
+            # "adafactor:<lr>" — silently discarding both the LR and the
+            # scheduler the user picked, with only a log line to show for it.
+            # Pinning relative_step off keeps ours authoritative;
+            # scale_parameter would otherwise rescale that LR by each tensor's
+            # RMS, and warmup_init is only valid with relative_step.
+            optimizer_args.extend(
+                [
+                    "relative_step=False",
+                    "scale_parameter=False",
+                    "warmup_init=False",
+                ]
+            )
         if float(hp.get("weight_decay", 0) or 0) > 0 and optimizer in (
             "AdamW",
             "AdamW8bit",
+            "Adafactor",
         ):
             optimizer_args.append(f'weight_decay={_num(hp["weight_decay"])}')
         user_optimizer_args = _parse_kv_args(hp.get("optimizer_args", ""))
@@ -596,9 +612,15 @@ class KohyaProvider(SdScriptsProvider):
         if seed >= 0:
             args.append(f"--seed={seed}")
 
-        # Warmup — only meaningful for schedulers that ramp.
+        # Warmup — only meaningful for schedulers that ramp, and actively fatal
+        # for `constant`: get_scheduler_fix raises ValueError on a nonzero
+        # warmup there. That raise lands *after* latent caching, so a config
+        # carrying a stale warmup from a previous scheduler choice burns the
+        # whole cache pass and then dies on the step before training. The form
+        # hides the field for constant but still sends the value, so this gate
+        # is what keeps it off the command line.
         warmup = int(hp.get("warmup_steps", 0) or 0)
-        if warmup > 0:
+        if warmup > 0 and hp.get("scheduler", "constant") != "constant":
             args.append(f"--lr_warmup_steps={warmup}")
 
         # Cosine-with-restarts needs a cycle count.

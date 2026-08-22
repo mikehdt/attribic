@@ -191,3 +191,55 @@ class TestFluxSampleArgs:
         line, args = self._prompt_line_and_args(provider, request, tmp_path)
         assert "--l 7" in line
         assert any(a.startswith("--sample_sampler") for a in args)
+
+
+class TestSchedulerAndOptimizer:
+    """LR-schedule emission. Both cases below fail late — get_scheduler_fix and
+    the Adafactor branch run after latent caching — so they're worth pinning."""
+
+    def test_constant_scheduler_drops_a_stale_warmup(self, provider, tmp_path):
+        # sd-scripts raises ValueError for a nonzero warmup under `constant`.
+        # The form hides the field but keeps sending the value, so a config
+        # switched from cosine to constant still carries one.
+        request = make_request(
+            tmp_path, {"scheduler": "constant", "warmup_steps": 100}
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--lr_scheduler=constant" in args
+        assert not any(a.startswith("--lr_warmup_steps") for a in args)
+
+    def test_ramping_scheduler_keeps_its_warmup(self, provider, tmp_path):
+        request = make_request(
+            tmp_path, {"scheduler": "cosine", "warmup_steps": 100}
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--lr_warmup_steps=100" in args
+
+    def test_adafactor_pins_relative_step_off(self, provider, tmp_path):
+        # relative_step=True (sd-scripts' default) nulls --learning_rate and
+        # rewrites --lr_scheduler to "adafactor:<lr>".
+        request = make_request(
+            tmp_path, {"optimizer": "adafactor", "scheduler": "constant"}
+        )
+        args = build_args(provider, request, tmp_path)
+        idx = args.index("--optimizer_args")
+        assert "relative_step=False" in args[idx + 1 :]
+        assert "scale_parameter=False" in args[idx + 1 :]
+
+    def test_user_optimizer_args_override_our_adafactor_pins(
+        self, provider, tmp_path
+    ):
+        request = make_request(
+            tmp_path,
+            {"optimizer": "adafactor", "optimizer_args": "relative_step=True"},
+        )
+        args = build_args(provider, request, tmp_path)
+        idx = args.index("--optimizer_args")
+        tail = args[idx + 1 :]
+        assert "relative_step=True" in tail
+        assert "relative_step=False" not in tail
+
+    def test_adamw_gets_no_adafactor_args(self, provider, tmp_path):
+        request = make_request(tmp_path, {"optimizer": "adamw8bit"})
+        args = build_args(provider, request, tmp_path)
+        assert "--optimizer_args" not in args

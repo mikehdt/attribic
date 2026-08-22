@@ -322,9 +322,7 @@ _DOTTED_OPTIMIZERS = (
 )
 
 # Optimizers that accept a weight_decay kwarg, for the weight_decay emission.
-# Adafactor takes one too but musubi drives it through its own relative_step
-# path, so it stays out (unchanged behaviour).
-_WEIGHT_DECAY_OPTIMIZERS = {"adamw", "adamw8bit", *_DOTTED_OPTIMIZERS}
+_WEIGHT_DECAY_OPTIMIZERS = {"adamw", "adamw8bit", "adafactor", *_DOTTED_OPTIMIZERS}
 
 
 def _canonical_optimizer(value: object) -> Optional[str]:
@@ -841,10 +839,21 @@ class MusubiProvider(SdScriptsProvider):
             if hp.get("gradient_checkpointing", True):
                 args.append("--block_swap_h2d_only")
 
-        # Optimizer args: our weight_decay emission merged with the user's
-        # freeform pairs, theirs winning on key collision (same policy as the
-        # Kohya builder).
+        # Optimizer args: our own emissions merged with the user's freeform
+        # pairs, theirs winning on key collision (same policy as the Kohya
+        # builder).
         optimizer_args: list[str] = []
+        if optimizer == "adafactor":
+            # musubi carries sd-scripts' Adafactor branch verbatim: without
+            # relative_step=False it discards --learning_rate and overwrites
+            # --lr_scheduler with "adafactor:<lr>". See the Kohya builder.
+            optimizer_args.extend(
+                [
+                    "relative_step=False",
+                    "scale_parameter=False",
+                    "warmup_init=False",
+                ]
+            )
         if (
             float(hp.get("weight_decay", 0) or 0) > 0
             and optimizer in _WEIGHT_DECAY_OPTIMIZERS
@@ -864,8 +873,12 @@ class MusubiProvider(SdScriptsProvider):
         if seed >= 0:
             args.append(f"--seed={seed}")
 
+        # Gated on the scheduler for the same reason as the Kohya builder:
+        # musubi inherits sd-scripts' scheduler factory, which raises on a
+        # nonzero warmup under `constant` — after latent caching, so the run
+        # dies just before training starts.
         warmup = int(hp.get("warmup_steps", 0) or 0)
-        if warmup > 0:
+        if warmup > 0 and hp.get("scheduler", "constant") != "constant":
             args.append(f"--lr_warmup_steps={warmup}")
 
         if hp.get("scheduler") == "cosine_with_restarts":
