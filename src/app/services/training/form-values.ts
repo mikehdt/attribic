@@ -144,6 +144,8 @@ export type TrainingFormValues = {
   gradientAccumulationSteps: number;
   gradientCheckpointing: boolean;
   cacheLatents: boolean;
+  /** Delete the backend's disk caches when the run completes or is cancelled. */
+  clearCaches: boolean;
   /** Kohya-only. Only meaningful when multi-resolution bucketing is on. */
   bucketResoSteps: number;
   /** Kohya-only. Only meaningful when multi-resolution bucketing is on. */

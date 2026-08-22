@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from cache_cleanup import normalise
 from composed_captions import cleanup_run, sweep_orphans
 from job_registry import JobKind, JobRegistry, LifecycleStatus
 import re
@@ -598,6 +599,62 @@ class JobManager:
             # they live in the user's dataset folder. `finally` covers the whole
             # terminal set — completed, failed and cancelled alike.
             cleanup_run(dataset_folders, job_id)
+            self._finish_run(job_id, request, provider)
+
+    def _finish_run(
+        self,
+        job_id: str,
+        request: StartJobRequest,
+        provider: TrainingProvider,
+    ) -> None:
+        """Let the provider close out the run, clearing caches if asked to.
+
+        Cache clearing is opt-in per run (`clear_caches`) and deliberately
+        limited to a clean end: a run that *failed* keeps its caches, because
+        the usual next move is to fix something and start again, and re-caching
+        a large dataset is minutes of VAE/text-encoder work. Cancelling is the
+        other way round — the user is done with this run — so it clears.
+
+        The hook is called either way, since a provider may have per-run
+        bookkeeping to drop regardless (see `MusubiProvider.finish_run`).
+        """
+        job = self._jobs.get(job_id)
+        status = job.status if job else None
+        clear = bool(
+            request.hyperparameters.get("clear_caches")
+        ) and status in (JobStatus.COMPLETED, JobStatus.CANCELLED)
+
+        try:
+            removed = provider.finish_run(
+                request, job_id, clear, self._folders_in_use(exclude=job_id)
+            )
+        except Exception as e:
+            # Never let tidy-up turn a finished run into a failed one.
+            print(f"[jobs] Cache cleanup failed for {request.output_name}: {e}")
+            return
+
+        if removed:
+            print(
+                f"[jobs] Cleared {removed} cached file(s) after "
+                f"{request.output_name}"
+            )
+
+    def _folders_in_use(self, exclude: str) -> set[str]:
+        """Dataset folders other live jobs are still training on.
+
+        Their caches have to survive this run's cleanup — the queue is
+        multi-worker, and "train this set two ways at once" is a real workflow
+        (the same reason composed caption files are keyed by job id).
+        """
+        in_use: set[str] = set()
+        for job_id, job in self._jobs.items():
+            if job_id == exclude or job.status in _TERMINAL_TRAINING_STATUSES:
+                continue
+            for ds in (job.config or {}).get("datasets", []):
+                path = ds.get("path") if isinstance(ds, dict) else None
+                if path:
+                    in_use.add(normalise(path))
+        return in_use
 
     def _live_job_ids(self) -> set[str]:
         """Ids of jobs that could still be using run-scoped files on disk."""

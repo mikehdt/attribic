@@ -106,6 +106,14 @@ export type TrainingDefaults = {
   gradientAccumulationSteps: number;
   gradientCheckpointing: boolean;
   cacheLatents: boolean;
+  /**
+   * Delete the backend's on-disk latent/text-encoder caches when the run ends
+   * cleanly (completed or cancelled — never after a failure). Off by default:
+   * the caches are what make a repeat run start in seconds, so throwing them
+   * away is only worth it for a one-off, or when the dataset folders shouldn't
+   * be left holding gigabytes of `.npz`/`_latent_cache` afterwards.
+   */
+  clearCaches: boolean;
   numRestarts: number;
   weightDecay: number;
   maxGradNorm: number;
@@ -222,6 +230,7 @@ const BASE_DEFAULTS: TrainingDefaults = {
   gradientAccumulationSteps: 1,
   gradientCheckpointing: true,
   cacheLatents: true,
+  clearCaches: false,
   numRestarts: 3,
   weightDecay: 0,
   maxGradNorm: 1,
@@ -729,9 +738,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       },
     ],
     tips: [
-      'Fewer sample steps needed (8) due to turbo architecture',
-      'Uses unconditioned generation (guidance scale 1.0)',
-      'Uses Qwen3-4B as the text encoder — no separate T5/CLIP needed',
+      'Fewer sample steps needed (8) during inference due to turbo architecture',
       'ai-toolkit needs the training adapter to de-distil Turbo while training',
       'Hungry for steps — a small single-subject set needs 2,000+ before the concept shows, and multi-concept sets want well past that',
     ],
@@ -780,7 +787,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       },
     ],
     tips: [
-      'Musubi recommends training on Base over Turbo — the LoRA still applies to Turbo at inference',
+      'Musubi recommends training on Base over Turbo — the LoRA still applies to Turbo at inference though you may need test',
       'Latents and text-encoder outputs are pre-cached before each run; a re-run with unchanged settings skips both in seconds',
       'fp8 quantisation plus block swap keeps the 6B DiT comfortable on 16 GB cards',
     ],
@@ -865,7 +872,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
       'On AI Toolkit only the DiT is set here — it needs the text encoder and VAE as Hugging Face directories rather than single files, so it downloads its own copies to the HF cache on the first run and reuses them after that',
       'The ~24 GB bf16 DiT needs fp8 quantisation plus offloading on 16 GB cards — Musubi streams 26 of 28 blocks by default (fewer spills into system RAM and crawls); AI Toolkit streams its layers via the Transformer Offload % setting',
-      'Sample images run real CFG against a default negative prompt; without CFG, RAW output is blurry by design',
     ],
     availableResolutions: [512, 768, 1024, 1280],
     hiddenFields: [
@@ -980,9 +986,10 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // what disables it — the same arithmetic as Z-Image Turbo.
       guidanceScale: 1,
       sampleSteps: 9,
-      // Same weights budget as RAW: the fp8 DiT is ~12.3 GB resident, so a
-      // 16 GB card needs the full stream. Matches ai-toolkit's own slider
-      // default.
+      // Full streaming is free here rather than a weights-budget necessity:
+      // training is compute-bound at 1024 (measured 7.31 s/it, 10.7 GB peak on
+      // a 16 GB card), so backing off to 80% bought 0.3% for +3.4 GB resident
+      // — headroom that buys a sysmem spill, not speed.
       layerOffloadPercent: 100,
     },
   },

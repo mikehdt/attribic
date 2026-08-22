@@ -89,14 +89,12 @@ const TrainingToolbarComponent = () => {
 
   return (
     <>
-      {/* Far left: switching away from this project (new / load / recents) */}
-      <ProjectMenuButton onRequestLoad={() => setLoadOpen(true)} />
-
-      {/* Left: current project's menu + save + reset */}
       <ResponsiveToolbarGroup
         title="Project"
         icon={<FolderOpenIcon className="h-4 w-4" />}
       >
+        <ProjectMenuButton onRequestLoad={() => setLoadOpen(true)} />
+
         <ProjectSelector
           onRequestSaveAs={() => setSaveAsOpen(true)}
           onRequestDelete={() => setDeleteOpen(true)}
@@ -139,10 +137,8 @@ const TrainingToolbarComponent = () => {
         </Button>
       </ResponsiveToolbarGroup>
 
-      {/* Spacer */}
       <div className="mr-auto!" />
 
-      {/* Right: view mode toggle */}
       <ResponsiveToolbarGroup
         title="Interface Options"
         breakpoint="lg"

@@ -38,6 +38,7 @@ from typing import Optional
 import httpx
 
 from ai_toolkit_server import AiToolkitServer
+from cache_cleanup import normalise, sweep_cache_dirs
 from dataset_manifest import build_manifests
 from models import JobProgress, JobStatus, SampleImage, StartJobRequest
 from providers.ai_toolkit_common import (
@@ -1252,6 +1253,30 @@ class AiToolkitUiProvider(TrainingProvider):
             {"id": m["id"], "name": m["name"], "architecture": m["architecture"]}
             for m in SUPPORTED_MODELS
         ]
+
+    def finish_run(
+        self,
+        request: StartJobRequest,
+        job_id: str,
+        clear_caches: bool,
+        busy_folders: set[str],
+    ) -> int:
+        """Drop the `_latent_cache` / `_t_e_cache` folders inside the dataset.
+
+        ai-toolkit puts one pair in every directory it finds images in, and our
+        dataset entries are already one-per-directory, so sweeping each entry
+        covers the repeat folders too. The `.aitk_size.json` dimension cache is
+        not in scope: it lives in the run's own job folder rather than the
+        dataset (see `dataset_manifest`), and goes when the job folder does.
+        """
+        if not clear_caches:
+            return 0
+        removed = 0
+        for ds in request.datasets:
+            if normalise(ds.path) in busy_folders:
+                continue
+            removed += sweep_cache_dirs(ds.path)
+        return removed
 
     def validate_request(self, request: StartJobRequest) -> list[str]:
         """Checkpoint/diffusers path must exist when it resolves to a local

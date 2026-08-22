@@ -39,6 +39,7 @@ type PerformanceSectionProps = {
   gradientAccumulationSteps: number;
   gradientCheckpointing: boolean;
   cacheLatents: boolean;
+  clearCaches: boolean;
   bucketResoSteps: number;
   bucketNoUpscale: boolean;
   blocksToSwap: number;
@@ -65,6 +66,19 @@ const QUANTIZATION_ITEMS: DropdownItem<string>[] = [
   { value: 'float8', label: 'float8 (lower VRAM)' },
 ];
 
+/**
+ * Where each backend leaves its latent/text-encoder caches, for the
+ * clear-caches hint. Two of the three write into the user's own dataset
+ * folders, which is the part worth naming — see the sidecar's `cache_cleanup`
+ * module for the exact layouts.
+ */
+const CACHE_LOCATION_BY_PROVIDER: Record<TrainingProvider, string> = {
+  kohya: 'Deletes the .npz files left beside your images',
+  musubi: "Deletes this run's folder under musubi-cache",
+  'ai-toolkit': 'Deletes the _latent_cache folders left in your dataset',
+  mock: 'Deletes the caches the backend wrote',
+};
+
 const RESOLUTION_MODE_OPTIONS: { value: ResolutionMode; label: string }[] = [
   { value: 'bucketed', label: 'Training resolutions' },
   { value: 'native', label: 'Exact resolution' },
@@ -85,6 +99,7 @@ const PerformanceSectionComponent = ({
   gradientAccumulationSteps,
   gradientCheckpointing,
   cacheLatents,
+  clearCaches,
   bucketResoSteps,
   bucketNoUpscale,
   blocksToSwap,
@@ -120,6 +135,7 @@ const PerformanceSectionComponent = ({
     visibleFields.has('gradientAccumulationSteps') ||
     visibleFields.has('gradientCheckpointing') ||
     visibleFields.has('cacheLatents') ||
+    visibleFields.has('clearCaches') ||
     visibleFields.has('bucketResoSteps') ||
     visibleFields.has('bucketNoUpscale') ||
     visibleFields.has('blocksToSwap') ||
@@ -491,7 +507,7 @@ const PerformanceSectionComponent = ({
         )}
 
         {/* Checkboxes */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
           {visibleFields.has('cacheTextEmbeddings') && (
             <div className="flex items-center gap-2">
               <Checkbox
@@ -580,6 +596,21 @@ const PerformanceSectionComponent = ({
               />
               <span className="text-xs text-slate-400">
                 Offload model components to cut VRAM at the cost of speed
+              </span>
+            </div>
+          )}
+
+          {visibleFields.has('clearCaches') && (
+            <div className="col-span-2 flex items-center gap-2">
+              <Checkbox
+                isSelected={clearCaches}
+                onChange={() => onFieldChange('clearCaches', !clearCaches)}
+                label="Clear Caches"
+                size="sm"
+              />
+              <span className="text-xs text-slate-400">
+                {CACHE_LOCATION_BY_PROVIDER[provider]} once the run finishes or
+                you cancel it.
               </span>
             </div>
           )}

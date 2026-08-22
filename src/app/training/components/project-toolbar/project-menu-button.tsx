@@ -65,15 +65,16 @@ const ProjectMenuButtonComponent = ({
       <Button
         ref={buttonRef}
         onClick={handleToggle}
-        variant="toggle"
-        size="lg"
-        width="lg"
+        size="toolbar"
+        width="md"
         title="Change project"
+        variant="toggle"
         isPressed={isOpen}
         ariaHasPopup="menu"
         ariaExpanded={isOpen}
       >
-        <FoldersIcon />
+        <FoldersIcon className="mr-1" />
+        File
       </Button>
 
       <Popup

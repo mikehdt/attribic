@@ -310,6 +310,14 @@ export const FIELD_REGISTRY = defineFields({
     defaultKey: 'cacheLatents',
     capability: 'latentCacheToggle',
   },
+  // No capability: every real backend caches latents (and usually text-encoder
+  // outputs) to disk, they just disagree about where — see the sidecar's
+  // `cache_cleanup` module for the three layouts.
+  clearCaches: {
+    tier: 'intermediate',
+    group: 'performance',
+    defaultKey: 'clearCaches',
+  },
   resolution: {
     tier: 'simple',
     group: 'performance',

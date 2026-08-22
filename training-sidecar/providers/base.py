@@ -82,3 +82,27 @@ class TrainingProvider(ABC):
     def validate_request(self, request: StartJobRequest) -> list[str]:
         """Cheap semantic checks before enqueue. Default: no extra checks."""
         return []
+
+    def finish_run(
+        self,
+        request: StartJobRequest,
+        job_id: str,
+        clear_caches: bool,
+        busy_folders: set[str],
+    ) -> int:
+        """Terminal hook: release per-run bookkeeping and optionally drop caches.
+
+        Called by the manager once a run reaches any terminal state, *after* the
+        progress generator has closed — so a provider that has to remember
+        something about a run until the very end (musubi's cache directories)
+        forgets it here rather than in `start_training`.
+
+        `clear_caches` is the run's opt-in; when it is False the caches this run
+        wrote are left exactly where they are. `busy_folders` holds the dataset
+        folders other live jobs are still training on, normalised by
+        `cache_cleanup.normalise` — anything under one of those must be left
+        alone whatever the opt-in says.
+
+        Returns how many cached files were removed. Default: nothing to do.
+        """
+        return 0

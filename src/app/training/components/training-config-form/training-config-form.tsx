@@ -322,6 +322,7 @@ const TrainingConfigFormComponent = ({
             gradientAccumulationSteps={state.gradientAccumulationSteps}
             gradientCheckpointing={state.gradientCheckpointing}
             cacheLatents={state.cacheLatents}
+            clearCaches={state.clearCaches}
             bucketResoSteps={state.bucketResoSteps}
             bucketNoUpscale={state.bucketNoUpscale}
             blocksToSwap={state.blocksToSwap}

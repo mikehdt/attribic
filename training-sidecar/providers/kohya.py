@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from cache_cleanup import normalise, sweep_image_sidecar_caches
 from models import StartJobRequest
 from providers.sd_scripts_base import (
     _OPTIMIZER_MAP,
@@ -810,6 +811,28 @@ class KohyaProvider(SdScriptsProvider):
             {"id": m["id"], "name": m["name"], "architecture": m["architecture"]}
             for m in SUPPORTED_MODELS
         ]
+
+    def finish_run(
+        self,
+        request: StartJobRequest,
+        job_id: str,
+        clear_caches: bool,
+        busy_folders: set[str],
+    ) -> int:
+        """Drop the `.npz` latent/TE caches sd-scripts wrote into the dataset.
+
+        These land beside the images themselves (`--cache_latents_to_disk`), so
+        they are the ones most worth offering to clear — they sit in the user's
+        own dataset folders rather than anywhere this app owns.
+        """
+        if not clear_caches:
+            return 0
+        removed = 0
+        for ds in request.datasets:
+            if normalise(ds.path) in busy_folders:
+                continue
+            removed += sweep_image_sidecar_caches(ds.path)
+        return removed
 
     def validate_request(self, request: StartJobRequest) -> list[str]:
         """Cheap semantic checks: native resolution shape, component paths.

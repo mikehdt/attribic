@@ -221,6 +221,9 @@ export function buildSidecarStartRequest(config: TrainingStartBody): {
     gradient_accumulation_steps: config.gradientAccumulationSteps,
     gradient_checkpointing: config.gradientCheckpointing,
     cache_latents: config.cacheLatents,
+    // Post-run tidy-up, applied by the sidecar's job manager rather than by any
+    // backend — each provider knows where its own caches landed.
+    clear_caches: config.clearCaches,
     bucket_reso_steps: config.bucketResoSteps,
     bucket_no_upscale: config.bucketNoUpscale,
     native_resolution: config.nativeResolution,

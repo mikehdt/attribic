@@ -45,8 +45,10 @@ component-name/
 ## Documentation
 
 - README.md files for complex components with sub-folders
-- Minimal inline comments unless code is complex/unclear
 - No need to document every prop
+
+**Comment sparingly.**
+Most code is self-explanatory and a comment on it is just noise — cognitive overhead to read and maintenance debt to keep accurate. Only comment code that is genuinely unintuitive or complex: a non-obvious _why_, a workaround, a subtle invariant, a deliberate deviation from the obvious approach. Do not narrate _what_ the code does — the code already says that. When a comment truly earns its place, keep it as terse as possible.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

@@ -34,6 +34,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Optional
 
+from cache_cleanup import normalise, remove_tree
 from config import load_config
 from models import JobProgress, StartJobRequest
 from providers.sd_scripts_base import (
@@ -372,6 +373,14 @@ class MusubiProvider(SdScriptsProvider):
         # Resolved lazily so constructing a provider doesn't touch the
         # filesystem (load_config creates the training dirs as a side effect).
         self._cache_root: Optional[Path] = None
+        # `{job_id: [(dataset folder, cache dir)]}` for runs that opted into
+        # post-run cache clearing. The fingerprint a cache dir is named for
+        # can't be recomputed reliably after the fact (it folds in the caption
+        # emission, which is decided per run against the files on disk), so
+        # `generate_config` records what it resolved and `finish_run` — the only
+        # thing that removes an entry — reads it back. Keyed by job id because
+        # the provider is a singleton and runs overlap.
+        self._run_cache_dirs: dict[str, list[tuple[str, Path]]] = {}
 
     @property
     def cache_root(self) -> Path:
@@ -531,6 +540,8 @@ class MusubiProvider(SdScriptsProvider):
         caption_extensions = self._compose_captions(request, job_id)
 
         model_paths = self._component_paths(request, model_def)
+        clear_caches = bool(hp.get("clear_caches"))
+        used_cache_dirs: list[tuple[str, Path]] = []
         for index, ds in enumerate(request.datasets):
             extension = caption_extensions.get(index)
             cache_dir = self._cache_dir(
@@ -546,6 +557,8 @@ class MusubiProvider(SdScriptsProvider):
                 # away a cache that is still perfectly valid.
                 ds.caption_emission if extension else None,
             )
+            if clear_caches:
+                used_cache_dirs.append((ds.path, cache_dir))
             lines.append("[[datasets]]")
             lines.append(f"image_directory = {_toml_str(ds.path)}")
             lines.append(f"cache_directory = {_toml_str(str(cache_dir))}")
@@ -557,6 +570,9 @@ class MusubiProvider(SdScriptsProvider):
         config_path = os.path.join(config_dir, f"{request.output_name}.toml")
         with open(config_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
+
+        if used_cache_dirs:
+            self._run_cache_dirs[job_id] = used_cache_dirs
 
         return config_path
 
@@ -997,3 +1013,30 @@ class MusubiProvider(SdScriptsProvider):
             {"id": m["id"], "name": m["name"], "architecture": m["architecture"]}
             for m in SUPPORTED_MODELS
         ]
+
+    def finish_run(
+        self,
+        request: StartJobRequest,
+        job_id: str,
+        clear_caches: bool,
+        busy_folders: set[str],
+    ) -> int:
+        """Drop the shared cache dirs this run used, and forget the record.
+
+        Unlike the other two backends nothing is written into the dataset here
+        — musubi's caches live under `<training>/musubi-cache/` — but they are
+        the same multi-GB-per-folder artefacts, and a fingerprint dir is only
+        reused by a run whose settings match exactly, so a one-off run's
+        directory is dead weight the moment it ends. Only the directories this
+        run resolved are removed; the rest of the cache root belongs to other
+        settings and other runs.
+        """
+        recorded = self._run_cache_dirs.pop(job_id, [])
+        if not clear_caches:
+            return 0
+        removed = 0
+        for dataset_path, cache_dir in recorded:
+            if normalise(dataset_path) in busy_folders:
+                continue
+            removed += remove_tree(cache_dir)
+        return removed

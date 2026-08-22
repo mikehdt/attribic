@@ -70,6 +70,7 @@ export function defaultsToFormState(
     gradientAccumulationSteps: defaults.gradientAccumulationSteps,
     gradientCheckpointing: defaults.gradientCheckpointing,
     cacheLatents: defaults.cacheLatents,
+    clearCaches: defaults.clearCaches,
     bucketResoSteps: defaults.bucketResoSteps,
     bucketNoUpscale: defaults.bucketNoUpscale,
     nativeResolution: defaults.nativeResolution,
