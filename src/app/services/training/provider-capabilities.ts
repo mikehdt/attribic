@@ -44,7 +44,8 @@ export type ProviderCapability =
   | 'dop' // diffOutputPreservation, ...Multiplier, ...Class
   | 'contentOrStyle'
   | 'lowVram'
-  | 'layerOffloading'; // layerOffloadPercent
+  | 'layerOffloading' // layerOffloadPercent
+  | 'firstStepSample'; // sampleFirstStep
 
 /**
  * Capabilities shared by every sd-scripts-lineage backend (kohya today,
@@ -101,6 +102,7 @@ const CAPABILITY_SET: Record<ProviderCapability, true> = {
   contentOrStyle: true,
   lowVram: true,
   layerOffloading: true,
+  firstStepSample: true,
 };
 
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_SET) as ProviderCapability[];
@@ -153,6 +155,10 @@ const PROVIDER_CAPABILITIES: Record<
     // MemoryManager just ignore the config keys, so it's offered globally.
     'layerOffloading',
     'verticalFlip',
+    // `train.skip_first_sample` — the baseline sample ai-toolkit takes before
+    // step 1. sd-scripts has no equivalent: kohya/musubi only sample on their
+    // cadence, so there's nothing for the toggle to control there.
+    'firstStepSample',
   ]),
   // Mock is a fake backend for UI testing, so it shows every field/branch
   // regardless of which real provider(s) support it. Derived from the full

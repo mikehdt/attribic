@@ -1671,6 +1671,14 @@ def _build_config_dict(
                             if hp.get("diff_output_preservation", False)
                             else {}
                         ),
+                        # ai-toolkit samples once before step 1 unless told not
+                        # to (BaseSDTrainProcess ~2477). Inverted here because
+                        # the form asks the positive question; only an explicit
+                        # opt-out skips, so a resumed job whose stored
+                        # hyperparameters predate the field keeps the baseline.
+                        "skip_first_sample": (
+                            hp.get("sample_first_step", True) is False
+                        ),
                         "cache_text_embeddings": hp.get(
                             "cache_text_embeddings", False
                         ),

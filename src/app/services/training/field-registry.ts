@@ -406,6 +406,12 @@ export const FIELD_REGISTRY = defineFields({
     group: 'sampling',
     defaultKey: null,
   },
+  sampleFirstStep: {
+    tier: 'intermediate',
+    group: 'sampling',
+    defaultKey: null,
+    capability: 'firstStepSample',
+  },
   sampleSteps: {
     tier: 'intermediate',
     group: 'sampling',

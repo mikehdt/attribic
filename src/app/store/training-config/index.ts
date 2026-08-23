@@ -334,6 +334,7 @@ const trainingConfigSlice = createSlice({
         sampleMode: state.form.sampleMode,
         sampleEveryEpochs: state.form.sampleEveryEpochs,
         sampleEverySteps: state.form.sampleEverySteps,
+        sampleFirstStep: state.form.sampleFirstStep,
 
         // Saving: checkpoint cadence and retention are disk-budget choices.
         // `saveFormat` is not preserved (some models are bf16-only), nor is

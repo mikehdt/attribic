@@ -169,6 +169,21 @@ class TestTrainingAdapter:
         assert "assistant_lora_path" not in model_block(make_request())
 
 
+class TestFirstSample:
+    def test_default_takes_the_baseline_sample(self):
+        assert train_block(make_request())["skip_first_sample"] is False
+
+    def test_opting_out_skips_it(self):
+        block = train_block(make_request({"sample_first_step": False}))
+        assert block["skip_first_sample"] is True
+
+    def test_legacy_request_keeps_the_baseline_sample(self):
+        # A resumed job's stored hyperparameters predate the field — it must
+        # behave as it did before the toggle existed.
+        block = train_block(make_request({"sample_first_step": None}))
+        assert block["skip_first_sample"] is False
+
+
 class TestLayerOffloading:
     def test_percent_drives_layer_offloading(self):
         block = model_block(make_request({"layer_offload_percent": 100}))

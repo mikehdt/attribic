@@ -2,6 +2,7 @@ import { memo } from 'react';
 
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
+import { hasCapability } from '@/app/services/training/provider-capabilities';
 import {
   defaultSampleAspect,
   getSampleAspects,
@@ -10,6 +11,7 @@ import {
   type SampleAspect,
   sampleAspectName,
 } from '@/app/services/training/sample-sizes';
+import type { TrainingProvider } from '@/app/services/training/types';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
 import { Dropdown, type DropdownItem } from '@/app/shared/dropdown';
@@ -60,9 +62,13 @@ type SamplingSectionProps = {
   resolution: number[];
   /** Kohya-only exact `WxH` training size; empty when unused. */
   nativeResolution: string;
+  /** Selected backend, for the baseline-sample round in the image tally. */
+  provider: TrainingProvider;
   sampleMode: 'epochs' | 'steps';
   sampleEveryEpochs: number;
   sampleEverySteps: number;
+  /** ai-toolkit-only baseline sample at step 0, before training starts. */
+  sampleFirstStep: boolean;
   sampleSteps: number;
   guidanceScale: number;
   sampleSampler: string;
@@ -91,9 +97,11 @@ const SamplingSectionComponent = ({
   samplePromptSizes,
   resolution,
   nativeResolution,
+  provider,
   sampleMode,
   sampleEveryEpochs,
   sampleEverySteps,
+  sampleFirstStep,
   sampleSteps,
   guidanceScale,
   sampleSampler,
@@ -121,6 +129,7 @@ const SamplingSectionComponent = ({
     visibleFields.has('samplePrompts') ||
     visibleFields.has('sampleEveryEpochs') ||
     visibleFields.has('sampleEverySteps') ||
+    visibleFields.has('sampleFirstStep') ||
     visibleFields.has('sampleSteps') ||
     visibleFields.has('guidanceScale') ||
     visibleFields.has('sampleSampler');
@@ -167,13 +176,21 @@ const SamplingSectionComponent = ({
       : sampleEverySteps > 0
         ? Math.floor(calculatedSteps / sampleEverySteps)
         : 0;
-  const totalImages = rounds * prompts.length;
+  // ai-toolkit's pre-training baseline is a round of its own, on top of the
+  // cadence. Gated on `rounds` so a length-less run still shows no tally.
+  const baselineRound =
+    rounds > 0 && sampleFirstStep && hasCapability(provider, 'firstStepSample')
+      ? 1
+      : 0;
+  const totalRounds = rounds + baselineRound;
+  const totalImages = totalRounds * prompts.length;
 
   // Shared by the read-only Simple summary and the editable tiers, so the
   // cost of a cadence/prompt change is visible wherever it can be changed.
   const tally = totalImages > 0 && (
     <p className="mt-2 text-sm text-slate-500 tabular-nums dark:text-slate-400">
-      {rounds} {rounds === 1 ? 'round' : 'rounds'} &times; {prompts.length}{' '}
+      {totalRounds} {totalRounds === 1 ? 'round' : 'rounds'} &times;{' '}
+      {prompts.length}{' '}
       {prompts.length === 1 ? 'prompt' : 'prompts'} ={' '}
       <span className="font-medium text-slate-600 dark:text-slate-300">
         {totalImages.toLocaleString()} {totalImages === 1 ? 'image' : 'images'}
@@ -357,6 +374,22 @@ const SamplingSectionComponent = ({
                 </div>
               )}
             </div>
+
+            {visibleFields.has('sampleFirstStep') && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  isSelected={sampleFirstStep}
+                  onChange={() =>
+                    onFieldChange('sampleFirstStep', !sampleFirstStep)
+                  }
+                  label="Sample at step 0"
+                  size="sm"
+                />
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  Untrained baseline to compare later samples against
+                </span>
+              </div>
+            )}
           </>
         )}
       </div>

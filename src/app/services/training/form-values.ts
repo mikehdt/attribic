@@ -164,6 +164,11 @@ export type TrainingFormValues = {
   sampleMode: 'epochs' | 'steps';
   sampleEveryEpochs: number;
   sampleEverySteps: number;
+  /**
+   * ai-toolkit-only. Whether to take the untrained baseline sample at step 0,
+   * before the first training step. Off maps to `train.skip_first_sample`.
+   */
+  sampleFirstStep: boolean;
   sampleSteps: number;
   seed: number;
   guidanceScale: number;

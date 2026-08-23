@@ -1,7 +1,6 @@
 'use client';
 
-import { CoffeeIcon } from 'lucide-react';
-
+import { Checkbox } from '../../checkbox';
 import { useKeepAwakeToggle } from './use-keep-awake-toggle';
 
 type KeepAwakeToggleProps = {
@@ -38,20 +37,14 @@ export const KeepAwakeToggle = ({ enabled }: KeepAwakeToggleProps) => {
             : 'cursor-pointer text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700'
         }`}
       >
-        <CoffeeIcon className="h-5 w-5 shrink-0" />
-        Prevent Sleep During GPU Use
-        <span
-          aria-hidden
-          className={`ml-auto flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${
-            on ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-600'
-          } ${loading ? 'opacity-50' : ''}`}
-        >
-          <span
-            className={`h-3 w-3 rounded-full bg-white shadow-sm transition-transform ${
-              on ? 'translate-x-3.5' : 'translate-x-0.5'
-            }`}
-          />
-        </span>
+        <Checkbox
+          disabled={loading}
+          aria-checked={on}
+          isSelected={on}
+          onChange={toggle}
+          size="sm"
+        />
+        Prevent System Sleep During GPU Use
       </button>
 
       {error && (

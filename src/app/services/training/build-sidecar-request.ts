@@ -233,6 +233,8 @@ export function buildSidecarStartRequest(config: TrainingStartBody): {
     sample_sampler: config.sampleSampler,
     sample_every_n_epochs: sampleCadence.everyNEpochs,
     sample_every_n_steps: sampleCadence.everyNSteps,
+    // ai-toolkit-only: the untrained baseline sample taken before step 1.
+    sample_first_step: config.sampleFirstStep,
     save_every_n_epochs: saveCadence.everyNEpochs,
     save_every_n_steps: saveCadence.everyNSteps,
     save_format: config.saveFormat,

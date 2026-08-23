@@ -81,6 +81,10 @@ export function defaultsToFormState(
     sampleMode: 'epochs',
     sampleEveryEpochs: 1,
     sampleEverySteps: defaults.sampleEvery,
+    // On by default: ai-toolkit's own default is to take the baseline sample,
+    // and it's the only reference point for judging whether later samples
+    // moved at all.
+    sampleFirstStep: true,
     sampleSteps: defaults.sampleSteps,
     seed: defaults.seed,
     guidanceScale: defaults.guidanceScale,
