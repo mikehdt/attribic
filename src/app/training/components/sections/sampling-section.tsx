@@ -190,8 +190,7 @@ const SamplingSectionComponent = ({
   const tally = totalImages > 0 && (
     <p className="mt-2 text-sm text-slate-500 tabular-nums dark:text-slate-400">
       {totalRounds} {totalRounds === 1 ? 'round' : 'rounds'} &times;{' '}
-      {prompts.length}{' '}
-      {prompts.length === 1 ? 'prompt' : 'prompts'} ={' '}
+      {prompts.length} {prompts.length === 1 ? 'prompt' : 'prompts'} ={' '}
       <span className="font-medium text-slate-600 dark:text-slate-300">
         {totalImages.toLocaleString()} {totalImages === 1 ? 'image' : 'images'}
       </span>{' '}

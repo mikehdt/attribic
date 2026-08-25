@@ -85,7 +85,7 @@ export function SortablePromptRow({
           <GripVerticalIcon className="h-4 w-4" />
         </button>
       )}
-      <InputTray width="full" size="md">
+      <InputTray width="full" size="md" tone="surface">
         <Input
           type="text"
           value={prompt}
