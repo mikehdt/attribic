@@ -1326,14 +1326,23 @@ export const OPTIMIZER_OPTIONS: { group: string; items: OptimizerOption[] }[] =
     {
       group: 'Memory-efficient',
       items: [
-        { value: 'adafactor', label: 'Adafactor', hint: 'Lower VRAM usage' },
+        {
+          // Fizgig removed the self-tuning family (adafactor included) on
+          // purpose — relative-step Adafactor fights its adaptive-LR watcher —
+          // so it must not be offered there.
+          value: 'adafactor',
+          label: 'Adafactor',
+          hint: 'Lower VRAM usage',
+          providers: ['kohya', 'ai-toolkit', 'musubi'],
+        },
         {
           // bitsandbytes' Lion keeps one momentum buffer where AdamW keeps two,
-          // so its optimiser state is roughly half the size.
+          // so its optimiser state is roughly half the size. Fizgig catalogues
+          // the same class under a bare name; the sidecar maps the spelling.
           value: 'bitsandbytes.optim.Lion8bit',
           label: 'Lion 8-bit',
           hint: 'Half the optimiser state of AdamW; wants ~1/10 the LR',
-          providers: ['musubi'],
+          providers: ['musubi', 'fizgig'],
         },
         {
           // Paged state lives in unified memory: under VRAM pressure it spills
@@ -1341,7 +1350,7 @@ export const OPTIMIZER_OPTIONS: { group: string; items: OptimizerOption[] }[] =
           value: 'bitsandbytes.optim.PagedAdamW8bit',
           label: 'AdamW 8-bit (paged)',
           hint: 'AdamW 8-bit that spills to system RAM instead of OOMing',
-          providers: ['musubi'],
+          providers: ['musubi', 'fizgig'],
         },
       ],
     },
@@ -1364,7 +1373,7 @@ export const OPTIMIZER_OPTIONS: { group: string; items: OptimizerOption[] }[] =
           value: 'bitsandbytes.optim.AdEMAMix8bit',
           label: 'AdEMAMix 8-bit',
           hint: 'Keeps older gradients useful on long runs; a little more VRAM',
-          providers: ['musubi'],
+          providers: ['musubi', 'fizgig'],
         },
       ],
     },
