@@ -522,6 +522,20 @@ class SdScriptsProvider(TrainingProvider):
     # uses `--l` (from "guidance_scaLe"); musubi-tuner uses `--g`.
     sample_guidance_flag: str = "l"
 
+    # Extra lines that open a sampling pause, beyond the sd-scripts grammar
+    # matched inline in the run loop ("generating sample images…" and the
+    # per-image "prompt:" echoes). A backend whose announce is worded
+    # differently (Fizgig's "rendering previews (epoch N)…") lists it here;
+    # searched against the lowercased line. A pattern with no step number is
+    # fine — the pause is then anchored to the step the training bar froze on.
+    sample_announce_patterns: list[re.Pattern] = []
+
+    # sd-scripts echoes a "prompt:" block before each sample image, which is
+    # what advances the per-image count in the sampling label. A backend that
+    # renders silently between announce and files (Fizgig) sets this so the
+    # count comes from its per-image sampler bar restarting instead.
+    sample_bar_counts_images: bool = False
+
     # What this backend does with an image that has no caption file. sd-scripts
     # warns and trains an empty caption; musubi's caption-file filter drops the
     # image from the dataset instead. Only surfaces when the chosen half of a
@@ -1139,6 +1153,15 @@ class SdScriptsProvider(TrainingProvider):
                     if match and sampling_active:
                         bar = (int(match.group(1)), int(match.group(2)))
                         if bar != last_sample_bar:
+                            # The sampler's bar restarts for each image, so a
+                            # count falling back to the start IS the next image
+                            # beginning — the only per-image signal from
+                            # backends that echo no "prompt:" blocks.
+                            if self.sample_bar_counts_images and (
+                                last_sample_bar is None
+                                or bar[0] < last_sample_bar[0]
+                            ):
+                                sample_image_index += 1
                             last_sample_bar = bar
                             # Claim whatever the previous image left on disk.
                             # The announce lines are otherwise the only scan
@@ -1202,6 +1225,11 @@ class SdScriptsProvider(TrainingProvider):
                         # "generating sample images" line was missed or scrolled
                         # past — "negative_prompt:" deliberately doesn't match.
                         or lower.startswith("prompt:")
+                        # Backend-specific announce wording (see the class attr).
+                        or any(
+                            p.search(lower)
+                            for p in self.sample_announce_patterns
+                        )
                     ):
                         announce = SAMPLE_ANNOUNCE_PATTERN.search(lower)
                         if announce:

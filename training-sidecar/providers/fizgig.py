@@ -37,10 +37,13 @@ What genuinely differs, and lives here:
 Log-grammar deltas: Fizgig saves epoch checkpoints silently (no "saving
 checkpoint" line — intermediate saves just don't get an activity label) and
 ends with "saved final LoRA -> <path>", added to the save-done patterns. Its
-preview announce ("rendering previews (epoch N)") doesn't match the sampling
-detector; its sampler bar (desc "sampling", total = denoise steps) fails the
-training-bar checks, so the pause shows no label but nothing misparses, and
-samples are claimed by the directory scan on the next bar tick.
+preview announce ("rendering previews (epoch N)…") is matched via
+`sample_announce_patterns`, so the pause shows the sampling label; its
+per-image sampler bar (desc "sampling", total = denoise steps) then drives
+the determinate bar and — via `sample_bar_counts_images` — the image count,
+since Fizgig echoes no per-image "prompt:" blocks. A Sample-at-Start render
+happens before the training bar exists, so `_preparing_phase_for` maps the
+announce to the same label on the preparing path.
 """
 
 import hashlib
@@ -57,6 +60,7 @@ from cache_cleanup import normalise, remove_tree
 from config import load_config
 from models import JobProgress, StartJobRequest
 from providers.sd_scripts_base import (
+    SAMPLING_PHASE,
     SAVE_DONE_PATTERNS,
     SdScriptsProvider,
     SubprocessRun,
@@ -162,6 +166,19 @@ class FizgigProvider(SdScriptsProvider):
         re.compile(r"saved final lora", re.IGNORECASE)
     ]
 
+    # trainer.py's preview announces, all four variants: "rendering previews
+    # (epoch N) on the training DiT + Turbo LoRA..." / "...on the fp8
+    # Turbo...", and the Sample-at-Start pair "rendering epoch-0 preview
+    # (Sample at Start...)". None carries a step number, so the base loop
+    # anchors the pause to the step the training bar froze on.
+    _PREVIEW_ANNOUNCE = re.compile(r"rendering (?:previews|epoch-0 preview)")
+    sample_announce_patterns = [_PREVIEW_ANNOUNCE]
+
+    # Between the announce and the files appearing, the only output is the
+    # per-image "sampling" tqdm bar (total = denoise steps) — there are no
+    # "prompt:" echoes, so the per-image count comes from that bar restarting.
+    sample_bar_counts_images = True
+
     # image_dataset.py globs images and pairs them with caption files; an
     # image whose composed caption came out empty still trains, captionless.
     no_caption_outcome = "will train without a caption"
@@ -177,6 +194,14 @@ class FizgigProvider(SdScriptsProvider):
         if self._cache_root is None:
             self._cache_root = load_config().training_dir / "fizgig-cache"
         return self._cache_root
+
+    def _preparing_phase_for(self, lower_line: str) -> Optional[str]:
+        # Sample at Start renders its epoch-0 preview before the training bar
+        # exists, so the announce lands on the preparing path — label it there
+        # too, and the sampler's own tqdm draws the determinate bar under it.
+        if self._PREVIEW_ANNOUNCE.search(lower_line):
+            return SAMPLING_PHASE
+        return super()._preparing_phase_for(lower_line)
 
     # --- Environment / request validation ---
 

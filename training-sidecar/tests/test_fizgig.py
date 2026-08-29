@@ -4,7 +4,8 @@ the quantisation-value mapping, and the epoch-only validation rules.
 The subprocess/log state machine is the shared `SdScriptsProvider` machinery
 already covered by test_log_parsing.py; these tests cover only what the
 Fizgig subclass adds or does differently from the musubi provider it is
-modelled on.
+modelled on — including its own preview-announce grammar, driven through the
+real state machine via test_log_parsing's transcript harness.
 """
 
 import asyncio
@@ -14,6 +15,8 @@ import pytest
 
 from models import DatasetEntry, ProviderType, StartJobRequest
 from providers.fizgig import FizgigProvider
+from providers.sd_scripts_base import SAMPLING_PHASE
+from test_log_parsing import transcript_run
 
 
 @pytest.fixture
@@ -293,6 +296,80 @@ class TestSampleArgs:
         args = build_args(provider, request, tmp_path)
         assert not any("sample" in a for a in args)
         assert not any("turbo" in a for a in args)
+
+
+# --------------------------------------------------------------------------
+# Preview-announce log grammar, through the real state machine
+# --------------------------------------------------------------------------
+
+
+class TestPreviewLogGrammar:
+    def test_preview_pause_labels_and_counts_by_bar_restart(
+        self, provider, tmp_path
+    ):
+        """Fizgig announces previews with its own wording and echoes no
+        per-image "prompt:" blocks — the label comes from the announce
+        pattern and the image count from its sampler bar restarting."""
+        request = make_request(
+            tmp_path, sample_prompts=["one", "two"], with_turbo_lora=True
+        )
+        out = transcript_run(
+            provider,
+            request,
+            [
+                "steps:  25%|██▌       | 1/4 [00:01<00:03,  1.00it/s, avr_loss=0.15]",
+                "INFO:fizgig.krea2.trainer:rendering previews (epoch 1) on the training DiT + Turbo LoRA...",
+                "sampling:  12%|█▎        | 1/8 [00:01<00:07,  1.00it/s]",
+                "sampling: 100%|██████████| 8/8 [00:08<00:00,  1.00it/s]",
+                "sampling:  12%|█▎        | 1/8 [00:01<00:07,  1.00it/s]",
+                "sampling: 100%|██████████| 8/8 [00:08<00:00,  1.00it/s]",
+                "steps:  50%|█████     | 2/4 [00:21<00:02,  1.00it/s, avr_loss=0.14]",
+            ],
+        )
+
+        phases = [p.phase for p in out if p.phase]
+        assert phases == [
+            SAMPLING_PHASE,  # the announce opens the event
+            f"{SAMPLING_PHASE} - 1/2",  # first image's bar starts
+            f"{SAMPLING_PHASE} - 1/2",  # ... and finishes
+            f"{SAMPLING_PHASE} - 2/2",  # bar restarts: second image
+            f"{SAMPLING_PHASE} - 2/2",
+        ]
+
+        bars = [p.sample_progress for p in out if p.sample_progress]
+        assert [(b.current, b.total) for b in bars] == [
+            (1, 8),
+            (8, 8),
+            (1, 8),
+            (8, 8),
+        ]
+
+        # The sampler's 8/8 bar must never be read as training progress.
+        assert all(p.total_steps in (0, 4) for p in out)
+
+        resumed = out[-2]
+        assert resumed.phase is None and resumed.current_step == 2
+
+    def test_sample_at_first_labels_the_preparing_phase(
+        self, provider, tmp_path
+    ):
+        """The epoch-0 preview renders before the training bar exists, so its
+        announce must label the preparing path instead."""
+        request = make_request(
+            tmp_path, sample_prompts=["one"], with_turbo_lora=True
+        )
+        out = transcript_run(
+            provider,
+            request,
+            [
+                "INFO:fizgig.krea2.trainer:rendering epoch-0 preview (Sample at Start, on training DiT)...",
+                "sampling:  50%|█████     | 4/8 [00:04<00:04,  1.00it/s]",
+            ],
+        )
+        preparing = [p for p in out if p.phase == SAMPLING_PHASE]
+        assert preparing, "epoch-0 preview never got the sampling label"
+        # The sampler's own bar draws determinate progress under the label.
+        assert (preparing[-1].current_step, preparing[-1].total_steps) == (4, 8)
 
 
 # --------------------------------------------------------------------------
