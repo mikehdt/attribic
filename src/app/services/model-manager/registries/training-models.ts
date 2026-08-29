@@ -596,6 +596,26 @@ const TRAINING_CHECKPOINTS: DownloadableModel[] = [
       },
     ],
   },
+  // The official Turbo distillation LoRA (Comfy-Org repack, ungated). Fizgig
+  // applies it at render time on the resident training DiT so previews come
+  // out in 8 CFG-free steps — previews only, never part of the trained LoRA.
+  // Not the same artefact as the ostris training adapter above (that
+  // de-distils Turbo for training; this re-distils RAW for sampling).
+  {
+    id: 'dl-krea2-turbo-lora',
+    name: 'Krea 2 Turbo LoRA',
+    repoId: 'Comfy-Org/Krea-2',
+    feature: 'training',
+    architecture: 'krea2',
+    componentType: 'turbo_lora',
+    description: 'Turbo distillation LoRA for fast Fizgig previews (~448 MB)',
+    files: [
+      {
+        name: 'loras/krea2_turbo_lora_rank_64_bf16.safetensors',
+        size: 469_423_778,
+      },
+    ],
+  },
 
   // --- Qwen-Image (musubi-tuner) ---
   // bf16 only — musubi quantises to fp8 at runtime (--fp8_base/--fp8_scaled/

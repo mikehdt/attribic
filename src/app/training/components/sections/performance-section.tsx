@@ -32,7 +32,7 @@ type PerformanceSectionProps = {
   viewMode: TrainingViewMode;
   provider: TrainingProvider;
   mixedPrecision: 'bf16' | 'fp16';
-  transformerQuantization: 'none' | 'float8';
+  transformerQuantization: 'none' | 'float8' | 'int8' | 'nf4';
   textEncoderQuantization: 'none' | 'float8';
   cacheTextEmbeddings: boolean;
   unloadTextEncoder: boolean;
@@ -67,6 +67,19 @@ const QUANTIZATION_ITEMS: DropdownItem<string>[] = [
 ];
 
 /**
+ * Fizgig's trainer has two extra frozen-base precisions beyond fp8: an INT8
+ * W8A8 path with exact bf16 gradients (its headline speed experiment — the
+ * transformer blocks also torch.compile on this path), and a QLoRA-style NF4
+ * base for very small cards. Offered only there; the other backends have no
+ * flag for either.
+ */
+const FIZGIG_QUANTIZATION_ITEMS: DropdownItem<string>[] = [
+  ...QUANTIZATION_ITEMS,
+  { value: 'int8', label: 'int8 W8A8 (faster, exact gradients)' },
+  { value: 'nf4', label: 'NF4 4-bit (smallest VRAM)' },
+];
+
+/**
  * Where each backend leaves its latent/text-encoder caches, for the
  * clear-caches hint. Two of the three write into the user's own dataset
  * folders, which is the part worth naming — see the sidecar's `cache_cleanup`
@@ -75,6 +88,7 @@ const QUANTIZATION_ITEMS: DropdownItem<string>[] = [
 const CACHE_LOCATION_BY_PROVIDER: Record<TrainingProvider, string> = {
   kohya: 'Deletes the .npz files left beside your images',
   musubi: "Deletes this run's folder under musubi-cache",
+  fizgig: "Deletes this run's folder under fizgig-cache",
   'ai-toolkit': 'Deletes the _latent_cache folders left in your dataset',
   mock: 'Deletes the caches the backend wrote',
 };
@@ -247,7 +261,11 @@ const PerformanceSectionComponent = ({
                 onFieldChange={onFieldChange}
               />
               <Dropdown
-                items={QUANTIZATION_ITEMS}
+                items={
+                  provider === 'fizgig'
+                    ? FIZGIG_QUANTIZATION_ITEMS
+                    : QUANTIZATION_ITEMS
+                }
                 selectedValue={transformerQuantization}
                 onChange={(val) =>
                   onFieldChange(

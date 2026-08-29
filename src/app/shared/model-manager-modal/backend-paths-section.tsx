@@ -29,6 +29,12 @@ const BACKENDS = [
     placeholder: 'Folder for Musubi Tuner',
     hint: 'Root of the musubi-tuner checkout',
   },
+  {
+    key: 'fizgig',
+    label: 'Fizgig',
+    placeholder: 'Folder for Fizgig',
+    hint: 'Root of the Fizgig checkout (experimental, Krea 2 only)',
+  },
 ] as const;
 
 /**

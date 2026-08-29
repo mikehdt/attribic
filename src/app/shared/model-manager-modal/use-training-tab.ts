@@ -34,7 +34,12 @@ import type { AppModelDefaults } from '@/app/store/training-config/types';
 const SAVE_DEBOUNCE_MS = 600;
 
 /** Backends that need an install folder before they can train anything. */
-const REAL_PROVIDERS: TrainingProvider[] = ['kohya', 'ai-toolkit', 'musubi'];
+const REAL_PROVIDERS: TrainingProvider[] = [
+  'kohya',
+  'ai-toolkit',
+  'musubi',
+  'fizgig',
+];
 
 export function useTrainingTab() {
   const dispatch = useAppDispatch();

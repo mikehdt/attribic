@@ -19,6 +19,12 @@ export type ModelComponentType =
   | 'qwen'
   | 'training_adapter'
   /**
+   * The official Krea 2 Turbo distillation LoRA (~470 MB). Fizgig applies it
+   * at render time on the resident training DiT so previews come out in 8
+   * CFG-free steps — previews only, never merged into the trained LoRA.
+   */
+  | 'turbo_lora'
+  /**
    * A whole diffusers pipeline directory rather than a weights file. Distinct
    * from `checkpoint` because a model can need *both* shapes depending on the
    * backend — Anima is single-file DiT + TE + VAE under kohya, but a pipeline
@@ -96,7 +102,7 @@ export type TrainingDefaults = {
   resolution: number[];
   mixedPrecision: 'bf16' | 'fp16';
   /** Transformer weight quantization for VRAM savings. 'none' keeps full precision. */
-  transformerQuantization: 'none' | 'float8';
+  transformerQuantization: 'none' | 'float8' | 'int8' | 'nf4';
   /** Text encoder weight quantization. */
   textEncoderQuantization: 'none' | 'float8';
   /** Pre-compute text encoder embeddings once and reuse (saves VRAM + time). */
@@ -835,7 +841,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
     // ai-toolkit resolve them itself: unset, `model_kwargs.text_encoder_path`
     // and `vae_path` fall through to its own HF-hub defaults, cached on first
     // run and reused ever after. The tip below tells the user that's happening.
-    providers: ['musubi', 'ai-toolkit', 'mock'],
+    providers: ['musubi', 'ai-toolkit', 'fizgig', 'mock'],
     components: [
       {
         type: 'checkpoint',
@@ -867,11 +873,46 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
           hint: 'Train on RAW — the distilled Turbo checkpoint is for inference',
         },
       ],
+      // Fizgig loads the same three single-file weights musubi does, plus the
+      // official Turbo distillation LoRA for previews: samples render on the
+      // resident training DiT with it applied at strength 1.0 (8 steps, no
+      // CFG), so no second checkpoint is loaded mid-run. Optional — but a run
+      // with sampling enabled and no Turbo LoRA is rejected at validation
+      // rather than silently rendering nothing.
+      fizgig: [
+        {
+          type: 'checkpoint',
+          label: 'Krea 2 RAW DiT',
+          required: true,
+          downloadId: 'dl-krea2-raw',
+          hint: 'Train on RAW — the distilled Turbo checkpoint is for inference',
+        },
+        {
+          type: 'vae',
+          label: 'Qwen-Image VAE',
+          required: true,
+          downloadId: 'shared-qwen-image-vae',
+        },
+        {
+          type: 'qwen',
+          label: 'Qwen3-VL 4B Text Encoder',
+          required: true,
+          downloadId: 'shared-qwen3vl-4b',
+        },
+        {
+          type: 'turbo_lora',
+          label: 'Krea 2 Turbo LoRA (previews)',
+          required: false,
+          downloadId: 'dl-krea2-turbo-lora',
+          hint: 'Needed only for training previews — 8-step Turbo renders on the training DiT',
+        },
+      ],
     },
     tips: [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
       'On AI Toolkit only the DiT is set here — it needs the text encoder and VAE as Hugging Face directories rather than single files, so it downloads its own copies to the HF cache on the first run and reuses them after that',
       'The ~24 GB bf16 DiT needs fp8 quantisation plus offloading on 16 GB cards — Musubi streams 26 of 28 blocks by default (fewer spills into system RAM and crawls); AI Toolkit streams its layers via the Transformer Offload % setting',
+      'Fizgig (experimental) trains the same RAW DiT with a quantised resident base instead of block swap — fp8 by default, with int8 W8A8 and NF4 options — and torch-compiles the blocks on longer runs. Everything is paced in epochs (duration, saves, samples), and previews need the Krea 2 Turbo LoRA component',
     ],
     availableResolutions: [512, 768, 1024, 1280],
     hiddenFields: [

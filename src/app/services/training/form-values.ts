@@ -137,7 +137,7 @@ export type TrainingFormValues = {
   batchSize: number;
   resolution: number[];
   mixedPrecision: 'bf16' | 'fp16';
-  transformerQuantization: 'none' | 'float8';
+  transformerQuantization: 'none' | 'float8' | 'int8' | 'nf4';
   textEncoderQuantization: 'none' | 'float8';
   cacheTextEmbeddings: boolean;
   unloadTextEncoder: boolean;

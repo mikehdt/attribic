@@ -18,7 +18,12 @@ import { useEffect, useState } from 'react';
 import type { TrainingProvider } from '@/app/services/training/types';
 
 /** The backends that can actually be installed (the mock trainer needs none). */
-const REAL_PROVIDERS: TrainingProvider[] = ['ai-toolkit', 'kohya', 'musubi'];
+const REAL_PROVIDERS: TrainingProvider[] = [
+  'ai-toolkit',
+  'kohya',
+  'musubi',
+  'fizgig',
+];
 
 /** provider → whether a folder is saved for it. Null until the config loads. */
 export type ConfiguredBackends = Record<string, boolean> | null;

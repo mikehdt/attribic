@@ -37,6 +37,7 @@ from models import (
 import power
 from ai_toolkit_server import AiToolkitServer
 from providers.ai_toolkit_ui import AiToolkitUiProvider
+from providers.fizgig import FizgigProvider
 from providers.kohya import KohyaProvider
 from providers.mock import MockProvider
 from providers.musubi import MusubiProvider
@@ -286,6 +287,17 @@ def _register_providers(jm: JobManager, config: SidecarConfig):
         provider = MusubiProvider(musubi_path)
         jm.register_provider("musubi", provider)
         print(f"[sidecar] Registered musubi provider at {musubi_path}")
+
+    # Fizgig — experimental Krea 2-only backend. Not sd-scripts lineage, but
+    # it deliberately speaks the same log/dataset/checkpoint grammar, so it
+    # shares the subprocess machinery; launched as plain python (no
+    # accelerate). See providers/fizgig.py for what's actually different
+    # (epoch-only pacing, int8/NF4 base training, Turbo-LoRA previews).
+    fizgig_path = backends.get("fizgig")
+    if fizgig_path:
+        provider = FizgigProvider(fizgig_path)
+        jm.register_provider("fizgig", provider)
+        print(f"[sidecar] Registered fizgig provider at {fizgig_path}")
 
     # Registered before the mock provider so the "any real backend?" check
     # below is a snapshot of what config.json actually gave us.

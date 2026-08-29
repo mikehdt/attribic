@@ -48,6 +48,8 @@ MARKER_NAME = "img-tagger-training-time.json"
 PROVIDER_MARKER_POLICY_FALLBACK: dict[str, str] = {
     "kohya": "per-state-dir",
     "musubi": "per-state-dir",
+    # Fizgig names its state dirs the sd-scripts way (<name>-NNNNNN-state).
+    "fizgig": "per-state-dir",
 }
 
 

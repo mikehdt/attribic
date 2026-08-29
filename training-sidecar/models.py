@@ -13,6 +13,7 @@ class ProviderType(str, Enum):
     AI_TOOLKIT = "ai-toolkit"
     KOHYA = "kohya"
     MUSUBI = "musubi"
+    FIZGIG = "fizgig"
     MOCK = "mock"
 
 
