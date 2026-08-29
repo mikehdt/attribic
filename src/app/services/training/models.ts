@@ -63,6 +63,20 @@ export type ModelDefinition = {
    * a backend with no entry uses `components`.
    */
   providerComponents?: Partial<Record<TrainingProvider, ModelComponent[]>>;
+  /**
+   * Per-backend overrides of {@link defaults}, for fields whose right value
+   * is a property of the backend's memory/training regime rather than the
+   * model (e.g. Krea 2 wants 26 swapped blocks under musubi's swap-to-fit
+   * approach but 0 under fizgig's resident quantised base). Applied by the
+   * training-config store on model/provider selection and reset — a value the
+   * user explicitly changed is never overridden by a provider switch. Only
+   * keys that map 1:1 onto a FormState field of the same name take effect on
+   * a provider *switch* (blocksToSwap does); renamed/derived fields would
+   * need their own wiring in `setProvider`.
+   */
+  providerDefaults?: Partial<
+    Record<TrainingProvider, Partial<TrainingDefaults>>
+  >;
   /** Optional training tips displayed below the model description */
   tips?: string[];
   /** Resolution steps the user can toggle on/off for this model */
@@ -959,6 +973,15 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // for its layer-offloading slider; 50% measured as still spilling on
       // 16 GB (backward-pass activation peaks) at ~79 s/step.
       layerOffloadPercent: 100,
+    },
+    providerDefaults: {
+      // Fizgig's regime is the inverse of musubi's: quantise the base and
+      // keep it resident. Its planner ranks swapping last (each swapped
+      // block is per-step PCIe traffic; measured 4.4x slower at heavy
+      // swap), its trainer force-zeroes swap under int8/NF4 anyway, and
+      // torch.compile refuses under swap — so the 26 above, inherited on a
+      // provider switch, would sabotage every fizgig run.
+      fizgig: { blocksToSwap: 0 },
     },
   },
   {

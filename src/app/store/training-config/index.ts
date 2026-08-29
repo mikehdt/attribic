@@ -35,6 +35,7 @@ import {
   isSchedulerSupported,
   MODEL_DEFINITIONS,
   type ModelComponentType,
+  type TrainingDefaults,
 } from '@/app/services/training/models';
 import {
   defaultSampleAspect,
@@ -50,6 +51,7 @@ import {
   defaultFolderAugmentation,
   defaultsToFormState,
   getDefaults,
+  getProviderDefaults,
   initialFormState,
 } from './defaults';
 import type {
@@ -308,11 +310,17 @@ const trainingConfigSlice = createSlice({
 
     setModel: (state, action: PayloadAction<string>) => {
       const modelId = action.payload;
-      const defaults = getDefaults(modelId);
       const nextModel = getModelById(modelId);
       const preserveMock =
         state.form.selectedProvider === 'mock' &&
         nextModel?.providers.includes('mock');
+      const nextProvider: TrainingProvider = preserveMock
+        ? 'mock'
+        : (nextModel?.providers[0] ?? 'ai-toolkit');
+      // Defaults are provider-effective: the backend the switch lands on may
+      // override fields whose right value is a property of its regime, not
+      // the model's (see ModelDefinition.providerDefaults).
+      const defaults = getProviderDefaults(modelId, nextProvider);
 
       // A model switch re-derives everything the architecture dictates — run
       // length, LR, LoRA shape, precision, sampler — but carries across the
@@ -350,9 +358,7 @@ const trainingConfigSlice = createSlice({
 
       state.form = {
         ...defaultsToFormState(defaults, modelId),
-        selectedProvider: preserveMock
-          ? 'mock'
-          : (nextModel?.providers[0] ?? 'ai-toolkit'),
+        selectedProvider: nextProvider,
         ...preserved,
       };
       fillEmptyModelPaths(state.form, state.appModelDefaults[modelId]);
@@ -371,12 +377,40 @@ const trainingConfigSlice = createSlice({
      * showing a shape the run won't follow.
      */
     setProvider: (state, action: PayloadAction<TrainingProvider>) => {
+      const prevProvider = state.form.selectedProvider;
       const provider = action.payload;
       state.form.selectedProvider = provider;
       if (!isOptimizerSupported(state.form.optimizer, provider)) {
         state.form.optimizer = getDefaults(state.form.modelId).optimizer;
       }
       state.form.scheduler = coerceScheduler(state.form).scheduler;
+
+      // Per-provider default overrides (ModelDefinition.providerDefaults):
+      // a field still sitting on the OLD provider's effective default follows
+      // the switch to the new provider's; a value the user changed stays
+      // theirs. Without this, Krea 2's musubi-appropriate 26 swapped blocks
+      // rode into fizgig runs, where swap is the wrong regime entirely.
+      const model = getModelById(state.form.modelId);
+      const prevOverrides = model?.providerDefaults?.[prevProvider];
+      const nextOverrides = model?.providerDefaults?.[provider];
+      if (prevOverrides || nextOverrides) {
+        const base = getDefaults(state.form.modelId);
+        const keys = new Set([
+          ...Object.keys(prevOverrides ?? {}),
+          ...Object.keys(nextOverrides ?? {}),
+        ]) as Set<keyof TrainingDefaults>;
+        for (const key of keys) {
+          const prevEffective = prevOverrides?.[key] ?? base[key];
+          const nextEffective = nextOverrides?.[key] ?? base[key];
+          // Only fields that exist on FormState under the same name can be
+          // carried over mechanically — see the providerDefaults doc comment.
+          if (!(key in state.form)) continue;
+          const form = state.form as unknown as Record<string, unknown>;
+          if (Object.is(form[key], prevEffective)) {
+            form[key] = nextEffective;
+          }
+        }
+      }
     },
 
     setModelPath: (
@@ -412,7 +446,11 @@ const trainingConfigSlice = createSlice({
       //   - Ephemeral: fall back to suggested defaults for the model.
       const ref =
         state.baselineSnapshot ??
-        pristineFormState(state.form.modelId, state.appModelDefaults);
+        pristineFormState(
+          state.form.modelId,
+          state.form.selectedProvider,
+          state.appModelDefaults,
+        );
       const { form } = state;
 
       // Datasets carry per-folder augmentation that has to be matched up by
@@ -456,6 +494,7 @@ const trainingConfigSlice = createSlice({
     resetAll: (state) => {
       state.form = pristineFormState(
         state.form.modelId,
+        state.form.selectedProvider,
         state.appModelDefaults,
       );
     },
@@ -464,6 +503,7 @@ const trainingConfigSlice = createSlice({
     resetToSuggestedDefaults: (state) => {
       state.form = pristineFormState(
         state.form.modelId,
+        state.form.selectedProvider,
         state.appModelDefaults,
       );
       state.loadedProject = null;
@@ -877,7 +917,7 @@ export const selectCurrentModel = createSelector(selectForm, (form) =>
 );
 
 export const selectModelDefaults = createSelector(selectForm, (form) =>
-  getDefaults(form.modelId),
+  getProviderDefaults(form.modelId, form.selectedProvider),
 );
 
 // --- Configured-ness (cross-slice: saved defaults + installed downloads) ---
@@ -999,7 +1039,10 @@ export const selectSectionHasChanges = createSelector(selectSlice, (slice) => {
   // the pristine defaults for the current model.
   const ref =
     baselineSnapshot ??
-    defaultsToFormState(getDefaults(form.modelId), form.modelId);
+    defaultsToFormState(
+      getProviderDefaults(form.modelId, form.selectedProvider),
+      form.modelId,
+    );
 
   const refFolderMap = new Map<string, FolderAugmentation>();
   for (const ds of ref.datasets) {
@@ -1074,6 +1117,7 @@ export const selectCanReset = createSelector(selectSlice, (slice) => {
   }
   const pristine = pristineFormState(
     slice.form.modelId,
+    slice.form.selectedProvider,
     slice.appModelDefaults,
   );
   return !formsEqual(slice.form, pristine);
@@ -1162,9 +1206,15 @@ function fillEmptyModelPaths(form: FormState, paths?: ModelPaths): void {
  */
 function pristineFormState(
   modelId: string,
+  provider: TrainingProvider,
   appModelDefaults: AppModelDefaults,
 ): FormState {
-  const form = defaultsToFormState(getDefaults(modelId), modelId);
+  // Pristine relative to the backend in use: resets and can-reset checks keep
+  // the user's provider choice and compare against that provider's effective
+  // defaults, so switching to a backend with providerDefaults overrides
+  // doesn't light up reset (or worse, "reset" onto another backend's values).
+  const form = defaultsToFormState(getProviderDefaults(modelId, provider), modelId);
+  form.selectedProvider = provider;
   fillEmptyModelPaths(form, appModelDefaults[modelId]);
   return form;
 }

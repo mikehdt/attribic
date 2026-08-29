@@ -4,6 +4,7 @@ import {
   type TrainingDefaults,
 } from '@/app/services/training/models';
 import { DEFAULT_SAMPLE_ASPECT } from '@/app/services/training/sample-sizes';
+import type { TrainingProvider } from '@/app/services/training/types';
 
 import type { FolderAugmentation, FormState } from './types';
 
@@ -114,6 +115,24 @@ export function defaultsToFormState(
 export function getDefaults(modelId: string): TrainingDefaults {
   const model = getModelById(modelId);
   return model?.defaults ?? MODEL_DEFINITIONS[0].defaults;
+}
+
+/**
+ * The model's defaults with the chosen backend's overrides applied — what
+ * "default" means once a provider is selected (see
+ * {@link import('@/app/services/training/models').ModelDefinition.providerDefaults}).
+ * This is the reference the form's modified-badges, resets, and pristine
+ * comparisons should use; bare {@link getDefaults} remains for
+ * provider-agnostic fallbacks (folder augments, single-field coercions).
+ */
+export function getProviderDefaults(
+  modelId: string,
+  provider: TrainingProvider,
+): TrainingDefaults {
+  const model = getModelById(modelId);
+  const base = model?.defaults ?? MODEL_DEFINITIONS[0].defaults;
+  const overrides = model?.providerDefaults?.[provider];
+  return overrides ? { ...base, ...overrides } : base;
 }
 
 export function initialFormState(): FormState {
