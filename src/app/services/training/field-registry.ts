@@ -421,6 +421,7 @@ export const FIELD_REGISTRY = defineFields({
     tier: 'advanced',
     group: 'sampling',
     defaultKey: 'guidanceScale',
+    capability: 'sampleGuidance',
   },
   sampleSampler: {
     tier: 'advanced',

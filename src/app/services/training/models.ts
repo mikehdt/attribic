@@ -20,8 +20,9 @@ export type ModelComponentType =
   | 'training_adapter'
   /**
    * The official Krea 2 Turbo distillation LoRA (~470 MB). Fizgig applies it
-   * at render time on the resident training DiT so previews come out in 8
-   * CFG-free steps — previews only, never merged into the trained LoRA.
+   * at render time on the resident training DiT so previews come out in a
+   * few CFG-free steps (9 by default) — previews only, never merged into the
+   * trained LoRA.
    */
   | 'turbo_lora'
   /**
@@ -889,10 +890,11 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       ],
       // Fizgig loads the same three single-file weights musubi does, plus the
       // official Turbo distillation LoRA for previews: samples render on the
-      // resident training DiT with it applied at strength 1.0 (8 steps, no
-      // CFG), so no second checkpoint is loaded mid-run. Optional — but a run
-      // with sampling enabled and no Turbo LoRA is rejected at validation
-      // rather than silently rendering nothing.
+      // resident training DiT with it applied at strength 1.0 (few-step, no
+      // CFG — sampleSteps defaults to 9 here via providerDefaults), so no
+      // second checkpoint is loaded mid-run. Optional — but a run with
+      // sampling enabled and no Turbo LoRA is rejected at validation rather
+      // than silently rendering nothing.
       fizgig: [
         {
           type: 'checkpoint',
@@ -918,7 +920,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
           label: 'Krea 2 Turbo LoRA (previews)',
           required: false,
           downloadId: 'dl-krea2-turbo-lora',
-          hint: 'Needed only for training previews — 8-step Turbo renders on the training DiT',
+          hint: 'Needed only for training previews — 9-step Turbo renders on the training DiT',
         },
       ],
     },
@@ -981,7 +983,11 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // swap), its trainer force-zeroes swap under int8/NF4 anyway, and
       // torch.compile refuses under swap — so the 26 above, inherited on a
       // provider switch, would sabotage every fizgig run.
-      fizgig: { blocksToSwap: 0 },
+      //
+      // sampleSteps: previews render through the step-distilled Turbo LoRA,
+      // not RAW — 9 steps matches the Krea 2 Turbo entry below, where the
+      // RAW default of 28 would only triple preview time.
+      fizgig: { blocksToSwap: 0, sampleSteps: 9 },
     },
   },
   {
@@ -1578,6 +1584,59 @@ export function isOptimizerSupported(
 ): boolean {
   const option = OPTIMIZER_OPTIONS.flatMap((g) => g.items).find(
     (o) => o.value === optimizer,
+  );
+  if (!option || !option.providers) return true;
+  return provider === 'mock' || option.providers.includes(provider);
+}
+
+type QuantizationOption = {
+  value: TrainingDefaults['transformerQuantization'];
+  label: string;
+  /** Backends with a flag for this precision. Omitted means every backend. */
+  providers?: TrainingProvider[];
+};
+
+/**
+ * Transformer-quantisation choices. int8/NF4 are Fizgig's two extra
+ * frozen-base precisions beyond fp8: an INT8 W8A8 path with exact bf16
+ * gradients (its headline speed experiment — the transformer blocks also
+ * torch.compile on this path), and a QLoRA-style NF4 base for very small
+ * cards. The other backends have no flag for either.
+ */
+export const TRANSFORMER_QUANTIZATION_OPTIONS: QuantizationOption[] = [
+  { value: 'none', label: 'None (full precision)' },
+  { value: 'float8', label: 'float8 (lower VRAM)' },
+  {
+    value: 'int8',
+    label: 'int8 W8A8 (faster, exact gradients)',
+    providers: ['fizgig'],
+  },
+  {
+    value: 'nf4',
+    label: 'NF4 4-bit (smallest VRAM)',
+    providers: ['fizgig'],
+  },
+];
+
+/** Transformer quantisations the backend has a flag for, for the picker. */
+export function getQuantizationOptions(
+  provider: TrainingProvider,
+): QuantizationOption[] {
+  return TRANSFORMER_QUANTIZATION_OPTIONS.filter(
+    (item) =>
+      provider === 'mock' ||
+      !item.providers ||
+      item.providers.includes(provider),
+  );
+}
+
+/** Whether `quantization` is one the backend can run (unknown values pass). */
+export function isQuantizationSupported(
+  quantization: string,
+  provider: TrainingProvider,
+): boolean {
+  const option = TRANSFORMER_QUANTIZATION_OPTIONS.find(
+    (q) => q.value === quantization,
   );
   if (!option || !option.providers) return true;
   return provider === 'mock' || option.providers.includes(provider);

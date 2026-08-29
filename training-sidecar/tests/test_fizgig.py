@@ -275,6 +275,19 @@ class TestSampleArgs:
         )
         assert "--sample_at_first" in build_args(provider, request, tmp_path)
 
+    def test_sample_steps_forwarded_guidance_not(self, provider, tmp_path):
+        request = make_request(
+            tmp_path,
+            {"sample_steps": 9, "guidance_scale": 5.5},
+            sample_prompts=["one"],
+            with_turbo_lora=True,
+        )
+        args = build_args(provider, request, tmp_path)
+        assert "--sample_steps=9" in args
+        # guidance_scale describes RAW-model CFG; the Turbo preview path is
+        # CFG-free, so it must never become --sample_cfg_scale.
+        assert not any(a.startswith("--sample_cfg_scale") for a in args)
+
     def test_no_sampling_emits_no_sample_flags(self, provider, tmp_path):
         request = make_request(tmp_path)
         args = build_args(provider, request, tmp_path)

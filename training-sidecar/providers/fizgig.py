@@ -27,11 +27,12 @@ What genuinely differs, and lives here:
   is left on Fizgig's `auto` policy (it compiles when the run is long enough
   to repay the warm-up, and never under block swap).
 - **Turbo-LoRA previews.** Samples render on the resident training DiT with
-  the official Krea 2 Turbo LoRA applied at render time (8-step, CFG-free) —
-  the optional `turbo_lora` component. Sample width/height are global flags
-  rather than per-prompt, so the first prompt's size wins; the form's
-  sampleSteps/guidanceScale are RAW-sampling settings that don't apply to the
-  Turbo path and are deliberately not forwarded.
+  the official Krea 2 Turbo LoRA applied at render time (few-step, CFG-free)
+  — the optional `turbo_lora` component. Sample width/height are global flags
+  rather than per-prompt, so the first prompt's size wins. sampleSteps is
+  forwarded (the form defaults it to 9 on this provider); guidanceScale is
+  deliberately not — it describes RAW-model CFG, and the Turbo path is
+  CFG-free unless given a negative prompt, which we never send.
 
 Log-grammar deltas: Fizgig saves epoch checkpoints silently (no "saving
 checkpoint" line — intermediate saves just don't get an activity label) and
@@ -622,9 +623,12 @@ class FizgigProvider(SdScriptsProvider):
 
         Fizgig prompt files are one plain prompt per line — no sd-scripts
         `--w/--h/--s` inline flags. Size is global, so the first prompt's
-        resolved size applies to every preview; steps/CFG stay on Fizgig's
-        Turbo defaults (8 steps, CFG off) because the form's sampleSteps and
-        guidanceScale describe RAW-model sampling, which this path never does.
+        resolved size applies to every preview. Step count is forwarded (the
+        form defaults it to 9 on this provider, matching the Turbo LoRA's
+        distillation); CFG stays on Fizgig's default (off) — its
+        --sample_cfg_scale only means anything paired with a negative prompt,
+        and the form's guidanceScale describes RAW-model CFG, so that field
+        is hidden on this provider rather than sent.
         """
         hp = request.hyperparameters
 
@@ -641,6 +645,9 @@ class FizgigProvider(SdScriptsProvider):
             f"--sample_width={width}",
             f"--sample_height={height}",
         ]
+        sample_steps = int(hp.get("sample_steps", 0) or 0)
+        if sample_steps > 0:
+            args.append(f"--sample_steps={sample_steps}")
         sample_every_epochs = int(hp.get("sample_every_n_epochs", 0) or 0)
         if sample_every_epochs > 0:
             args.append(f"--sample_every_n_epochs={sample_every_epochs}")

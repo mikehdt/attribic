@@ -32,6 +32,7 @@ import {
   getAllModelComponents,
   getModelById,
   isOptimizerSupported,
+  isQuantizationSupported,
   isSchedulerSupported,
   MODEL_DEFINITIONS,
   type ModelComponentType,
@@ -374,7 +375,9 @@ const trainingConfigSlice = createSlice({
      * The scheduler gets the same treatment, for the opposite reason: an
      * unsupported one (cosine_with_restarts on ai-toolkit) doesn't fail, it
      * quietly runs as something else — so it can't be left sitting in the form
-     * showing a shape the run won't follow.
+     * showing a shape the run won't follow. Same for a transformer
+     * quantisation the new backend has no flag for (int8/NF4 outside fizgig)
+     * — the picker would render blank and the sidecar rejects the value.
      */
     setProvider: (state, action: PayloadAction<TrainingProvider>) => {
       const prevProvider = state.form.selectedProvider;
@@ -384,6 +387,8 @@ const trainingConfigSlice = createSlice({
         state.form.optimizer = getDefaults(state.form.modelId).optimizer;
       }
       state.form.scheduler = coerceScheduler(state.form).scheduler;
+      state.form.transformerQuantization =
+        coerceQuantization(state.form).transformerQuantization;
 
       // Per-provider default overrides (ModelDefinition.providerDefaults):
       // a field still sitting on the OLD provider's effective default follows
@@ -817,7 +822,9 @@ const trainingConfigSlice = createSlice({
         ...defaultsToFormState(getDefaults(incoming.modelId), incoming.modelId),
         ...incoming,
       };
-      const form = normalizeDatasets(coerceScheduler(coerceProvider(merged)));
+      const form = normalizeDatasets(
+        coerceQuantization(coerceScheduler(coerceProvider(merged))),
+      );
       state.form = form;
       state.loadedProject = action.payload.loadedProject;
       state.baselineSnapshot = form;
@@ -836,7 +843,9 @@ const trainingConfigSlice = createSlice({
         ...defaultsToFormState(getDefaults(incoming.modelId), incoming.modelId),
         ...incoming,
       };
-      state.form = normalizeDatasets(coerceScheduler(coerceProvider(merged)));
+      state.form = normalizeDatasets(
+        coerceQuantization(coerceScheduler(coerceProvider(merged))),
+      );
       state.loadedProject = null;
       state.baselineSnapshot = null;
     },
@@ -1156,6 +1165,27 @@ function coerceScheduler(form: FormState): FormState {
     scheduler: isSchedulerSupported(fallback, form.selectedProvider)
       ? fallback
       : 'constant',
+  };
+}
+
+/**
+ * Ensure `form.transformerQuantization` is one the selected backend has a
+ * flag for — int8/NF4 exist only on fizgig, so a value carried across a
+ * provider switch (or loaded from a fizgig-saved config) would render the
+ * picker blank and be rejected sidecar-side at launch.
+ */
+function coerceQuantization(form: FormState): FormState {
+  if (
+    isQuantizationSupported(form.transformerQuantization, form.selectedProvider)
+  ) {
+    return form;
+  }
+  return {
+    ...form,
+    transformerQuantization: getProviderDefaults(
+      form.modelId,
+      form.selectedProvider,
+    ).transformerQuantization,
   };
 }
 

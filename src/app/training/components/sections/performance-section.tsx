@@ -1,7 +1,10 @@
 import { memo, useCallback } from 'react';
 
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
-import type { TrainingDefaults } from '@/app/services/training/models';
+import {
+  getQuantizationOptions,
+  type TrainingDefaults,
+} from '@/app/services/training/models';
 import { parseNativeResolution } from '@/app/services/training/native-resolution';
 import { hasCapability } from '@/app/services/training/provider-capabilities';
 import type { TrainingProvider } from '@/app/services/training/types';
@@ -61,22 +64,12 @@ const PRECISION_ITEMS: DropdownItem<string>[] = [
   { value: 'fp16', label: 'Compatibility - FP16 Floating Point' },
 ];
 
+// Text-encoder quantisation only — the transformer picker takes its
+// provider-filtered options from `getQuantizationOptions`, which also owns
+// the fizgig-only int8/NF4 values.
 const QUANTIZATION_ITEMS: DropdownItem<string>[] = [
   { value: 'none', label: 'None (full precision)' },
   { value: 'float8', label: 'float8 (lower VRAM)' },
-];
-
-/**
- * Fizgig's trainer has two extra frozen-base precisions beyond fp8: an INT8
- * W8A8 path with exact bf16 gradients (its headline speed experiment — the
- * transformer blocks also torch.compile on this path), and a QLoRA-style NF4
- * base for very small cards. Offered only there; the other backends have no
- * flag for either.
- */
-const FIZGIG_QUANTIZATION_ITEMS: DropdownItem<string>[] = [
-  ...QUANTIZATION_ITEMS,
-  { value: 'int8', label: 'int8 W8A8 (faster, exact gradients)' },
-  { value: 'nf4', label: 'NF4 4-bit (smallest VRAM)' },
 ];
 
 /**
@@ -261,11 +254,7 @@ const PerformanceSectionComponent = ({
                 onFieldChange={onFieldChange}
               />
               <Dropdown
-                items={
-                  provider === 'fizgig'
-                    ? FIZGIG_QUANTIZATION_ITEMS
-                    : QUANTIZATION_ITEMS
-                }
+                items={getQuantizationOptions(provider)}
                 selectedValue={transformerQuantization}
                 onChange={(val) =>
                   onFieldChange(

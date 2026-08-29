@@ -45,7 +45,8 @@ export type ProviderCapability =
   | 'contentOrStyle'
   | 'lowVram'
   | 'layerOffloading' // layerOffloadPercent
-  | 'firstStepSample'; // sampleFirstStep
+  | 'firstStepSample' // sampleFirstStep
+  | 'sampleGuidance'; // guidanceScale
 
 /**
  * Capabilities shared by every sd-scripts-lineage backend (kohya today,
@@ -65,6 +66,7 @@ const SD_SCRIPTS_FAMILY: readonly ProviderCapability[] = [
   'saveFormat',
   'finalSaveExempt',
   'datasetShapePreview',
+  'sampleGuidance',
 ];
 
 /**
@@ -103,6 +105,7 @@ const CAPABILITY_SET: Record<ProviderCapability, true> = {
   lowVram: true,
   layerOffloading: true,
   firstStepSample: true,
+  sampleGuidance: true,
 };
 
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_SET) as ProviderCapability[];
@@ -130,7 +133,10 @@ const PROVIDER_CAPABILITIES: Record<
   // its own trainer, so it starts from an explicit list rather than the
   // family set. Deliberately absent vs musubi: saveFormat (bf16 hardcoded),
   // gradientCheckpointingToggle (always on), scaleWeightNorms /
-  // networkExtraArgs (no such flags). Present beyond musubi: networkTypeSelect
+  // networkExtraArgs (no such flags), sampleGuidance (previews render through
+  // the step-distilled Turbo LoRA with CFG off — its --sample_cfg_scale only
+  // means anything paired with a negative prompt, and the form's value
+  // describes RAW-model CFG). Present beyond musubi: networkTypeSelect
   // + lokr (native LoKR), firstStepSample (--sample_at_first), and the
   // quantization capability covers its extra int8/NF4 base values.
   fizgig: new Set([
@@ -181,6 +187,7 @@ const PROVIDER_CAPABILITIES: Record<
     // step 1. sd-scripts has no equivalent: kohya/musubi only sample on their
     // cadence, so there's nothing for the toggle to control there.
     'firstStepSample',
+    'sampleGuidance',
   ]),
   // Mock is a fake backend for UI testing, so it shows every field/branch
   // regardless of which real provider(s) support it. Derived from the full
