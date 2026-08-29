@@ -30,7 +30,7 @@ What genuinely differs, and lives here:
   the official Krea 2 Turbo LoRA applied at render time (few-step, CFG-free)
   — the optional `turbo_lora` component. Sample width/height are global flags
   rather than per-prompt, so the first prompt's size wins. sampleSteps is
-  forwarded (the form defaults it to 9 on this provider); guidanceScale is
+  forwarded (the form defaults it to 8 on this provider); guidanceScale is
   deliberately not — it describes RAW-model CFG, and the Turbo path is
   CFG-free unless given a negative prompt, which we never send.
 
@@ -624,8 +624,8 @@ class FizgigProvider(SdScriptsProvider):
         Fizgig prompt files are one plain prompt per line — no sd-scripts
         `--w/--h/--s` inline flags. Size is global, so the first prompt's
         resolved size applies to every preview. Step count is forwarded (the
-        form defaults it to 9 on this provider, matching the Turbo LoRA's
-        distillation); CFG stays on Fizgig's default (off) — its
+        form defaults it to 8 on this provider, matching Fizgig's own CLI
+        default for the Turbo path); CFG stays on Fizgig's default (off) — its
         --sample_cfg_scale only means anything paired with a negative prompt,
         and the form's guidanceScale describes RAW-model CFG, so that field
         is hidden on this provider rather than sent.

@@ -21,7 +21,7 @@ export type ModelComponentType =
   /**
    * The official Krea 2 Turbo distillation LoRA (~470 MB). Fizgig applies it
    * at render time on the resident training DiT so previews come out in a
-   * few CFG-free steps (9 by default) — previews only, never merged into the
+   * few CFG-free steps (8 by default) — previews only, never merged into the
    * trained LoRA.
    */
   | 'turbo_lora'
@@ -891,7 +891,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // Fizgig loads the same three single-file weights musubi does, plus the
       // official Turbo distillation LoRA for previews: samples render on the
       // resident training DiT with it applied at strength 1.0 (few-step, no
-      // CFG — sampleSteps defaults to 9 here via providerDefaults), so no
+      // CFG — sampleSteps defaults to 8 here via providerDefaults), so no
       // second checkpoint is loaded mid-run. Optional — but a run with
       // sampling enabled and no Turbo LoRA is rejected at validation rather
       // than silently rendering nothing.
@@ -920,7 +920,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
           label: 'Krea 2 Turbo LoRA (previews)',
           required: false,
           downloadId: 'dl-krea2-turbo-lora',
-          hint: 'Needed only for training previews — 9-step Turbo renders on the training DiT',
+          hint: 'Needed only for training previews — 8-step Turbo renders on the training DiT',
         },
       ],
     },
@@ -985,9 +985,9 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // provider switch, would sabotage every fizgig run.
       //
       // sampleSteps: previews render through the step-distilled Turbo LoRA,
-      // not RAW — 9 steps matches the Krea 2 Turbo entry below, where the
-      // RAW default of 28 would only triple preview time.
-      fizgig: { blocksToSwap: 0, sampleSteps: 9 },
+      // not RAW — 8 steps matches Fizgig's own CLI default, where the RAW
+      // default of 28 would only triple preview time.
+      fizgig: { blocksToSwap: 0, sampleSteps: 8 },
     },
   },
   {
