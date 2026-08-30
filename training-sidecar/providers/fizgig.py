@@ -20,6 +20,10 @@ What genuinely differs, and lives here:
 - **Epoch-only pacing.** `krea2_train.py` has `--max_train_epochs` but no
   step-based duration, save or sample cadence. Steps-mode requests are
   rejected up front in `validate_request` rather than silently converted.
+- **Provider-side checkpoint retention.** Fizgig has no --save_last_n
+  equivalent (its only pruning is resume-state dirs), so max_saves_to_keep
+  is enforced here via the `_housekeep_checkpoints` hook — see
+  `_prune_epoch_checkpoints` for the landed-file guards.
 - **Quantised-base training** is the point of the experiment: fp8 is Fizgig's
   default; `--quant_int8 bf16` (int8 forward, exact bf16 gradients) and
   `--quantize_4bit` (NF4) are the extra `transformer_quantization` values the
@@ -150,6 +154,75 @@ def _canonical_optimizer(value: object) -> Optional[str]:
     return _OPTIMIZER_MAP.get(str(value or "").strip().lower())
 
 
+def _prune_epoch_checkpoints(
+    output_dir: Path, output_name: str, max_keep: int
+) -> int:
+    """Delete this run's oldest intermediate checkpoints beyond `max_keep`.
+
+    Fizgig's only retention machinery is prune_state_dirs (resume-state dirs,
+    via --keep_last_n_states) — epoch `.safetensors` saves accumulate forever,
+    so the provider enforces the max_saves_to_keep contract the other backends
+    honour natively. Candidates are `{output_name}-NNNNNN.safetensors` only
+    (trainer.py's epoch template, matched case-insensitively like the
+    supersede machinery); the final `{output_name}.safetensors` never fits
+    that shape, so the final save is exempt by construction, and a digit-only
+    suffix keeps a sibling run like `demo-v2` out of `demo`'s candidates.
+
+    Nothing is deleted unless the newest checkpoint has actually landed:
+    nonzero size, and no smaller than half the largest candidate being
+    removed — same-run LoRA saves are near-identical in size, so a short
+    newest file is a write still in flight or a failed save, and pruning
+    waits for the next chance rather than deleting the only good copies.
+    Each unlink is caught individually (a Windows AV scanner holding a
+    just-written file must cost a skipped prune, not the run).
+    """
+    if max_keep <= 0:
+        return 0
+    pattern = re.compile(
+        re.escape(output_name) + r"-(\d+)\.safetensors", re.IGNORECASE
+    )
+    checkpoints: list[tuple[int, Path]] = []
+    try:
+        entries = list(os.scandir(output_dir))
+    except OSError:
+        return 0
+    for entry in entries:
+        match = pattern.fullmatch(entry.name)
+        if match and entry.is_file():
+            checkpoints.append((int(match.group(1)), Path(entry.path)))
+    checkpoints.sort()
+    if len(checkpoints) <= max_keep:
+        return 0
+
+    newest = checkpoints[-1][1]
+    try:
+        newest_size = newest.stat().st_size
+    except OSError:
+        return 0
+    if newest_size <= 0:
+        return 0
+
+    victims = checkpoints[:-max_keep]
+    victim_sizes = []
+    for _, path in victims:
+        try:
+            victim_sizes.append(path.stat().st_size)
+        except OSError:
+            pass
+    if victim_sizes and newest_size < max(victim_sizes) * 0.5:
+        return 0
+
+    removed = 0
+    for _, path in victims:
+        try:
+            path.unlink()
+            removed += 1
+            print(f"[fizgig] pruned checkpoint: {path.name}")
+        except OSError:
+            pass
+    return removed
+
+
 def _find_model(model_id: str) -> Optional[dict]:
     for m in SUPPORTED_MODELS:
         if m["id"] == model_id:
@@ -202,6 +275,15 @@ class FizgigProvider(SdScriptsProvider):
         if self._PREVIEW_ANNOUNCE.search(lower_line):
             return SAMPLING_PHASE
         return super()._preparing_phase_for(lower_line)
+
+    def _housekeep_checkpoints(self, request: StartJobRequest) -> None:
+        max_keep = int(
+            request.hyperparameters.get("max_saves_to_keep", 0) or 0
+        )
+        if max_keep > 0:
+            _prune_epoch_checkpoints(
+                Path(request.output_path), request.output_name, max_keep
+            )
 
     # --- Environment / request validation ---
 

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from models import DatasetEntry, ProviderType, StartJobRequest
-from providers.fizgig import FizgigProvider
+from providers.fizgig import FizgigProvider, _prune_epoch_checkpoints
 from providers.sd_scripts_base import SAMPLING_PHASE
 from test_log_parsing import transcript_run
 
@@ -349,6 +349,104 @@ class TestPreviewLogGrammar:
 
         resumed = out[-2]
         assert resumed.phase is None and resumed.current_step == 2
+
+
+# --------------------------------------------------------------------------
+# Provider-side checkpoint retention (fizgig has no --save_last_n equivalent)
+# --------------------------------------------------------------------------
+
+CKPT_BYTES = b"x" * 1000
+
+
+def write_checkpoints(out_dir: Path, name: str, epochs, data=CKPT_BYTES):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for epoch in epochs:
+        (out_dir / f"{name}-{epoch:06d}.safetensors").write_bytes(data)
+
+
+def remaining(out_dir: Path) -> set[str]:
+    return {p.name for p in out_dir.iterdir()}
+
+
+class TestCheckpointPruning:
+    def test_keeps_newest_n_and_exempt_files(self, tmp_path):
+        out = tmp_path / "loras"
+        write_checkpoints(out, "demo", [1, 2, 3, 4])
+        # Never candidates: the final save, and a sibling run whose name
+        # merely starts with ours (non-digit suffix).
+        (out / "demo.safetensors").write_bytes(CKPT_BYTES)
+        (out / "demo-v2-000001.safetensors").write_bytes(CKPT_BYTES)
+
+        assert _prune_epoch_checkpoints(out, "demo", 2) == 2
+        assert remaining(out) == {
+            "demo-000003.safetensors",
+            "demo-000004.safetensors",
+            "demo.safetensors",
+            "demo-v2-000001.safetensors",
+        }
+
+    def test_zero_keeps_all(self, tmp_path):
+        out = tmp_path / "loras"
+        write_checkpoints(out, "demo", [1, 2, 3])
+        assert _prune_epoch_checkpoints(out, "demo", 0) == 0
+        assert len(remaining(out)) == 3
+
+    def test_under_budget_is_noop(self, tmp_path):
+        out = tmp_path / "loras"
+        write_checkpoints(out, "demo", [1, 2])
+        assert _prune_epoch_checkpoints(out, "demo", 3) == 0
+        assert len(remaining(out)) == 2
+
+    def test_refuses_when_newest_is_empty(self, tmp_path):
+        """An unlanded (0-byte) newest save must never cost older copies."""
+        out = tmp_path / "loras"
+        write_checkpoints(out, "demo", [1, 2])
+        write_checkpoints(out, "demo", [3], data=b"")
+        assert _prune_epoch_checkpoints(out, "demo", 1) == 0
+        assert len(remaining(out)) == 3
+
+    def test_refuses_when_newest_is_suspiciously_small(self, tmp_path):
+        """A partial write (well under its siblings' size) defers pruning."""
+        out = tmp_path / "loras"
+        write_checkpoints(out, "demo", [1, 2])
+        write_checkpoints(out, "demo", [3], data=b"x" * 100)
+        assert _prune_epoch_checkpoints(out, "demo", 1) == 0
+        assert len(remaining(out)) == 3
+
+    def test_missing_output_dir_is_noop(self, tmp_path):
+        assert _prune_epoch_checkpoints(tmp_path / "nope", "demo", 2) == 0
+
+    def test_epoch_rollover_prunes_through_state_machine(
+        self, provider, tmp_path
+    ):
+        """The run loop's epoch line drives the retention hook end-to-end."""
+        request = make_request(
+            tmp_path,
+            {"save_every_n_epochs": 1, "max_saves_to_keep": 2},
+        )
+        out = Path(request.output_path)
+        write_checkpoints(out, "demo", [1, 2, 3])
+        transcript_run(
+            provider,
+            request,
+            [
+                "epoch 4/20",
+                "steps:  20%|██        | 4/20 [00:04<00:16,  1.00it/s, avr_loss=0.15]",
+            ],
+        )
+        assert remaining(out) == {
+            "demo-000002.safetensors",
+            "demo-000003.safetensors",
+        }
+
+    def test_hook_without_retention_leaves_everything(
+        self, provider, tmp_path
+    ):
+        request = make_request(tmp_path, {"save_every_n_epochs": 1})
+        out = Path(request.output_path)
+        write_checkpoints(out, "demo", [1, 2, 3])
+        transcript_run(provider, request, ["epoch 4/20"])
+        assert len(remaining(out)) == 3
 
     def test_sample_at_first_labels_the_preparing_phase(
         self, provider, tmp_path

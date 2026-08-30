@@ -933,6 +933,15 @@ class SdScriptsProvider(TrainingProvider):
     def _is_save_done(self, line: str) -> bool:
         return any(p.search(line) for p in self.save_done_patterns)
 
+    def _housekeep_checkpoints(self, request: StartJobRequest) -> None:
+        """Hook for checkpoint retention a backend can't do itself.
+
+        Called by the run loop at each epoch rollover and once more after a
+        clean exit. The default is a no-op: sd-scripts and musubi prune their
+        own saves via --save_last_n_epochs/steps. Fizgig has no equivalent
+        flag, so its provider overrides this to enforce max_saves_to_keep.
+        """
+
     # --- The training-loop state machine ---
 
     async def _stream_training_progress(
@@ -1040,6 +1049,10 @@ class SdScriptsProvider(TrainingProvider):
             epoch_match = EPOCH_PATTERN.search(line)
             if epoch_match:
                 total_epochs = int(epoch_match.group(2))
+                # By the time the next epoch line prints, the previous epoch's
+                # checkpoint (if the cadence saved one) has fully landed —
+                # the safe moment for provider-side retention.
+                self._housekeep_checkpoints(request)
                 if sampling_active:
                     # sd-scripts samples at the end of an epoch and the loop
                     # logs the *next* epoch immediately after — while the
@@ -1355,6 +1368,11 @@ class SdScriptsProvider(TrainingProvider):
         )
 
         if return_code == 0:
+            # Final retention pass — the last cadence save has no following
+            # epoch line to trigger on. Clean exits only: after a failure the
+            # newest checkpoint may be the broken one, and every earlier save
+            # is exactly what the user will want to fall back to.
+            self._housekeep_checkpoints(request)
             yield JobProgress(
                 job_id=job_id,
                 status=JobStatus.COMPLETED,
