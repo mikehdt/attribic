@@ -928,7 +928,6 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       'Train on RAW; the LoRA applies to Krea 2 Turbo at inference',
       'On AI Toolkit only the DiT is set here — it needs the text encoder and VAE as Hugging Face directories rather than single files, so it downloads its own copies to the HF cache on the first run and reuses them after that',
       'The ~24 GB bf16 DiT needs fp8 quantisation plus offloading on 16 GB cards — Musubi streams 26 of 28 blocks by default (fewer spills into system RAM and crawls); AI Toolkit streams its layers via the Transformer Offload % setting',
-      'Fizgig (experimental) trains the same RAW DiT with a quantised resident base instead of block swap — fp8 by default, with int8 W8A8 and NF4 options — and torch-compiles the blocks on longer runs. Everything is paced in epochs (duration, saves, samples), and previews need the Krea 2 Turbo LoRA component',
     ],
     availableResolutions: [512, 768, 1024, 1280],
     hiddenFields: [
