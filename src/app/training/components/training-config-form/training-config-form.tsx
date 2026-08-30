@@ -368,6 +368,7 @@ const TrainingConfigFormComponent = ({
           <SavingSection
             outputName={state.outputName}
             saveEnabled={state.saveEnabled}
+            provider={state.selectedProvider}
             saveMode={state.saveMode}
             saveEveryEpochs={state.saveEveryEpochs}
             saveEverySteps={state.saveEverySteps}

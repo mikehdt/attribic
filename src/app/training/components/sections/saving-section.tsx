@@ -3,6 +3,8 @@ import { memo, useCallback } from 'react';
 
 import type { TrainingFieldName } from '@/app/services/training/field-registry';
 import type { TrainingDefaults } from '@/app/services/training/models';
+import { hasCapability } from '@/app/services/training/provider-capabilities';
+import type { TrainingProvider } from '@/app/services/training/types';
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
@@ -24,6 +26,8 @@ import { SectionResetButton } from './section-reset-button';
 type SavingSectionProps = {
   outputName: string;
   saveEnabled: boolean;
+  /** Selected backend, for the epoch-only cadence treatment. */
+  provider: TrainingProvider;
   saveMode: 'epochs' | 'steps';
   saveEveryEpochs: number;
   saveEverySteps: number;
@@ -55,6 +59,7 @@ const SAVE_FORMAT_ITEMS: DropdownItem<string>[] = [
 const SavingSectionComponent = ({
   outputName,
   saveEnabled,
+  provider,
   saveMode,
   saveEveryEpochs,
   saveEverySteps,
@@ -183,15 +188,21 @@ const SavingSectionComponent = ({
                       onChange={(val) => onFieldChange(activeField, val)}
                       className="mr-1 w-20"
                     />
-                    <SegmentedControl
-                      options={[
-                        { value: 'epochs', label: 'Epochs' },
-                        { value: 'steps', label: 'Steps' },
-                      ]}
-                      value={saveMode}
-                      onChange={(val) => onFieldChange('saveMode', val)}
-                      size="md"
-                    />
+                    {hasCapability(provider, 'stepsPacing') ? (
+                      <SegmentedControl
+                        options={[
+                          { value: 'epochs', label: 'Epochs' },
+                          { value: 'steps', label: 'Steps' },
+                        ]}
+                        value={saveMode}
+                        onChange={(val) => onFieldChange('saveMode', val)}
+                        size="md"
+                      />
+                    ) : (
+                      <span className="px-3 py-1.5 text-sm font-medium text-slate-500 dark:text-slate-300">
+                        Epochs
+                      </span>
+                    )}
                   </InputTray>
 
                   {saveEnabled && checkpoints > 0 && (

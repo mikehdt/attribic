@@ -38,6 +38,7 @@ import {
   type ModelComponentType,
   type TrainingDefaults,
 } from '@/app/services/training/models';
+import { hasCapability } from '@/app/services/training/provider-capabilities';
 import {
   defaultSampleAspect,
   getSampleBase,
@@ -357,11 +358,13 @@ const trainingConfigSlice = createSlice({
         saveState: state.form.saveState,
       } satisfies Partial<FormState>;
 
-      state.form = {
+      // The preserved save/sample cadence modes may be steps-based while the
+      // model switch lands on an epoch-only provider.
+      state.form = coerceDurationPacing({
         ...defaultsToFormState(defaults, modelId),
         selectedProvider: nextProvider,
         ...preserved,
-      };
+      });
       fillEmptyModelPaths(state.form, state.appModelDefaults[modelId]);
     },
 
@@ -377,7 +380,8 @@ const trainingConfigSlice = createSlice({
      * quietly runs as something else — so it can't be left sitting in the form
      * showing a shape the run won't follow. Same for a transformer
      * quantisation the new backend has no flag for (int8/NF4 outside fizgig)
-     * — the picker would render blank and the sidecar rejects the value.
+     * — the picker would render blank and the sidecar rejects the value, and
+     * for steps-based pacing on an epoch-only backend (fizgig again).
      */
     setProvider: (state, action: PayloadAction<TrainingProvider>) => {
       const prevProvider = state.form.selectedProvider;
@@ -389,6 +393,7 @@ const trainingConfigSlice = createSlice({
       state.form.scheduler = coerceScheduler(state.form).scheduler;
       state.form.transformerQuantization =
         coerceQuantization(state.form).transformerQuantization;
+      coerceDurationPacingInPlace(state.form);
 
       // Per-provider default overrides (ModelDefinition.providerDefaults):
       // a field still sitting on the OLD provider's effective default follows
@@ -823,7 +828,9 @@ const trainingConfigSlice = createSlice({
         ...incoming,
       };
       const form = normalizeDatasets(
-        coerceQuantization(coerceScheduler(coerceProvider(merged))),
+        coerceDurationPacing(
+          coerceQuantization(coerceScheduler(coerceProvider(merged))),
+        ),
       );
       state.form = form;
       state.loadedProject = action.payload.loadedProject;
@@ -844,7 +851,9 @@ const trainingConfigSlice = createSlice({
         ...incoming,
       };
       state.form = normalizeDatasets(
-        coerceQuantization(coerceScheduler(coerceProvider(merged))),
+        coerceDurationPacing(
+          coerceQuantization(coerceScheduler(coerceProvider(merged))),
+        ),
       );
       state.loadedProject = null;
       state.baselineSnapshot = null;
@@ -1166,6 +1175,29 @@ function coerceScheduler(form: FormState): FormState {
       ? fallback
       : 'constant',
   };
+}
+
+/**
+ * Force every pacing control back to epochs when the selected backend has no
+ * step-based pacing at all (fizgig: no --max_train_steps, no step-cadence
+ * save/sample flags — the sidecar rejects steps-mode requests at launch).
+ * Goes through {@link switchCadenceUnit} so a steps-mode value converts to
+ * an equivalent epoch count when a dataset is attached, instead of the run
+ * silently taking whatever was last parked in the epochs field.
+ */
+function coerceDurationPacingInPlace(form: FormState): void {
+  if (hasCapability(form.selectedProvider, 'stepsPacing')) return;
+  for (const pair of CADENCE_PAIRS) {
+    switchCadenceUnit(form, pair, 'epochs');
+  }
+}
+
+/** {@link coerceDurationPacingInPlace} as a pure step for the hydrate chains. */
+function coerceDurationPacing(form: FormState): FormState {
+  if (hasCapability(form.selectedProvider, 'stepsPacing')) return form;
+  const next = { ...form };
+  coerceDurationPacingInPlace(next);
+  return next;
 }
 
 /**

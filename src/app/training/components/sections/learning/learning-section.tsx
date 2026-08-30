@@ -9,6 +9,7 @@ import {
   SCHEDULER_OPTIONS,
   type TrainingDefaults,
 } from '@/app/services/training/models';
+import { hasCapability } from '@/app/services/training/provider-capabilities';
 import type { TrainingProvider } from '@/app/services/training/types';
 import { Checkbox } from '@/app/shared/checkbox';
 import { CollapsibleSection } from '@/app/shared/collapsible-section';
@@ -339,15 +340,23 @@ const LearningSectionComponent = ({
                   size="md"
                 />
 
-                <SegmentedControl
-                  options={[
-                    { value: 'epochs', label: 'Epochs' },
-                    { value: 'steps', label: 'Steps' },
-                  ]}
-                  value={durationMode}
-                  onChange={(val) => onFieldChange('durationMode', val)}
-                  size="md"
-                />
+                {hasCapability(selectedProvider, 'stepsPacing') ? (
+                  <SegmentedControl
+                    options={[
+                      { value: 'epochs', label: 'Epochs' },
+                      { value: 'steps', label: 'Steps' },
+                    ]}
+                    value={durationMode}
+                    onChange={(val) => onFieldChange('durationMode', val)}
+                    size="md"
+                  />
+                ) : (
+                  // Epoch-only backend (fizgig): the unit is stated, not
+                  // offered — coerceDurationPacing keeps the mode on epochs.
+                  <span className="px-3 py-1.5 text-sm font-medium text-slate-500 dark:text-slate-300">
+                    Epochs
+                  </span>
+                )}
               </InputTray>
 
               {totalEffective > 0 && (

@@ -301,15 +301,21 @@ const SamplingSectionComponent = ({
                       onChange={(val) => onFieldChange(activeField, val)}
                       className="mr-1 w-20"
                     />
-                    <SegmentedControl
-                      options={[
-                        { value: 'epochs', label: 'Epochs' },
-                        { value: 'steps', label: 'Steps' },
-                      ]}
-                      value={sampleMode}
-                      onChange={(val) => onFieldChange('sampleMode', val)}
-                      size="md"
-                    />
+                    {hasCapability(provider, 'stepsPacing') ? (
+                      <SegmentedControl
+                        options={[
+                          { value: 'epochs', label: 'Epochs' },
+                          { value: 'steps', label: 'Steps' },
+                        ]}
+                        value={sampleMode}
+                        onChange={(val) => onFieldChange('sampleMode', val)}
+                        size="md"
+                      />
+                    ) : (
+                      <span className="px-3 py-1.5 text-sm font-medium text-slate-500 dark:text-slate-300">
+                        Epochs
+                      </span>
+                    )}
                   </InputTray>
 
                   {tally}

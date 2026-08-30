@@ -46,7 +46,8 @@ export type ProviderCapability =
   | 'lowVram'
   | 'layerOffloading' // layerOffloadPercent
   | 'firstStepSample' // sampleFirstStep
-  | 'sampleGuidance'; // guidanceScale
+  | 'sampleGuidance' // guidanceScale
+  | 'stepsPacing'; // steps duration mode + step-cadence save/sample units
 
 /**
  * Capabilities shared by every sd-scripts-lineage backend (kohya today,
@@ -67,6 +68,7 @@ const SD_SCRIPTS_FAMILY: readonly ProviderCapability[] = [
   'finalSaveExempt',
   'datasetShapePreview',
   'sampleGuidance',
+  'stepsPacing',
 ];
 
 /**
@@ -106,6 +108,7 @@ const CAPABILITY_SET: Record<ProviderCapability, true> = {
   layerOffloading: true,
   firstStepSample: true,
   sampleGuidance: true,
+  stepsPacing: true,
 };
 
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_SET) as ProviderCapability[];
@@ -138,7 +141,10 @@ const PROVIDER_CAPABILITIES: Record<
   // means anything paired with a negative prompt, and the form's value
   // describes RAW-model CFG). Present beyond musubi: networkTypeSelect
   // + lokr (native LoKR), firstStepSample (--sample_at_first), and the
-  // quantization capability covers its extra int8/NF4 base values.
+  // quantization capability covers its extra int8/NF4 base values. Also
+  // absent: stepsPacing — krea2_train.py has no --max_train_steps and no
+  // step-cadence save/sample flags, so every pacing control is epoch-only
+  // (the sidecar rejects steps-mode requests at launch as the backstop).
   fizgig: new Set([
     'lrSchedulerControls',
     'lrWarmupAnySchedule',
@@ -188,6 +194,9 @@ const PROVIDER_CAPABILITIES: Record<
     // cadence, so there's nothing for the toggle to control there.
     'firstStepSample',
     'sampleGuidance',
+    // Steps-native: the provider converts epoch-mode durations/cadences to
+    // steps, so both units are offered.
+    'stepsPacing',
   ]),
   // Mock is a fake backend for UI testing, so it shows every field/branch
   // regardless of which real provider(s) support it. Derived from the full
