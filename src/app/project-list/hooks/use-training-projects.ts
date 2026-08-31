@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { TrainingProjectSummary } from '@/app/services/training-projects/disk-schema';
@@ -12,7 +11,6 @@ import {
   selectShowHidden,
 } from '@/app/store/project-list';
 import { useTrainingProjectList } from '@/app/training/components/project-toolbar/use-training-project-list';
-import { slugify } from '@/app/utils/slug';
 
 /**
  * Training projects for the start page: the shared list fetch plus the inline
@@ -21,7 +19,6 @@ import { slugify } from '@/app/utils/slug';
  * training UI.
  */
 export const useTrainingProjects = () => {
-  const router = useRouter();
   const { projects, status, error, reload } = useTrainingProjectList(true);
   const refreshToken = useAppSelector(selectProjectListRefreshToken);
   const { showErrorToast } = useToast();
@@ -70,13 +67,6 @@ export const useTrainingProjects = () => {
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState<ProjectColor | undefined>('slate');
   const [editHidden, setEditHidden] = useState(false);
-
-  const handleSelect = useCallback(
-    (project: TrainingProjectSummary) => {
-      router.push(`/training/${slugify(project.name)}`);
-    },
-    [router],
-  );
 
   const handleStartEdit = useCallback((project: TrainingProjectSummary) => {
     setEditingId(project.id);
@@ -182,7 +172,6 @@ export const useTrainingProjects = () => {
     setEditName,
     setEditColor,
     setEditHidden,
-    handleSelect,
     handleStartEdit,
     handleCancelEdit,
     handleSaveEdit,

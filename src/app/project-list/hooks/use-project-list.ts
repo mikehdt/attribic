@@ -1,4 +1,3 @@
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useToast } from '@/app/shared/toast/hooks/use-toast';
@@ -27,7 +26,6 @@ import type { Project } from '../types';
 import { useEditProject } from './use-edit-project';
 
 export const useProjectList = () => {
-  const router = useRouter();
   const dispatch = useAppDispatch();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,6 +95,9 @@ export const useProjectList = () => {
     loadProjects();
   }, [loadProjects, refreshToken]);
 
+  // Seeds Redux ahead of the row's Link navigation (the row itself is the
+  // anchor now). Only runs for same-tab SPA navigation — a new tab seeds
+  // itself from the URL slug via AppProvider.
   const handleProjectSelect = useCallback(
     (projectPath: string) => {
       const selectedProject = projects.find((p) => p.path === projectPath);
@@ -123,10 +124,8 @@ export const useProjectList = () => {
           thumbnail: selectedProject?.thumbnail,
         }),
       );
-
-      router.push(`/tagging/${encodeURIComponent(folderName)}/1`);
     },
-    [router, dispatch, projects],
+    [dispatch, projects],
   );
 
   // Separate projects into featured and regular, filtering out hidden projects unless showHidden is true

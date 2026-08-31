@@ -13,13 +13,13 @@ import { ColorSwatchRow } from '@/app/shared/color-swatch-row';
 import type { ProjectColor } from '@/app/shared/project-colors';
 import { modelLabel } from '@/app/training/components/project-toolbar/model-backend-badges';
 import { projectThumbnailSrc } from '@/app/utils/project-thumbnail';
+import { slugify } from '@/app/utils/slug';
 
 export type TrainingProjectItemActions = {
   editColor: ProjectColor | undefined;
   editName: string;
   editHidden: boolean;
   showHidden: boolean;
-  onSelect: (project: TrainingProjectSummary) => void;
   onStartEdit: (project: TrainingProjectSummary) => void;
   onCancelEdit: () => void;
   onSaveEdit: (projectId: string) => void;
@@ -91,6 +91,9 @@ const TrainingProjectIcon = ({
       {!isEditing && (
         <div
           onClick={(e) => {
+            // preventDefault too: the row is an anchor now, and a stopped
+            // click would otherwise still follow the href.
+            e.preventDefault();
             e.stopPropagation();
             onToggleFeatured(project);
           }}
@@ -137,7 +140,7 @@ const TrainingProjectItemComponent = ({
 
   return (
     <Button
-      onClick={() => actions.onSelect(project)}
+      href={`/training/${slugify(project.name)}`}
       size="lg"
       width="lg"
       color={isEditing ? actions.editColor : project.color || 'slate'}
@@ -245,6 +248,9 @@ const TrainingProjectItemComponent = ({
               </div>
               <div
                 onClick={(e) => {
+                  // preventDefault too: the row is an anchor now, and a
+                  // stopped click would otherwise still follow the href.
+                  e.preventDefault();
                   e.stopPropagation();
                   actions.onStartEdit(project);
                 }}

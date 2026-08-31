@@ -29,12 +29,16 @@ const ProjectIconComponent = ({
     ? projectThumbnailSrc(project.name, project.thumbnailVersion)
     : null;
 
+  // preventDefault everywhere here: the row these sit inside is an anchor, so
+  // a stopped click would otherwise still follow the href.
   const handleStarClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     onToggleFeatured(project.name, project.featured || false);
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     fileInputRef.current?.click();
   };
@@ -49,6 +53,7 @@ const ProjectIconComponent = ({
   };
 
   const handleRemoveClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     onThumbnailRemove?.();
   };

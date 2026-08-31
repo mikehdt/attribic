@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   FocusEventHandler,
   KeyboardEventHandler,
@@ -40,6 +41,14 @@ interface ButtonProps {
   className?: string;
   title?: string;
   ref?: Ref<HTMLButtonElement>;
+
+  // Renders as a Next.js <Link> (a real anchor, so right-click / middle-click /
+  // open-in-new-tab work) instead of a <button>. Ignored while disabled or
+  // inert, where a non-navigating button is the honest element. `onNavigate`
+  // fires only on actual SPA navigation — modified clicks that open a new tab
+  // skip it, so it's the place for state that should only seed this tab.
+  href?: string;
+  onNavigate?: () => void;
 
   // Styling props
   color?: ButtonColor;
@@ -236,6 +245,8 @@ export const Button = ({
   neutralDisabled = false,
   neutralUnpressed = false,
   inert = false,
+  href,
+  onNavigate,
   ref,
   ...props
 }: ButtonProps) => {
@@ -349,6 +360,22 @@ export const Button = ({
     styleClasses,
     className,
   ].join(' ');
+
+  if (href && !disabled && !inert) {
+    return (
+      <Link
+        href={href}
+        onClick={onClick}
+        onNavigate={onNavigate}
+        aria-haspopup={ariaHasPopup}
+        aria-expanded={ariaExpanded}
+        className={allClasses}
+        title={title}
+      >
+        {children}
+      </Link>
+    );
+  }
 
   return (
     <button

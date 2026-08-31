@@ -1,13 +1,32 @@
-import { CheckIcon, PencilIcon, XIcon } from 'lucide-react';
+import {
+  CheckIcon,
+  LayersIcon,
+  PencilIcon,
+  TagIcon,
+  TextAlignStartIcon,
+  XIcon,
+} from 'lucide-react';
 import { memo, useEffect, useRef } from 'react';
 
 import { Button } from '@/app/shared/button';
 import { Checkbox } from '@/app/shared/checkbox';
 import { ColorSwatchRow } from '@/app/shared/color-swatch-row';
 import type { ProjectColor } from '@/app/shared/project-colors';
+import type { CaptionMode } from '@/app/store/project/types';
 
 import { ProjectIcon } from './project-icon';
 import type { Project } from './types';
+
+// Same icons as the project menu's tagging-mode switcher, so the row's badge
+// and the in-project control read as the one concept.
+const CAPTION_MODE_BADGES: Record<
+  CaptionMode,
+  { Icon: typeof TagIcon; label: string }
+> = {
+  tags: { Icon: TagIcon, label: 'Tag project' },
+  hybrid: { Icon: LayersIcon, label: 'Hybrid project (tags + captions)' },
+  caption: { Icon: TextAlignStartIcon, label: 'Caption project' },
+};
 
 export type ProjectItemActions = {
   editColor: ProjectColor | undefined;
@@ -56,9 +75,15 @@ const ProjectItemComponent = ({
     }
   };
 
+  const folderName = project.path.split(/[/\\]/).pop() || project.name;
+  const modeBadge = CAPTION_MODE_BADGES[project.captionMode ?? 'tags'];
+
   return (
     <Button
-      onClick={() => actions.onSelect(project.path)}
+      href={`/tagging/${encodeURIComponent(folderName)}/1`}
+      // Seeds the project's Redux state ahead of SPA navigation only — a
+      // modified click opens a new tab that seeds itself from the URL.
+      onNavigate={() => actions.onSelect(project.path)}
       size="lg"
       width="lg"
       color={isEditing ? actions.editColor : project.color || 'slate'}
@@ -164,15 +189,26 @@ const ProjectItemComponent = ({
             </div>
 
             <div className="relative flex items-center">
-              {project.imageCount !== undefined && (
-                <div className="text-sm text-nowrap text-slate-500 tabular-nums transition-transform duration-200 group-hover:-translate-x-8 dark:text-slate-300">
-                  {project.imageCount === 1
-                    ? `1 image`
-                    : `${project.imageCount} images`}
-                </div>
-              )}
+              <div className="flex items-center gap-1.5 text-sm text-nowrap text-slate-500 tabular-nums transition-transform duration-200 group-hover:-translate-x-8 dark:text-slate-300">
+                <modeBadge.Icon
+                  className="h-4 w-4 opacity-70"
+                  aria-label={modeBadge.label}
+                >
+                  <title>{modeBadge.label}</title>
+                </modeBadge.Icon>
+                {project.imageCount !== undefined && (
+                  <span>
+                    {project.imageCount === 1
+                      ? `1 image`
+                      : `${project.imageCount} images`}
+                  </span>
+                )}
+              </div>
               <div
                 onClick={(e) => {
+                  // preventDefault too: the row is an anchor now, and a
+                  // stopped click would otherwise still follow the href.
+                  e.preventDefault();
                   e.stopPropagation();
                   actions.onStartEdit(project);
                 }}
