@@ -6,8 +6,10 @@ import {
   useState,
 } from 'react';
 
-import { selectAllImages, selectFilteredAssets } from '@/app/store/assets';
-import { selectHasActiveFilters } from '@/app/store/filters';
+import {
+  selectHasActiveFilters,
+  selectHasActiveNonArchiveVisibility,
+} from '@/app/store/filters';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectCaptionMode } from '@/app/store/project';
 import {
@@ -15,6 +17,10 @@ import {
   selectWorkingSelection,
   selectWorkingSelectionCount,
 } from '@/app/store/selection';
+import {
+  selectAssetsWithActiveFilters,
+  selectBulkEditableAssets,
+} from '@/app/store/selection/combinedSelectors';
 import {
   editTagsAcrossAssets,
   replaceCaptionsAcrossAssets,
@@ -61,9 +67,18 @@ export const useSearchReplaceModal = (isOpen: boolean, onClose: () => void) => {
   const [onlyFilteredAssets, setOnlyFilteredAssets] = useState(true);
   const [onlySelectedAssets, setOnlySelectedAssets] = useState(false);
 
-  const allImages = useAppSelector(selectAllImages);
-  const filteredAssets = useAppSelector(selectFilteredAssets);
-  const hasActiveFilters = useAppSelector(selectHasActiveFilters);
+  // "All" is the bulk-editable pool (a hidden archive is left alone) and
+  // "filtered" is the chip union / visibility set — the same sets the apply
+  // thunks resolve the scope flags to, so the preview can't drift from the
+  // apply. Chips count as filtering even when their class mode isn't applied
+  // to the view, matching what the user means by "the tags I picked".
+  const allImages = useAppSelector(selectBulkEditableAssets);
+  const filteredAssets = useAppSelector(selectAssetsWithActiveFilters);
+  const hasChipFilters = useAppSelector(selectHasActiveFilters);
+  const hasVisibilityScopes = useAppSelector(
+    selectHasActiveNonArchiveVisibility,
+  );
+  const hasActiveFilters = hasChipFilters || hasVisibilityScopes;
   const selectedAssets = useAppSelector(selectWorkingSelection);
   const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const hasSelectedAssets = selectedAssetsCount > 0;

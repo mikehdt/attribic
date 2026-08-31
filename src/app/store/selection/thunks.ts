@@ -64,10 +64,12 @@ export const editTagsAcrossAssets = createAsyncThunk(
     const state = getState() as RootState;
 
     // Start with all assets or filtered assets based on the filter constraint.
-    // Unscoped means "every asset the archive view exposes", never the hidden
-    // archive.
+    // "Filtered" means the chip union / visibility set every bulk action
+    // scopes on (selectAssetsWithActiveFilters) — not the view, which ignores
+    // chips whose class mode is off. Unscoped means "every asset the archive
+    // view exposes", never the hidden archive.
     let candidateAssets = onlyFilteredAssets
-      ? selectFilteredAssets(state)
+      ? selectAssetsWithActiveFilters(state)
       : selectBulkEditableAssets(state);
 
     // Further filter by selected assets if that constraint is active
@@ -253,8 +255,9 @@ export const replaceCaptionsAcrossAssets = createAsyncThunk(
   ) => {
     const state = getState() as RootState;
 
+    // Same scope resolution as editTagsAcrossAssets — see the comment there.
     let candidateAssets = onlyFilteredAssets
-      ? selectFilteredAssets(state)
+      ? selectAssetsWithActiveFilters(state)
       : selectBulkEditableAssets(state);
 
     if (onlySelectedAssets) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { RootState } from '@/app/store';
-import { selectAllImages, selectFilteredAssets } from '@/app/store/assets';
+import { selectAllImages } from '@/app/store/assets';
 import {
   FilterMode,
   selectFilterMode,
@@ -15,6 +15,8 @@ import {
   selectWorkingSelectionCount,
 } from '@/app/store/selection';
 import {
+  selectAssetsWithActiveFilters,
+  selectBulkEditableAssets,
   selectDuplicateTagInfo,
   selectTagCoExistence,
 } from '@/app/store/selection/combinedSelectors';
@@ -46,9 +48,15 @@ export const useEditTagsModal = (
   // State for the "only apply to selected assets" checkbox
   const [onlySelectedAssets, setOnlySelectedAssets] = useState(false);
 
-  // Get assets for the checkbox logic and scoping
+  // Get assets for the checkbox logic and scoping. Same sets the apply thunk
+  // resolves the scope flags to: "filtered" is the chip union / visibility set
+  // (selectAssetsWithActiveFilters), "all" is the bulk-editable pool that
+  // leaves a hidden archive alone — so the counts here can't drift from what
+  // the rename actually touches. `allImages` remains only for resolving ids
+  // to assets when computing which tags are in scope.
   const allImages = useAppSelector(selectAllImages);
-  const filteredAssets = useAppSelector(selectFilteredAssets);
+  const bulkEditableAssets = useAppSelector(selectBulkEditableAssets);
+  const filteredAssets = useAppSelector(selectAssetsWithActiveFilters);
   const hasActiveFilters = useAppSelector(selectHasActiveFilters);
   const hasNonTagFilters = useAppSelector(selectHasNonTagFilters);
   const filterMode = useAppSelector(selectFilterMode);
@@ -80,7 +88,7 @@ export const useEditTagsModal = (
     } else if (useSelected) {
       return selectedAssets;
     }
-    return allImages.map((a) => a.fileId);
+    return bulkEditableAssets.map((a) => a.fileId);
   }, [
     onlyFilteredAssets,
     hasActiveFilters,
@@ -88,7 +96,7 @@ export const useEditTagsModal = (
     hasSelectedAssets,
     filteredAssets,
     selectedAssets,
-    allImages,
+    bulkEditableAssets,
   ]);
 
   // Filter the filterTags to only show tags that exist on assets in scope
