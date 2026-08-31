@@ -936,10 +936,11 @@ class SdScriptsProvider(TrainingProvider):
     def _housekeep_checkpoints(self, request: StartJobRequest) -> None:
         """Hook for checkpoint retention a backend can't do itself.
 
-        Called by the run loop at each epoch rollover and once more after a
-        clean exit. The default is a no-op: sd-scripts and musubi prune their
-        own saves via --save_last_n_epochs/steps. Fizgig has no equivalent
-        flag, so its provider overrides this to enforce max_saves_to_keep.
+        Called by the run loop at the first training-bar line after each
+        epoch rollover and once more after a clean exit. The default is a
+        no-op: sd-scripts and musubi prune their own saves via
+        --save_last_n_epochs/steps. Fizgig has no equivalent flag, so its
+        provider overrides this to enforce max_saves_to_keep.
         """
 
     # --- The training-loop state machine ---
@@ -967,6 +968,9 @@ class SdScriptsProvider(TrainingProvider):
         # Epoch number logged during a sampling pause, applied once the pause
         # ends — see the EPOCH_PATTERN branch in the run loop.
         pending_epoch: Optional[int] = None
+        # Retention deferred from the epoch line to the next training bar —
+        # see the EPOCH_PATTERN branch.
+        housekeep_pending = False
 
         line_queue, drain_tasks = _merge_output(proc)
 
@@ -1049,10 +1053,16 @@ class SdScriptsProvider(TrainingProvider):
             epoch_match = EPOCH_PATTERN.search(line)
             if epoch_match:
                 total_epochs = int(epoch_match.group(2))
-                # By the time the next epoch line prints, the previous epoch's
-                # checkpoint (if the cadence saved one) has fully landed —
-                # the safe moment for provider-side retention.
-                self._housekeep_checkpoints(request)
+                # Retention can't run here: Fizgig's only `epoch N/M` line is
+                # the END-of-epoch summary, printed just BEFORE that epoch's
+                # checkpoint saves (sd-scripts prints its banner at epoch
+                # start, but its hook is a no-op anyway). Pruning now would
+                # run one save behind — trim to N, then the save lands,
+                # leaving N+1 on disk for the whole next epoch (and for good
+                # if the run dies). Defer to the first training bar after the
+                # rollover, by which point the boundary block — save included
+                # — has finished.
+                housekeep_pending = True
                 if sampling_active:
                     # sd-scripts samples at the end of an epoch and the loop
                     # logs the *next* epoch immediately after — while the
@@ -1096,6 +1106,9 @@ class SdScriptsProvider(TrainingProvider):
 
             if match and is_training_bar:
                 training_started = True
+                if housekeep_pending:
+                    housekeep_pending = False
+                    self._housekeep_checkpoints(request)
                 new_step = int(match.group(1))
                 # sd-scripts reprints the training bar throughout the sampling
                 # pause — sometimes catching up to the step sampling was
@@ -1369,7 +1382,7 @@ class SdScriptsProvider(TrainingProvider):
 
         if return_code == 0:
             # Final retention pass — the last cadence save has no following
-            # epoch line to trigger on. Clean exits only: after a failure the
+            # training bar to trigger on. Clean exits only: after a failure the
             # newest checkpoint may be the broken one, and every earlier save
             # is exactly what the user will want to fall back to.
             self._housekeep_checkpoints(request)

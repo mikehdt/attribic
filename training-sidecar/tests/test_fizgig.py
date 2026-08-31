@@ -419,7 +419,7 @@ class TestCheckpointPruning:
     def test_epoch_rollover_prunes_through_state_machine(
         self, provider, tmp_path
     ):
-        """The run loop's epoch line drives the retention hook end-to-end."""
+        """The first training bar after the epoch line drives the hook."""
         request = make_request(
             tmp_path,
             {"save_every_n_epochs": 1, "max_saves_to_keep": 2},
@@ -439,13 +439,38 @@ class TestCheckpointPruning:
             "demo-000003.safetensors",
         }
 
+    def test_epoch_line_alone_does_not_prune(self, provider, tmp_path):
+        """Retention must wait for the training bar after the rollover.
+
+        Fizgig's `epoch N/M` line is the END-of-epoch summary, printed just
+        before that epoch's checkpoint saves. Pruning on it ran one save
+        behind: trim to N, the save lands, N+1 sit on disk for the whole
+        next epoch — and forever if the run dies (the clean-exit pass never
+        runs after a failure). Keep-4 showed five checkpoints.
+        """
+        request = make_request(
+            tmp_path,
+            {"save_every_n_epochs": 1, "max_saves_to_keep": 2},
+        )
+        out = Path(request.output_path)
+        write_checkpoints(out, "demo", [1, 2, 3])
+        transcript_run(provider, request, ["epoch 4/20"], exit_code=1)
+        assert len(remaining(out)) == 3
+
     def test_hook_without_retention_leaves_everything(
         self, provider, tmp_path
     ):
         request = make_request(tmp_path, {"save_every_n_epochs": 1})
         out = Path(request.output_path)
         write_checkpoints(out, "demo", [1, 2, 3])
-        transcript_run(provider, request, ["epoch 4/20"])
+        transcript_run(
+            provider,
+            request,
+            [
+                "epoch 4/20",
+                "steps:  20%|██        | 4/20 [00:04<00:16,  1.00it/s, avr_loss=0.15]",
+            ],
+        )
         assert len(remaining(out)) == 3
 
     def test_sample_at_first_labels_the_preparing_phase(
