@@ -6,12 +6,13 @@ import type {
 import type { TaggingJob } from '@/app/store/jobs';
 
 /**
- * Whether a batch ran the VLM captioner rather than the ONNX tagger — decides
- * "captioned" vs "tagged" wording throughout. Both the job's own provider and
- * the summary's are checked so that jobs predating either field still read
- * correctly; failing those, a result carrying a caption gives it away.
+ * Whether a batch produced captions rather than tags — decides "captioned" vs
+ * "tagged" wording throughout. A VLM run in a tag-mode project produces tags
+ * (`vlmOutput: 'tags'`), so the provider alone no longer decides; failing
+ * every recorded field, a result carrying a caption gives it away.
  */
 export function isCaptionJob(job: TaggingJob): boolean {
+  if (job.vlmOutput === 'tags') return false;
   const provider = job.providerType ?? job.summary?.providerType;
   if (provider) return provider === 'vlm';
   return job.lastResult?.caption != null;

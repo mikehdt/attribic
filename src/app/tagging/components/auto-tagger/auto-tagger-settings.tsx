@@ -8,13 +8,17 @@ import { FormTitle } from '@/app/shared/form-title/form-title';
 import { MultiTagInput } from '@/app/shared/multi-tag-input';
 import { RadioGroup } from '@/app/shared/radio-group';
 
+import { TaggerScopeControls } from './tagger-scope-controls';
+import type { TaggerScope } from './use-tagger-scope';
+
 type AutoTaggerSettingsProps = {
   options: TaggerOptions;
   unselectOnComplete: boolean;
   selectedModelId: string | null;
   modelItems: (DropdownItem<string> | DropdownGroup<string>)[];
   insertModeOptions: { value: TagInsertMode; label: string }[];
-  selectedAssetsCount: number;
+  /** Which assets the batch runs over, plus the checkboxes that narrow it. */
+  scope: TaggerScope;
   error: string | null;
   onModelChange: (modelId: string) => void;
   onOptionChange: <K extends keyof TaggerOptions>(
@@ -32,7 +36,7 @@ export function AutoTaggerSettings({
   selectedModelId,
   modelItems,
   insertModeOptions,
-  selectedAssetsCount,
+  scope,
   error,
   onModelChange,
   onOptionChange,
@@ -43,8 +47,7 @@ export function AutoTaggerSettings({
   return (
     <>
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        Configure tagging options for {selectedAssetsCount} selected{' '}
-        {selectedAssetsCount !== 1 ? 'images' : 'image'}.
+        Configure tagging options for {scope.scopeSummary}.
       </p>
 
       {error && (
@@ -52,6 +55,8 @@ export function AutoTaggerSettings({
           <OctagonAlertIcon className="mr-2 h-5 w-5" /> {error}
         </div>
       )}
+
+      <TaggerScopeControls scope={scope} />
 
       {/* Model selection */}
       <div className="flex flex-col gap-2">
@@ -187,7 +192,7 @@ export function AutoTaggerSettings({
           onClick={onStartTagging}
           color="sky"
           size="md"
-          disabled={!selectedModelId || selectedAssetsCount === 0}
+          disabled={!selectedModelId || scope.scopedCount === 0}
         >
           Start Tagging
         </Button>

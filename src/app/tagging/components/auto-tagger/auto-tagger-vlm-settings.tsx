@@ -1,8 +1,10 @@
 import { OctagonAlertIcon, RotateCcwIcon } from 'lucide-react';
 
 import type {
+  TagInsertMode,
   TriggerPhraseInsertMode,
   VlmOptions,
+  VlmOutputTarget,
   VlmVideoQuality,
 } from '@/app/services/auto-tagger';
 import { Button } from '@/app/shared/button';
@@ -12,6 +14,9 @@ import { FormTitle } from '@/app/shared/form-title/form-title';
 import { NumberInput } from '@/app/shared/number-input/number-input';
 import { RadioGroup } from '@/app/shared/radio-group';
 
+import { TaggerScopeControls } from './tagger-scope-controls';
+import type { TaggerScope } from './use-tagger-scope';
+
 const VIDEO_QUALITY_OPTIONS: { value: VlmVideoQuality; label: string }[] = [
   { value: 'low', label: 'Low' },
   { value: 'standard', label: 'Standard' },
@@ -20,23 +25,32 @@ const VIDEO_QUALITY_OPTIONS: { value: VlmVideoQuality; label: string }[] = [
 
 type AutoTaggerVlmSettingsProps = {
   vlmOptions: VlmOptions;
+  /**
+   * What the run produces. 'tags' (tag-mode projects) prompts for an
+   * imageboard-style tag list, hides the caption-only trigger-phrase controls
+   * and surfaces the tag insert-position choice instead.
+   */
+  outputMode: VlmOutputTarget;
+  tagInsertMode: TagInsertMode;
   unselectOnComplete: boolean;
   selectedModelId: string | null;
   modelItems: (DropdownItem<string> | DropdownGroup<string>)[];
+  insertModeOptions: { value: TagInsertMode; label: string }[];
   triggerPhraseInsertModeOptions: {
     value: TriggerPhraseInsertMode;
     label: string;
   }[];
-  selectedAssetsCount: number;
-  /** Number of mp4/video assets in the selection — drives video controls visibility. */
+  /** Which assets the batch runs over, plus the checkboxes that narrow it. */
+  scope: TaggerScope;
+  /** Number of mp4/video assets in scope — drives video controls visibility. */
   selectedVideoCount: number;
   /** Whether the chosen model can natively process video frames (not just stills). */
   selectedModelSupportsVideo: boolean;
   error: string | null;
   triggerPhrases: string[];
   /**
-   * The prompt this run started from — the project's canonical prompt, or the
-   * built-in default when the project hasn't authored one. Reset restores it.
+   * The prompt this run started from — the project's canonical prompt (or the
+   * built-in tag/caption default when there isn't one). Reset restores it.
    */
   seededPrompt: string;
   onModelChange: (modelId: string) => void;
@@ -48,6 +62,7 @@ type AutoTaggerVlmSettingsProps = {
     key: K,
     value: VlmOptions['video'][K],
   ) => void;
+  onTagInsertModeChange: (mode: TagInsertMode) => void;
   onUnselectOnCompleteChange: () => void;
   onClose: () => void;
   onStartTagging: () => void;
@@ -55,11 +70,14 @@ type AutoTaggerVlmSettingsProps = {
 
 export function AutoTaggerVlmSettings({
   vlmOptions,
+  outputMode,
+  tagInsertMode,
   unselectOnComplete,
   selectedModelId,
   modelItems,
+  insertModeOptions,
   triggerPhraseInsertModeOptions,
-  selectedAssetsCount,
+  scope,
   selectedVideoCount,
   selectedModelSupportsVideo,
   error,
@@ -68,11 +86,15 @@ export function AutoTaggerVlmSettings({
   onModelChange,
   onVlmOptionChange,
   onVideoOptionChange,
+  onTagInsertModeChange,
   onUnselectOnCompleteChange,
   onClose,
   onStartTagging,
 }: AutoTaggerVlmSettingsProps) {
-  const hasTriggerPhrases = triggerPhrases.length > 0;
+  const isTagOutput = outputMode === 'tags';
+  // Trigger-phrase injection is caption wording — a tag run has no prose for
+  // the phrases to appear in.
+  const hasTriggerPhrases = !isTagOutput && triggerPhrases.length > 0;
   // Show the video controls when both conditions hold: the user has at
   // least one video in scope AND the chosen model can actually use them.
   // Showing only on (a) would suggest video sampling matters when it'll
@@ -88,8 +110,9 @@ export function AutoTaggerVlmSettings({
   return (
     <>
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        Generate natural-language captions for {selectedAssetsCount} selected{' '}
-        {selectedAssetsCount !== 1 ? 'images' : 'image'}.
+        {isTagOutput
+          ? `Generate imageboard-style tags for ${scope.scopeSummary} using a vision-language model.`
+          : `Generate natural-language captions for ${scope.scopeSummary}.`}
       </p>
 
       {error && (
@@ -97,6 +120,8 @@ export function AutoTaggerVlmSettings({
           <OctagonAlertIcon className="mr-2 h-5 w-5 shrink-0" /> {error}
         </div>
       )}
+
+      <TaggerScopeControls scope={scope} />
 
       {/* Model selection */}
       <div className="flex flex-col gap-2">
@@ -137,9 +162,9 @@ export function AutoTaggerVlmSettings({
           placeholder="Describe this image in detail for AI training purposes."
         />
         <p className="text-sm text-slate-500">
-          Starts from the project&apos;s caption prompt. Edits here apply to
-          this run only — to change the project&apos;s prompt for good, use Edit
-          Caption Prompt in the project menu.
+          {isTagOutput
+            ? 'Asks the model for a flat, comma-separated tag list, which is parsed into tags. Edits here apply to this run only.'
+            : "Starts from the project's caption prompt. Edits here apply to this run only — to change the project's prompt for good, use Edit Caption Prompt in the project menu."}
         </p>
       </div>
 
@@ -177,6 +202,21 @@ export function AutoTaggerVlmSettings({
           />
         </div>
       </div>
+
+      {/* Where parsed tags land — the same choice the ONNX panel offers. */}
+      {isTagOutput && (
+        <div className="flex flex-col gap-2">
+          <FormTitle as="span" size="sm">
+            New tags
+          </FormTitle>
+          <RadioGroup
+            name="tagInsertMode"
+            options={insertModeOptions}
+            value={tagInsertMode}
+            onChange={onTagInsertModeChange}
+          />
+        </div>
+      )}
 
       {/* Video sampling controls — only shown when the user has at least
           one video in scope AND the chosen model can natively process
@@ -233,14 +273,16 @@ export function AutoTaggerVlmSettings({
           {selectedVideoCount === 1
             ? 'The selected video will'
             : `The ${selectedVideoCount} selected videos will`}{' '}
-          be captioned from a single poster frame — the chosen model can&apos;t
-          read video natively. Pick a video-capable model (e.g. Qwen3-VL GPU)
-          for true frame-by-frame captioning.
+          be {isTagOutput ? 'tagged' : 'captioned'} from a single poster frame
+          — the chosen model can&apos;t read video natively. Pick a
+          video-capable model (e.g. Qwen3-VL GPU) for true frame-by-frame
+          {isTagOutput ? ' analysis' : ' captioning'}.
         </p>
       )}
 
       {/* Trigger phrase injection — only offered when the project actually
-          defines trigger phrases, otherwise the toggle does nothing. */}
+          defines trigger phrases (and the run produces prose for them to
+          appear in), otherwise the toggle does nothing. */}
       {hasTriggerPhrases && (
         <div className="flex flex-col gap-1">
           <Checkbox
@@ -276,12 +318,12 @@ export function AutoTaggerVlmSettings({
         </div>
       )}
 
-      {/* Post-captioning options */}
+      {/* Post-run options */}
       <div className="mt-2">
         <Checkbox
           isSelected={unselectOnComplete}
           onChange={onUnselectOnCompleteChange}
-          label="Deselect captioned assets once complete"
+          label={`Deselect ${isTagOutput ? 'tagged' : 'captioned'} assets once complete`}
         />
       </div>
 
@@ -294,9 +336,9 @@ export function AutoTaggerVlmSettings({
           onClick={onStartTagging}
           color="sky"
           size="md"
-          disabled={!selectedModelId || selectedAssetsCount === 0}
+          disabled={!selectedModelId || scope.scopedCount === 0}
         >
-          Start Captioning
+          {isTagOutput ? 'Start Tagging' : 'Start Captioning'}
         </Button>
       </div>
     </>

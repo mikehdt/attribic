@@ -53,7 +53,6 @@ export const TagActionsMenu = () => {
     isModalOpen: isTaggerModalOpen,
     openModal: openTaggerModal,
     closeModal: closeTaggerModal,
-    assetsForTagger,
     canRun: canAutoTag,
   } = useAutoTaggerLaunch();
 
@@ -127,11 +126,7 @@ export const TagActionsMenu = () => {
         onClose={closeSearchReplaceModal}
       />
 
-      <AutoTaggerModal
-        isOpen={isTaggerModalOpen}
-        onClose={closeTaggerModal}
-        selectedAssets={assetsForTagger}
-      />
+      <AutoTaggerModal isOpen={isTaggerModalOpen} onClose={closeTaggerModal} />
     </>
   );
 };

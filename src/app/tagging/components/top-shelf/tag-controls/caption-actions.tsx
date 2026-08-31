@@ -39,7 +39,6 @@ const AutoTaggerButton = () => {
     isModalOpen,
     openModal,
     closeModal,
-    assetsForTagger,
     hasReadyModel,
     selectedAssetsCount,
     filteredAssetsCount,
@@ -58,18 +57,16 @@ const AutoTaggerButton = () => {
             ? 'No tagger model ready'
             : selectedAssetsCount > 0
               ? `Auto-tag ${selectedAssetsCount} selected`
-              : `Auto-tag ${filteredAssetsCount} filtered`
+              : filteredAssetsCount > 0
+                ? `Auto-tag ${filteredAssetsCount} filtered`
+                : 'Auto-tag images'
         }
       >
         <SparklesIcon />
         <span className="max-lg:hidden">Auto Tag</span>
       </Button>
 
-      <AutoTaggerModal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        selectedAssets={assetsForTagger}
-      />
+      <AutoTaggerModal isOpen={isModalOpen} onClose={closeModal} />
     </>
   );
 };

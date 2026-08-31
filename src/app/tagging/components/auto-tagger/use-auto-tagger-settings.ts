@@ -5,10 +5,12 @@ import type { TaggerOptions, VlmOptions } from '@/app/services/auto-tagger';
 import {
   DEFAULT_TAGGER_OPTIONS,
   DEFAULT_VLM_OPTIONS,
+  DEFAULT_VLM_TAG_PROMPT,
 } from '@/app/services/auto-tagger';
 import type { AppDispatch } from '@/app/store';
 import { setSelectedModel } from '@/app/store/auto-tagger';
 import type { ModelInfo } from '@/app/store/auto-tagger/types';
+import type { CaptionMode } from '@/app/store/project/types';
 import { getAutoTaggerSettings } from '@/app/utils/project-actions';
 
 type UseAutoTaggerSettingsParams = {
@@ -16,6 +18,7 @@ type UseAutoTaggerSettingsParams = {
   projectFolderName: string | undefined;
   models: ModelInfo[];
   readyModels: ModelInfo[];
+  captionMode: CaptionMode;
   captionPrompt: string | null;
 };
 
@@ -29,6 +32,7 @@ export function useAutoTaggerSettings({
   projectFolderName,
   models,
   readyModels,
+  captionMode,
   captionPrompt,
 }: UseAutoTaggerSettingsParams) {
   const dispatch = useDispatch<AppDispatch>();
@@ -42,20 +46,26 @@ export function useAutoTaggerSettings({
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [unselectOnComplete, setUnselectOnComplete] = useState(true);
 
-  // Seed each run's prompt from the project's canonical prompt on the
-  // closed→open transition, falling back to the built-in default for projects
-  // that have never authored one. One-way by design: edits in the settings
-  // panel below belong to this run and never travel back to the project.
-  // Re-syncing on every render (or via an effect keyed on `captionPrompt`)
-  // would clobber those edits mid-run — this is the React-docs
-  // "adjusting state on prop change" pattern used by the project modals.
+  // Seed each run's prompt on the closed→open transition. Tag-mode projects
+  // run VLMs as imageboard-style taggers, so they get the built-in tag-list
+  // prompt — the project's canonical prompt is caption prose, and prose parses
+  // into garbage tags. Other modes seed from that canonical prompt, falling
+  // back to the built-in caption default for projects that never authored one.
+  // One-way by design: edits in the settings panel below belong to this run
+  // and never travel back to the project. Re-syncing on every render (or via
+  // an effect keyed on `captionPrompt`) would clobber those edits mid-run —
+  // this is the React-docs "adjusting state on prop change" pattern used by
+  // the project modals.
   const [wasOpen, setWasOpen] = useState(isOpen);
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
     if (isOpen) {
       setVlmOptions((prev) => ({
         ...prev,
-        prompt: captionPrompt ?? DEFAULT_VLM_OPTIONS.prompt,
+        prompt:
+          captionMode === 'tags'
+            ? DEFAULT_VLM_TAG_PROMPT
+            : (captionPrompt ?? DEFAULT_VLM_OPTIONS.prompt),
       }));
     }
   }

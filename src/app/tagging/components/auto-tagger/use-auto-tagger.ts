@@ -4,9 +4,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import type {
   TagInsertMode,
   TriggerPhraseInsertMode,
+  VlmOutputTarget,
 } from '@/app/services/auto-tagger';
 import {
   DEFAULT_VLM_OPTIONS,
+  DEFAULT_VLM_TAG_PROMPT,
   getProviderTypeForModel,
 } from '@/app/services/auto-tagger';
 import type { AppDispatch, RootState } from '@/app/store';
@@ -32,12 +34,12 @@ import { useBatchReattach } from './use-batch-reattach';
 import { useFlushAndFinalise } from './use-flush-and-finalise';
 import { useStartTagging } from './use-start-tagging';
 import { useTaggerModelOptions } from './use-tagger-model-options';
+import { useTaggerScope } from './use-tagger-scope';
 import { useTaggingJobRegistry } from './use-tagging-job-registry';
 
 type UseAutoTaggerParams = {
   isOpen: boolean;
   onClose: () => void;
-  selectedAssets: { fileId: string; fileExtension: string }[];
 };
 
 const INSERT_MODE_OPTIONS: { value: TagInsertMode; label: string }[] = [
@@ -57,11 +59,7 @@ const TRIGGER_PHRASE_INSERT_MODE_OPTIONS: {
   { value: 'append', label: 'Append to end' },
 ];
 
-export function useAutoTagger({
-  isOpen,
-  onClose,
-  selectedAssets,
-}: UseAutoTaggerParams) {
+export function useAutoTagger({ isOpen, onClose }: UseAutoTaggerParams) {
   const dispatch = useDispatch<AppDispatch>();
 
   // Redux state
@@ -77,6 +75,11 @@ export function useAutoTagger({
     selectProjectInfo(state),
   );
 
+  // Which assets the batch runs over — all by default, narrowed by the scope
+  // checkboxes in the settings panels.
+  const scope = useTaggerScope(isOpen);
+  const scopedAssets = scope.scopedAssets;
+
   const {
     modeFilteredReadyModels,
     modelItems,
@@ -88,7 +91,7 @@ export function useAutoTagger({
     readyModels,
     captionMode,
     selectedModelId,
-    selectedAssets,
+    selectedAssets: scopedAssets,
   });
 
   // Active tagging job for this project (from the jobs slice)
@@ -105,6 +108,11 @@ export function useAutoTagger({
   const selectedProviderType = selectedModelId
     ? getProviderTypeForModel(selectedModelId)
     : undefined;
+
+  // What a VLM run produces here: tag-mode projects run VLMs as
+  // imageboard-style taggers, every other mode as captioners.
+  const vlmOutput: VlmOutputTarget =
+    captionMode === 'tags' ? 'tags' : 'caption';
 
   // Start-up failures (bad model, sidecar down) shown against the settings
   // form. Once a batch is under way its errors belong to the job.
@@ -131,6 +139,7 @@ export function useAutoTagger({
     projectFolderName: projectInfo.projectFolderName,
     models,
     readyModels,
+    captionMode,
     captionPrompt,
   });
 
@@ -186,6 +195,7 @@ export function useAutoTagger({
     projectFolderName: projectInfo.projectFolderName,
     projectName: projectInfo.projectName,
     activeTaggingJobId: activeTaggingJob?.id ?? null,
+    vlmOutput,
     registry,
     flushAndFinalise,
     setError,
@@ -197,10 +207,11 @@ export function useAutoTagger({
     projectName: projectInfo.projectName,
     selectedModelId,
     selectedProviderType,
-    selectedAssets,
+    selectedAssets: scopedAssets,
     readyModels,
     options,
     vlmOptions,
+    vlmOutput,
     triggerPhrases,
     registry,
     flushAndFinalise,
@@ -225,14 +236,20 @@ export function useAutoTagger({
     modelItems,
     selectedModelId,
     selectedProviderType,
+    vlmOutput,
+    scope,
     insertModeOptions: INSERT_MODE_OPTIONS,
     triggerPhraseInsertModeOptions: TRIGGER_PHRASE_INSERT_MODE_OPTIONS,
     triggerPhrases,
     selectedVideoCount,
     selectedModelSupportsVideo,
     // What this run's prompt was seeded with, so the panel's Reset restores
-    // the project's prompt rather than the built-in default.
-    seededPrompt: captionPrompt ?? DEFAULT_VLM_OPTIONS.prompt,
+    // the seed rather than the built-in caption default. Mirrors the seeding
+    // in useAutoTaggerSettings: tag runs start from the built-in tag prompt.
+    seededPrompt:
+      vlmOutput === 'tags'
+        ? DEFAULT_VLM_TAG_PROMPT
+        : (captionPrompt ?? DEFAULT_VLM_OPTIONS.prompt),
     // Actions
     handleModelChange,
     handleOptionChange,

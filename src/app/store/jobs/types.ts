@@ -177,6 +177,13 @@ export type TaggingJob = JobBase & {
    * waiting on `summary.providerType`, which only lands at completion.
    */
   providerType?: 'onnx' | 'vlm';
+  /**
+   * What a VLM batch was asked to produce — 'tags' when a tag-mode project
+   * runs a VLM as an imageboard-style tagger, 'caption' (or absent, for jobs
+   * predating the field) otherwise. Decides "tagged" vs "captioned" wording
+   * for VLM jobs. Meaningless for ONNX jobs.
+   */
+  vlmOutput?: 'caption' | 'tags';
   progress: TaggingProgress | null;
   summary: TaggingSummary | null;
   lastResult: TaggingResult | null;

@@ -7,6 +7,15 @@
 export type ProviderType = 'onnx' | 'vlm';
 
 /**
+ * What a VLM batch is asked to produce. 'caption' is the classic
+ * natural-language captioner; 'tags' prompts the model for an imageboard-style
+ * comma-separated tag list, which the client parses into the tag block the way
+ * an ONNX result is. Derived from the project's caption mode — a tag-mode
+ * project runs VLMs as taggers, every other mode as captioners.
+ */
+export type VlmOutputTarget = 'caption' | 'tags';
+
+/**
  * Which Python runtime handles a VLM model.
  * - 'llama-cpp': GGUF quants via llama-cpp-python (CPU / Linux CUDA)
  * - 'transformers': HuggingFace transformers + PyTorch (Windows CUDA path)
@@ -204,6 +213,28 @@ export const DEFAULT_VLM_OPTIONS: VlmOptions = {
     quality: 'standard',
   },
 };
+
+/**
+ * Default prompt for a VLM run whose output target is 'tags' — asks for a flat
+ * imageboard-style tag list instead of prose. Same prompt-shape lessons as the
+ * caption default: an example primes the format better than instructions
+ * alone, and the strict rules go last because VLMs weight the end of the
+ * prompt more.
+ */
+export const DEFAULT_VLM_TAG_PROMPT = [
+  'Tag this image with a flat, comma-separated list of imageboard-style (Danbooru) tags for a training caption. Cover the subject count and type, appearance, clothing, pose, expression, actions, notable objects, setting, and framing.',
+  '',
+  'Example output:',
+  '',
+  '1girl, long hair, red hair, green eyes, white dress, sitting, park bench, autumn leaves, smiling, looking at viewer, outdoors, full body',
+  '',
+  'STRICT RULES — your response MUST follow these:',
+  '- Output ONLY the comma-separated tag list — no sentences, no explanations, no headings, no markdown.',
+  '- Each tag is one short lowercase phrase of one to three words.',
+  '- 10 to 30 tags, most important first.',
+  '- Tag only what is visible. If something is absent, say nothing about it — never tag anything as missing, empty, or plain.',
+  '- Do not repeat tags.',
+].join('\n');
 
 /**
  * Settings saved to project config.

@@ -2,6 +2,8 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useCallback, useEffect, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 
+import type { VlmOutputTarget } from '@/app/services/auto-tagger';
+import { parseTagListOutput } from '@/app/services/auto-tagger';
 import {
   appendPendingTagResult,
   summarisePendingResults,
@@ -44,6 +46,13 @@ type UseBatchReattachParams = {
   projectName: string | undefined;
   /** The job id of a batch this client is already streaming, if any. */
   activeTaggingJobId: string | null;
+  /**
+   * What a VLM batch for this project produces, derived from its caption mode.
+   * The original run's choice isn't recoverable after a refresh, but it was
+   * itself derived the same way — so a tag-mode project's reattached VLM
+   * results parse back into tags like the live stream's did.
+   */
+  vlmOutput: VlmOutputTarget;
   registry: TaggingJobRegistry;
   flushAndFinalise: FlushAndFinalise;
   setError: Dispatch<SetStateAction<string | null>>;
@@ -58,6 +67,7 @@ export function useBatchReattach({
   projectFolderName,
   projectName,
   activeTaggingJobId,
+  vlmOutput,
   registry,
   flushAndFinalise,
   setError,
@@ -77,6 +87,8 @@ export function useBatchReattach({
       if (!projectFolderName) return;
 
       const jobId = batch.batchId;
+      const isVlmBatch = (batch.providerType ?? 'vlm') === 'vlm';
+      const isVlmTagRun = isVlmBatch && vlmOutput === 'tags';
 
       dispatch(
         addJob({
@@ -93,6 +105,7 @@ export function useBatchReattach({
           // isn't recoverable after a refresh.
           modelName: batch.modelName ?? 'Auto-tagger',
           providerType: batch.providerType ?? 'vlm',
+          vlmOutput: isVlmBatch ? vlmOutput : undefined,
           progress: { current: batch.current, total: batch.total },
           summary: null,
           lastResult: null,
@@ -174,10 +187,18 @@ export function useBatchReattach({
               }),
             );
           } else if (event.type === 'result') {
+            // Same conversion the live stream applies: a VLM tag run's results
+            // arrive as `caption` and are parsed into the tag block.
+            const asTagList =
+              isVlmTagRun && event.caption != null && !event.tags;
+            const tags = asTagList
+              ? parseTagListOutput(event.caption!)
+              : event.tags;
+            const caption = asTagList ? undefined : event.caption;
             appendPendingTagResult(projectFolderName, {
               fileId: event.fileId,
-              tags: event.tags,
-              caption: event.caption,
+              tags,
+              caption,
               position,
             });
             dispatch(
@@ -185,8 +206,8 @@ export function useBatchReattach({
                 id: jobId,
                 fileId: event.fileId,
                 fileName: event.fileName,
-                tags: event.tags,
-                caption: event.caption,
+                tags,
+                caption,
               }),
             );
           } else if (event.type === 'error' && event.fileId) {
@@ -251,6 +272,7 @@ export function useBatchReattach({
       flushAndFinalise,
       projectFolderName,
       projectName,
+      vlmOutput,
       registry,
       setError,
     ],

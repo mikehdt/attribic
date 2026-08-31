@@ -9,20 +9,15 @@ import { useAutoTagger } from './use-auto-tagger';
 type AutoTaggerModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  selectedAssets: { fileId: string; fileExtension: string }[];
 };
 
 /**
- * Choosing a model and settings for a batch, and nothing else. Starting one
- * closes this modal and opens the activity panel's detail view, which owns the
- * whole run from the queue wait through to the summary — so there's a single
- * place to watch a batch, whether it was just started or reattached to.
+ * Choosing a model, settings and scope for a batch, and nothing else. Starting
+ * one closes this modal and opens the activity panel's detail view, which owns
+ * the whole run from the queue wait through to the summary — so there's a
+ * single place to watch a batch, whether it was just started or reattached to.
  */
-export function AutoTaggerModal({
-  isOpen,
-  onClose,
-  selectedAssets,
-}: AutoTaggerModalProps) {
+export function AutoTaggerModal({ isOpen, onClose }: AutoTaggerModalProps) {
   const {
     options,
     vlmOptions,
@@ -34,6 +29,8 @@ export function AutoTaggerModal({
     modelItems,
     selectedModelId,
     selectedProviderType,
+    vlmOutput,
+    scope,
     insertModeOptions,
     triggerPhraseInsertModeOptions,
     triggerPhrases,
@@ -47,15 +44,14 @@ export function AutoTaggerModal({
     setUnselectOnComplete,
     handleClose,
     handleStartTagging,
-  } = useAutoTagger({ isOpen, onClose, selectedAssets });
+  } = useAutoTagger({ isOpen, onClose });
 
-  // The project's caption mode determines which settings panel and title
-  // we show. Selection gating already ensures `selectedProviderType`
-  // matches, but we prefer deriving from the filtered model list so the
-  // title is correct even during the brief moment between mode flips
-  // and the auto-select effect firing.
+  // Which settings panel to show follows the selected model's provider; what
+  // the run *produces* (and so the title) follows the project's caption mode —
+  // a VLM in a tag-mode project is still an auto-tagging run.
   const isVlm = selectedProviderType === 'vlm';
-  const title = isVlm ? 'Caption Images' : 'Auto-Tag Images';
+  const title =
+    isVlm && vlmOutput === 'caption' ? 'Caption Images' : 'Auto-Tag Images';
 
   return (
     <Modal
@@ -85,25 +81,24 @@ export function AutoTaggerModal({
           </div>
         ) : !hasModelForMode ? (
           <div className="rounded-md border border-amber-600 bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-            <p className="font-medium">
-              {title === 'Caption Images'
-                ? 'No caption models installed'
-                : 'No tag models installed'}
-            </p>
+            <p className="font-medium">No caption models installed</p>
             <p className="mt-1">
-              {title === 'Caption Images'
-                ? 'Install a VLM (vision-language) model in the Model Manager to caption images in this mode. Or switch the project to tag mode to use an imageboard-style tagger.'
-                : 'Install an ONNX tagger (e.g. WD14) in the Model Manager to tag images in this mode. Or switch the project to caption mode to use a VLM.'}
+              Install a VLM (vision-language) model in the Model Manager to
+              caption images in this mode. Or switch the project to tag mode to
+              use an imageboard-style tagger.
             </p>
           </div>
         ) : isVlm ? (
           <AutoTaggerVlmSettings
             vlmOptions={vlmOptions}
+            outputMode={vlmOutput}
+            tagInsertMode={options.tagInsertMode}
             unselectOnComplete={unselectOnComplete}
             selectedModelId={selectedModelId}
             modelItems={modelItems}
+            insertModeOptions={insertModeOptions}
             triggerPhraseInsertModeOptions={triggerPhraseInsertModeOptions}
-            selectedAssetsCount={selectedAssets.length}
+            scope={scope}
             selectedVideoCount={selectedVideoCount}
             selectedModelSupportsVideo={selectedModelSupportsVideo}
             error={error}
@@ -112,6 +107,9 @@ export function AutoTaggerModal({
             onModelChange={handleModelChange}
             onVlmOptionChange={handleVlmOptionChange}
             onVideoOptionChange={handleVideoOptionChange}
+            onTagInsertModeChange={(mode) =>
+              handleOptionChange('tagInsertMode', mode)
+            }
             onUnselectOnCompleteChange={() =>
               setUnselectOnComplete((prev) => !prev)
             }
@@ -125,7 +123,7 @@ export function AutoTaggerModal({
             selectedModelId={selectedModelId}
             modelItems={modelItems}
             insertModeOptions={insertModeOptions}
-            selectedAssetsCount={selectedAssets.length}
+            scope={scope}
             error={error}
             onModelChange={handleModelChange}
             onOptionChange={handleOptionChange}

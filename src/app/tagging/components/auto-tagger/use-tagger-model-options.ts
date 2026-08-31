@@ -27,29 +27,27 @@ export function useTaggerModelOptions({
   selectedAssets,
 }: UseTaggerModelOptionsParams) {
   // Only show models compatible with the project's current mode:
-  // - caption mode → VLM models (natural-language captioners)
-  // - tag mode → ONNX models (imageboard-style taggers)
+  // - caption mode → VLM models only (an ONNX tag result would land on an
+  //   invisible field, so gate at selection)
+  // - tag mode → both: ONNX taggers, plus VLMs run as imageboard-style
+  //   taggers — their output is parsed into the tag block
   // - hybrid mode → both; the selected model's provider type decides whether a
   //   run fills the tag block (ONNX) or the caption (VLM). Results are routed
   //   independently downstream, so either is safe.
-  // Mixing tags/caption in the non-hybrid modes creates a footgun where
-  // captions land on invisible fields or tags overwrite captions on save, so we
-  // gate at selection there.
   const modeFilteredReadyModels = useMemo(() => {
-    if (captionMode === 'hybrid') {
-      return readyModels;
+    if (captionMode === 'caption') {
+      return readyModels.filter(
+        (m) => getProviderTypeForModel(m.id) === 'vlm',
+      );
     }
-    const targetProviderType: 'onnx' | 'vlm' =
-      captionMode === 'caption' ? 'vlm' : 'onnx';
-    return readyModels.filter(
-      (m) => getProviderTypeForModel(m.id) === targetProviderType,
-    );
+    return readyModels;
   }, [readyModels, captionMode]);
 
   // Model dropdown items — mode-restricted so only compatible models appear.
-  // In hybrid mode both kinds are offered, so they're split into "Tags" and
-  // "Natural Language" groups to make the choice legible. The single-mode views
-  // only ever list one kind, so headings there would be noise.
+  // Where both kinds are offered they're split into groups to make the choice
+  // legible: in hybrid mode the group decides tags-vs-caption output, in tag
+  // mode it distinguishes the purpose-built taggers from VLMs prompted to tag.
+  // Caption mode only ever lists one kind, so headings there would be noise.
   const modelItems: (DropdownItem<string> | DropdownGroup<string>)[] =
     useMemo(() => {
       const toItem = (model: (typeof modeFilteredReadyModels)[number]) => ({
@@ -57,7 +55,7 @@ export function useTaggerModelOptions({
         label: model.name,
       });
 
-      if (captionMode !== 'hybrid') {
+      if (captionMode === 'caption') {
         return modeFilteredReadyModels.map(toItem);
       }
 
@@ -72,10 +70,15 @@ export function useTaggerModelOptions({
       if (tagItems.length === 0) return captionItems;
       if (captionItems.length === 0) return tagItems;
 
-      return [
-        { groupLabel: 'Imageboard-style Tagging', items: tagItems },
-        { groupLabel: 'Natural Language', items: captionItems },
-      ];
+      return captionMode === 'hybrid'
+        ? [
+            { groupLabel: 'Imageboard-style Tagging', items: tagItems },
+            { groupLabel: 'Natural Language', items: captionItems },
+          ]
+        : [
+            { groupLabel: 'Dedicated Taggers', items: tagItems },
+            { groupLabel: 'Vision-Language Models', items: captionItems },
+          ];
     }, [modeFilteredReadyModels, captionMode]);
 
   // How many of the selected assets are videos. Used by the VLM panel to

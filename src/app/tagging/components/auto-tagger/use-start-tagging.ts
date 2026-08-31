@@ -7,7 +7,9 @@ import type {
   ProviderType,
   TaggerOptions,
   VlmOptions,
+  VlmOutputTarget,
 } from '@/app/services/auto-tagger';
+import { parseTagListOutput } from '@/app/services/auto-tagger';
 import {
   appendPendingTagResult,
   clearPendingTagResults,
@@ -40,6 +42,8 @@ type UseStartTaggingParams = {
   readyModels: ModelInfo[];
   options: TaggerOptions;
   vlmOptions: VlmOptions;
+  /** What a VLM run should produce — 'tags' in tag-mode projects. */
+  vlmOutput: VlmOutputTarget;
   triggerPhrases: string[];
   registry: TaggingJobRegistry;
   flushAndFinalise: FlushAndFinalise;
@@ -62,6 +66,7 @@ export function useStartTagging({
   readyModels,
   options,
   vlmOptions,
+  vlmOutput,
   triggerPhrases,
   registry,
   flushAndFinalise,
@@ -86,6 +91,10 @@ export function useStartTagging({
     const position: 'start' | 'end' =
       options.tagInsertMode === 'prepend' ? 'start' : 'end';
 
+    // Whether this run is a VLM prompted for an imageboard-style tag list —
+    // its caption results get parsed into tags before staging/recording.
+    const isVlmTagRun = selectedProviderType === 'vlm' && vlmOutput === 'tags';
+
     dispatch(
       addJob({
         id: jobId,
@@ -99,6 +108,7 @@ export function useStartTagging({
         projectName: projectName || projectFolderName,
         modelName,
         providerType: selectedProviderType,
+        vlmOutput: selectedProviderType === 'vlm' ? vlmOutput : undefined,
         progress: {
           current: 0,
           total: selectedAssets.length,
@@ -142,7 +152,11 @@ export function useStartTagging({
           projectFolderName,
           assets: selectedAssets,
           options,
-          vlmOptions,
+          // Trigger-phrase injection is caption wording ("must appear in the
+          // caption") — meaningless for a tag-list run, so it's forced off.
+          vlmOptions: isVlmTagRun
+            ? { ...vlmOptions, injectTriggerPhrases: false }
+            : vlmOptions,
           triggerPhrases,
         }),
         signal: abortController.signal,
@@ -280,12 +294,20 @@ export function useStartTagging({
             }),
           );
         } else if (event.type === 'result') {
+          // Event may carry either tags (ONNX) or caption (VLM). A VLM run
+          // prompted for a tag list still arrives as `caption` — parse it into
+          // tags here so everything downstream (staging, flush, detail view)
+          // treats it exactly like an ONNX result.
+          const asTagList = isVlmTagRun && event.caption != null && !event.tags;
+          const tags = asTagList
+            ? parseTagListOutput(event.caption!)
+            : event.tags;
+          const caption = asTagList ? undefined : event.caption;
           // Persist to localStorage — the single source of truth.
-          // Event may carry either tags (ONNX) or caption (VLM).
           appendPendingTagResult(projectFolderName, {
             fileId: event.fileId,
-            tags: event.tags,
-            caption: event.caption,
+            tags,
+            caption,
             position,
           });
           // Mirror the latest result into the job so the activity panel's
@@ -297,8 +319,8 @@ export function useStartTagging({
               id: jobId,
               fileId: event.fileId,
               fileName: event.fileName,
-              tags: event.tags,
-              caption: event.caption,
+              tags,
+              caption,
             }),
           );
         } else if (event.type === 'error' && event.fileId) {
@@ -417,6 +439,7 @@ export function useStartTagging({
     readyModels,
     options,
     vlmOptions,
+    vlmOutput,
     triggerPhrases,
     flushAndFinalise,
     keepModelInMemory,

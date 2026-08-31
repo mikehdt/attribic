@@ -17,11 +17,17 @@ export type {
   TagResult,
   TriggerPhraseInsertMode,
   VlmOptions,
+  VlmOutputTarget,
   VlmVideoQuality,
 } from './types';
 // VLM_VIDEO_QUALITY_PIXELS is deliberately not re-exported — its only consumer
 // (the VLM client) sits beside it and imports from './types' directly.
-export { DEFAULT_TAGGER_OPTIONS, DEFAULT_VLM_OPTIONS } from './types';
+export { parseTagListOutput } from './parse-tag-list';
+export {
+  DEFAULT_TAGGER_OPTIONS,
+  DEFAULT_VLM_OPTIONS,
+  DEFAULT_VLM_TAG_PROMPT,
+} from './types';
 
 // Model Registry (client-safe utilities - no fs operations)
 export {

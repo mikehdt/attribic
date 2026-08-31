@@ -3,31 +3,22 @@
 /**
  * Shared state for the two Auto Tagger entry points — the tag-mode overflow
  * menu item and the caption-mode toolbar button. Both need the same things:
- * the model inventory loaded, whether a run is possible at all, the asset list
- * to hand the modal, and open/close plumbing.
- *
- * Both entry points are always mounted, so neither may subscribe to the full
- * asset arrays while its modal is closed — the arrays are only read once the
- * modal opens, and enablement runs off counts and booleans.
+ * the model inventory loaded, whether a run is possible at all, and open/close
+ * plumbing. The asset list itself is the modal's business now — it owns the
+ * scope choice (all / filtered / selected) — so enablement here runs off
+ * counts and booleans only, which matters because both entry points are
+ * always mounted.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import type { ImageAsset } from '@/app/store/assets';
-import { selectFilteredAssets } from '@/app/store/assets';
 import {
   fetchAutoTaggerModels,
   selectHasReadyModel,
 } from '@/app/store/auto-tagger';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectWorkingSelectionCount } from '@/app/store/selection';
-import {
-  selectAssetsWithActiveFiltersCount,
-  selectWorkingSelectionData,
-} from '@/app/store/selection/combinedSelectors';
-
-/** Stable sentinel returned while the modal is closed. */
-const NO_ASSETS: ImageAsset[] = [];
+import { selectAssetsWithActiveFiltersCount } from '@/app/store/selection/combinedSelectors';
 
 export function useAutoTaggerLaunch() {
   const dispatch = useAppDispatch();
@@ -44,29 +35,12 @@ export function useAutoTaggerLaunch() {
     dispatch(fetchAutoTaggerModels());
   }, [dispatch]);
 
-  const selectedAssetsData = useAppSelector((state) =>
-    isModalOpen ? selectWorkingSelectionData(state) : NO_ASSETS,
-  );
-  const filteredAssets = useAppSelector((state) =>
-    isModalOpen ? selectFilteredAssets(state) : NO_ASSETS,
-  );
   const selectedAssetsCount = useAppSelector(selectWorkingSelectionCount);
   const filteredAssetsCount = useAppSelector(
     selectAssetsWithActiveFiltersCount,
   );
+  const hasAssets = useAppSelector((state) => state.assets.images.length > 0);
   const hasReadyModel = useAppSelector(selectHasReadyModel);
-
-  // Videos are included — the ONNX batch route extracts a poster frame per
-  // video, and VLM models that support video sample it directly.
-  const assetsForTagger = useMemo(() => {
-    if (!isModalOpen) return [];
-    const source =
-      selectedAssetsData.length > 0 ? selectedAssetsData : filteredAssets;
-    return source.map((asset) => ({
-      fileId: asset.fileId,
-      fileExtension: asset.fileExtension,
-    }));
-  }, [isModalOpen, selectedAssetsData, filteredAssets]);
 
   const openModal = useCallback(() => setIsModalOpen(true), []);
   const closeModal = useCallback(() => setIsModalOpen(false), []);
@@ -75,12 +49,10 @@ export function useAutoTaggerLaunch() {
     isModalOpen,
     openModal,
     closeModal,
-    assetsForTagger,
     hasReadyModel,
     selectedAssetsCount,
     filteredAssetsCount,
     /** Enablement for the trigger: a ready model and something to run it on. */
-    canRun:
-      hasReadyModel && (selectedAssetsCount > 0 || filteredAssetsCount > 0),
+    canRun: hasReadyModel && hasAssets,
   };
 }
