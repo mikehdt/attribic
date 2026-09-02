@@ -1,5 +1,7 @@
 import React, { Fragment } from 'react';
 
+import { findPhraseMatches } from '@/app/utils/phrase-match';
+
 /**
  * Highlights matching segments of text by wrapping them in bold tags
  * @param text - The text to highlight
@@ -79,6 +81,7 @@ export type HighlightRange = { start: number; end: number };
 const computeHighlightRanges = (
   text: string,
   patterns: string[],
+  wholeWord = false,
 ): HighlightRange[] => {
   if (!patterns || patterns.length === 0) return [];
 
@@ -88,6 +91,14 @@ const computeHighlightRanges = (
   for (const pattern of patterns) {
     if (!pattern) continue;
     const normalizedPattern = pattern.toLowerCase();
+
+    if (wholeWord) {
+      for (const start of findPhraseMatches(normalizedText, normalizedPattern)) {
+        ranges.push({ start, end: start + pattern.length });
+      }
+      continue;
+    }
+
     let index = normalizedText.indexOf(normalizedPattern);
     while (index !== -1) {
       ranges.push({ start: index, end: index + pattern.length });
@@ -165,16 +176,18 @@ export const highlightRanges = (
  * @param text - The text to highlight
  * @param patterns - Array of patterns to highlight (case-insensitive)
  * @param highlightClassName - CSS class for highlight spans (default: font-bold)
+ * @param wholeWord - Only match patterns on word boundaries
  * @returns Array of React elements with highlighted matches
  */
 export const highlightPatterns = (
   text: string,
   patterns: string[],
   highlightClassName = 'font-bold',
+  wholeWord = false,
 ): React.ReactNode =>
   highlightRanges(
     text,
-    computeHighlightRanges(text, patterns),
+    computeHighlightRanges(text, patterns, wholeWord),
     highlightClassName,
   );
 
@@ -192,5 +205,6 @@ export const highlightTriggerPhrases = (
     text,
     phrases,
     'box-decoration-clone text-green-950 rounded-md bg-green-200/60 px-1 -mx-1 shadow-sm shadow-green-500/50 inset-shadow-xs inset-shadow-green-300/50 outline outline-green-300 dark:text-green-100 dark:outline-green-700 dark:bg-green-700/50 dark:inset-shadow-green-600/50',
+    true,
   );
 };

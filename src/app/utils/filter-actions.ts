@@ -13,6 +13,7 @@ import {
 } from '../store/filters';
 import type { CaptionMode } from '../store/project/types';
 import { composeDimensions, naturalCompare } from './helpers';
+import { containsPhrase } from './phrase-match';
 import { compareAssetNames, isArchiveSubfolder } from './subfolder-utils';
 
 /**
@@ -211,15 +212,16 @@ export const applyVisibilityFilters = ({
         () => {
           if (captionMode === 'caption') {
             const lowerCaption = img.captionText?.toLowerCase() ?? '';
-            return triggerPhrasesLower.some((p) => lowerCaption.includes(p));
+            return triggerPhrasesLower.some((p) =>
+              containsPhrase(lowerCaption, p),
+            );
           }
           if (captionMode === 'hybrid') {
             // Match a phrase as an exact booru tag OR anywhere in the caption.
             const lowerCaption = img.captionText?.toLowerCase() ?? '';
             return triggerPhrasesLower.some(
               (p) =>
-                triggerSet.has(p) ||
-                lowerCaption.includes(p) ||
+                containsPhrase(lowerCaption, p) ||
                 img.tagList.some((tag) => tag.toLowerCase() === p),
             );
           }
@@ -229,13 +231,15 @@ export const applyVisibilityFilters = ({
         () => {
           if (captionMode === 'caption') {
             const lowerCaption = img.captionText?.toLowerCase() ?? '';
-            return triggerPhrasesLower.every((p) => lowerCaption.includes(p));
+            return triggerPhrasesLower.every((p) =>
+              containsPhrase(lowerCaption, p),
+            );
           }
           if (captionMode === 'hybrid') {
             const lowerCaption = img.captionText?.toLowerCase() ?? '';
             return triggerPhrasesLower.every(
               (p) =>
-                lowerCaption.includes(p) ||
+                containsPhrase(lowerCaption, p) ||
                 img.tagList.some((tag) => tag.toLowerCase() === p),
             );
           }
