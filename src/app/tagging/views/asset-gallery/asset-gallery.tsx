@@ -3,6 +3,7 @@
 import { BoxSelectIcon } from 'lucide-react';
 
 import { Button } from '@/app/shared/button';
+import { Loader } from '@/app/shared/loader';
 import { useAppSelector } from '@/app/store/hooks';
 import { selectTaggingViewMode } from '@/app/store/preferences';
 
@@ -24,6 +25,7 @@ export const AssetGallery = ({ currentPage = 1 }: AssetGalleryProps) => {
   const viewMode = useAppSelector(selectTaggingViewMode);
   const {
     hasResults,
+    isArchiveLoading,
     groupedAssets,
     showCategoryHeaders,
     paginatedAssetIds,
@@ -33,6 +35,17 @@ export const AssetGallery = ({ currentPage = 1 }: AssetGalleryProps) => {
   } = useAssetGallery(currentPage);
 
   useAssetHotkeys(paginatedAssetIds, currentPage);
+
+  // Archive-only views start empty while the deferred load runs — that's a wait,
+  // not a filter the user should be prompted to clear
+  if (!hasResults && isArchiveLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center text-slate-500">
+        <Loader className="h-12 w-12" />
+        <h1 className="mt-4 w-full text-xl">Loading archived assets…</h1>
+      </div>
+    );
+  }
 
   if (!hasResults) {
     return (

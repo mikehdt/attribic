@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   type ImageAsset,
   selectFilteredAssets,
+  selectIsArchiveLoading,
   selectSortDirection,
   selectSortType,
   SortType,
@@ -189,6 +190,7 @@ export const useAssetGallery = (currentPage: number) => {
 
   // Get filtered assets from the selector (this handles all filtering logic)
   const filteredAssets = useAppSelector(selectFilteredAssets);
+  const isArchiveLoading = useAppSelector(selectIsArchiveLoading);
 
   // Apply pagination to the filtered assets
   const paginatedAssets = useMemo(() => {
@@ -280,6 +282,7 @@ export const useAssetGallery = (currentPage: number) => {
 
   return {
     hasResults: filteredAssets.length > 0,
+    isArchiveLoading,
     groupedAssets,
     // Hide headers when there's only one category
     showCategoryHeaders: groupedAssets.length > 1,

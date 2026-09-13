@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 
-import { useAppSelector } from '@/app/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectJobById, type TrainingJob } from '@/app/store/jobs';
+import { cancelTraining } from '@/app/store/training/training-runtime';
 
 /**
  * Resolves the live training job for the activity panel's detail modal. Reads
@@ -13,6 +14,8 @@ export function useTrainingDetailModal(
   jobId: string | null,
   onClose: () => void,
 ) {
+  const dispatch = useAppDispatch();
+
   const job = useAppSelector((state): TrainingJob | null => {
     if (!jobId) return null;
     const found = selectJobById(state, jobId);
@@ -25,5 +28,14 @@ export function useTrainingDetailModal(
     if (jobId && !job) onClose();
   }, [jobId, job, onClose]);
 
-  return { job };
+  // Cancelling leaves the modal open: the run keeps reporting until it winds
+  // down, and the card's own Cancel behaves the same way.
+  const cancel = useCallback(
+    (target: TrainingJob) => {
+      dispatch(cancelTraining(target.id));
+    },
+    [dispatch],
+  );
+
+  return { job, cancel };
 }

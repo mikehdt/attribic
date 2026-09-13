@@ -87,6 +87,14 @@ export type ImageAssets = {
    * projects are routine.
    */
   loadedProject: string | null;
+  /**
+   * Archived asset files found by the project scan but not hydrated. The
+   * archive is skipped on open — most sessions never look at it — so these ids
+   * wait here until the archive view is switched on. See `loadArchivedAssets`.
+   */
+  pendingArchiveFiles: string[];
+  /** INITIAL while `pendingArchiveFiles` is still waiting to be hydrated. */
+  archiveIoState: IoState;
   // Cached tag counts - null means cache is invalidated and needs rebuild
   // This is rebuilt lazily by selectors when accessed after invalidation
   tagCountsCache: KeyedCountList | null;

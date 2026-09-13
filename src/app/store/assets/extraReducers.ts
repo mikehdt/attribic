@@ -6,6 +6,7 @@ import {
   clearSaveErrors,
   completeAfterDelay,
   loadAllAssets,
+  loadArchivedAssets,
   saveAllAssets,
   saveAsset,
   updateLoadProgress,
@@ -31,6 +32,8 @@ export const setupExtraReducers = (
     // until this settles, so nothing may be applied against them by fileId
     // while the load is in flight.
     state.loadedProject = null;
+    state.pendingArchiveFiles = [];
+    state.archiveIoState = IoState.INITIAL;
 
     // Initialize the load progress
     // (actual progress will be updated by the client-side code)
@@ -42,12 +45,17 @@ export const setupExtraReducers = (
   });
 
   builder.addCase(loadAllAssets.fulfilled, (state, action) => {
+    const { assets, archiveFiles } = action.payload;
+
     state.ioMessage = undefined;
-    state.images = action.payload;
-    state.imageIndexById = buildImageIndexMap(action.payload);
+    state.images = assets;
+    state.imageIndexById = buildImageIndexMap(assets);
     // Callers pass the project folder name as `projectPath`.
     state.loadedProject = action.meta.arg?.projectPath ?? null;
-    state.tagCountsCache = buildTagCountsCache(action.payload);
+    state.pendingArchiveFiles = archiveFiles;
+    state.archiveIoState =
+      archiveFiles.length > 0 ? IoState.INITIAL : IoState.COMPLETE;
+    state.tagCountsCache = buildTagCountsCache(assets);
 
     // If progress data shows completion, briefly show 100% before transitioning
     const hasProgressCompletion =
@@ -69,8 +77,38 @@ export const setupExtraReducers = (
     state.images = [];
     state.imageIndexById = {};
     state.loadedProject = null;
+    state.pendingArchiveFiles = [];
+    state.archiveIoState = IoState.INITIAL;
     // Keep the progress information for error reporting
     // so users can see how far it got before failing
+  });
+
+  // Deferred archive load — appends to the existing set rather than replacing
+  // it, so the project's own ioState and loadedProject are left alone
+  builder.addCase(loadArchivedAssets.pending, (state) => {
+    state.archiveIoState = IoState.LOADING;
+    state.loadProgress = {
+      total: state.pendingArchiveFiles.length,
+      completed: 0,
+      failed: 0,
+    };
+  });
+
+  builder.addCase(loadArchivedAssets.fulfilled, (state, action) => {
+    for (const asset of action.payload) {
+      state.imageIndexById[asset.fileId] = state.images.length;
+      state.images.push(asset);
+    }
+    state.pendingArchiveFiles = [];
+    state.archiveIoState = IoState.COMPLETE;
+    state.loadProgress = undefined;
+    // tagCountsCache stays valid — archived assets are excluded from it
+  });
+
+  builder.addCase(loadArchivedAssets.rejected, (state, action) => {
+    state.archiveIoState = IoState.ERROR;
+    state.ioMessage = action.error.message || 'Error loading archived assets';
+    state.loadProgress = undefined;
   });
 
   // Saving

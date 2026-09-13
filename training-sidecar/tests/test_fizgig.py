@@ -14,9 +14,17 @@ from pathlib import Path
 import pytest
 
 from models import DatasetEntry, ProviderType, StartJobRequest
+import providers.fizgig as fizgig_module
 from providers.fizgig import FizgigProvider, _prune_epoch_checkpoints
 from providers.sd_scripts_base import SAMPLING_PHASE
 from test_log_parsing import transcript_run
+
+
+@pytest.fixture(autouse=True)
+def no_gpu_probe(monkeypatch):
+    """Validation reads the real card's VRAM; pin it so the suite doesn't
+    change shape with the machine it runs on. Tests that care set it."""
+    monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: None)
 
 
 @pytest.fixture
@@ -549,6 +557,49 @@ class TestValidateRequest:
         touch_model_paths(request)
         errors = provider.validate_request(request)
         assert any("at most 26" in e for e in errors)
+
+    @pytest.mark.parametrize("quant", ["float8", "none", "int8"])
+    def test_resident_non_nf4_rejected_on_small_card(
+        self, provider, tmp_path, monkeypatch, quant
+    ):
+        monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 16.0)
+        request = make_request(
+            tmp_path, {"transformer_quantization": quant, "blocks_to_swap": 0}
+        )
+        touch_model_paths(request)
+        errors = provider.validate_request(request)
+        assert any("16 GB card" in e and "NF4" in e for e in errors)
+
+    def test_nf4_resident_passes_on_small_card(
+        self, provider, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 16.0)
+        request = make_request(
+            tmp_path, {"transformer_quantization": "nf4", "blocks_to_swap": 0}
+        )
+        touch_model_paths(request)
+        assert provider.validate_request(request) == []
+
+    def test_fp8_with_swap_passes_on_small_card(
+        self, provider, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 16.0)
+        request = make_request(
+            tmp_path,
+            {"transformer_quantization": "float8", "blocks_to_swap": 20},
+        )
+        touch_model_paths(request)
+        assert provider.validate_request(request) == []
+
+    def test_fp8_resident_passes_on_big_card(
+        self, provider, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 24.0)
+        request = make_request(
+            tmp_path, {"transformer_quantization": "float8", "blocks_to_swap": 0}
+        )
+        touch_model_paths(request)
+        assert provider.validate_request(request) == []
 
     def test_missing_component_reported(self, provider, tmp_path):
         request = make_request(tmp_path)

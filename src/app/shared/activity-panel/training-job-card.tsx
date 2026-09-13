@@ -104,7 +104,7 @@ export function TrainingJobCard({
         </span>
 
         {/* Actions */}
-        <div className="ml-auto flex items-center gap-1 border-t border-dashed border-(--border-subtle)">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {progress && (
             <ActionButton onClick={() => onEnlarge(job.id)} title="Enlarge">
               <Maximize2Icon className="h-2.5 w-2.5" />
@@ -126,16 +126,13 @@ export function TrainingJobCard({
             </ActionButton>
           )}
           {isDone && (
-            <>
-              <div className="mr-auto" />
-              <ActionButton
-                onClick={() => dispatch(clearTrainingJob(job.id))}
-                title="Clear from list"
-              >
-                <XIcon className="h-2.5 w-2.5" />
-                Clear
-              </ActionButton>
-            </>
+            <ActionButton
+              onClick={() => dispatch(clearTrainingJob(job.id))}
+              title="Clear from list"
+            >
+              <XIcon className="h-2.5 w-2.5" />
+              Clear
+            </ActionButton>
           )}
         </div>
       </div>

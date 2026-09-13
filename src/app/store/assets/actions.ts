@@ -1,5 +1,10 @@
 // Async thunk actions
-import { createAction, createAsyncThunk } from '@reduxjs/toolkit';
+import {
+  createAction,
+  createAsyncThunk,
+  type Dispatch,
+  type UnknownAction,
+} from '@reduxjs/toolkit';
 
 // Action to handle delayed completion transition (250ms delay to show 100% progress)
 export const completeAfterDelay = createAsyncThunk<void, void>(
@@ -48,6 +53,7 @@ import {
 import {
   ImageAsset,
   ImageAssets,
+  IoState,
   LoadProgress,
   SaveAssetResult,
   SaveProgress,
@@ -65,27 +71,107 @@ export const updateLoadProgress = createAction<LoadProgress>(
 
 export const clearLoadErrors = createAction('assets/clearLoadErrors');
 
+// Derived data worth carrying across a reload — regenerating a blur placeholder
+// means re-reading and re-encoding the file
+const buildBlurCache = (images: ImageAsset[]): BlurCache => {
+  const blurCache: BlurCache = {};
+  for (const asset of images) {
+    const isVideo = isSupportedVideoExtension(`.${asset.fileExtension}`);
+    if (asset.blurDataUrl || isVideo) {
+      blurCache[asset.fileId] = {
+        lastModified: asset.lastModified,
+        blurDataUrl: asset.blurDataUrl,
+        videoDimensions: isVideo ? asset.dimensions : undefined,
+      };
+    }
+  }
+  return blurCache;
+};
+
+/**
+ * Batched detail reads with progress reporting and a per-file fallback, shared
+ * by the project load and the deferred archive load.
+ */
+const hydrateAssetFiles = async (
+  files: string[],
+  projectPath: string | undefined,
+  blurCache: BlurCache,
+  dispatch: Dispatch<UnknownAction>,
+): Promise<ImageAsset[]> => {
+  dispatch(clearLoadErrors());
+
+  let failedCount = 0;
+  const failedFiles: string[] = [];
+
+  const updateProgress = (completed: number, total: number) => {
+    dispatch(
+      updateLoadProgress({
+        completed,
+        total,
+        failed: failedCount,
+        errors: failedFiles.length > 0 ? failedFiles : undefined,
+      }),
+    );
+  };
+
+  return processBatchesWithProgress<string, ImageAsset, ImageAsset>(
+    files,
+    // Process a batch of files
+    async (batch) => {
+      const { assets, errors } = await getMultipleImageAssetDetails(
+        batch,
+        projectPath,
+        blurCache,
+      );
+      // Update error count and track failed files for this batch
+      if (errors.length > 0) {
+        failedCount += errors.length;
+        failedFiles.push(...errors);
+      }
+      return assets;
+    },
+    // Update progress
+    updateProgress,
+    // Total items for progress tracking
+    files.length,
+    // Fallback for individual processing
+    async (file) => {
+      try {
+        return await getImageAssetDetails(file, projectPath, blurCache);
+      } catch (error) {
+        console.error(`Failed to process file ${file}:`, error);
+        failedCount++;
+        failedFiles.push(file);
+        return null;
+      }
+    },
+  );
+};
+
+export type LoadAllAssetsResult = {
+  assets: ImageAsset[];
+  /** Archived files left unhydrated by this load. */
+  archiveFiles: string[];
+};
+
 export const loadAllAssets = createAsyncThunk<
-  ImageAsset[],
+  LoadAllAssetsResult,
   { maintainIoState?: boolean; projectPath?: string } | undefined,
-  { state: { assets: ImageAssets; project: ProjectState } }
+  {
+    state: {
+      assets: ImageAssets;
+      project: ProjectState;
+      filters: { visibility: { archiveView: ArchiveViewMode } };
+    };
+  }
 >('assets/loadAllAssets', async (options, { dispatch, getState }) => {
   try {
     // Build blur cache from existing assets to reuse unchanged blur data
     const {
       assets: { images },
+      filters: { visibility },
     } = getState();
-    const blurCache: BlurCache = {};
-    for (const asset of images) {
-      const isVideo = isSupportedVideoExtension(`.${asset.fileExtension}`);
-      if (asset.blurDataUrl || isVideo) {
-        blurCache[asset.fileId] = {
-          lastModified: asset.lastModified,
-          blurDataUrl: asset.blurDataUrl,
-          videoDimensions: isVideo ? asset.dimensions : undefined,
-        };
-      }
-    }
+    const blurCache = buildBlurCache(images);
 
     // First, get the list of image files (fast operation)
     const result: ImageFileListResult = await getImageFileList(
@@ -103,77 +189,27 @@ export const loadAllAssets = createAsyncThunk<
       }
 
       // For default project or other errors, return empty array gracefully
-      return [];
+      return { assets: [], archiveFiles: [] };
     }
 
-    const imageFiles = result.files;
+    // A reload while the archive is on screen has to bring it back with it —
+    // deferring then would blank out assets the user is currently looking at
+    const showsArchive = visibility.archiveView !== ArchiveViewMode.HIDDEN;
+    const imageFiles = showsArchive
+      ? [...result.files, ...result.archiveFiles]
+      : result.files;
+    const archiveFiles = showsArchive ? [] : result.archiveFiles;
 
-    // Initialize progress tracking when we know the total and clear any previous errors
-    const totalFiles = imageFiles.length;
-    if (totalFiles === 0) return [];
+    if (imageFiles.length === 0) return { assets: [], archiveFiles };
 
-    dispatch(clearLoadErrors());
-
-    // Define the update progress function that includes error tracking
-    // Track failed loads
-    let failedCount = 0;
-    const failedFiles: string[] = [];
-
-    // Define the update progress function that includes error tracking
-    const updateProgress = (completed: number, total: number) => {
-      dispatch(
-        updateLoadProgress({
-          completed,
-          total,
-          failed: failedCount,
-          errors: failedFiles.length > 0 ? failedFiles : undefined,
-        }),
-      );
-    };
-
-    // Process batches using the helper
-    const imageAssets = await processBatchesWithProgress<
-      string,
-      ImageAsset,
-      ImageAsset
-    >(
+    const assets = await hydrateAssetFiles(
       imageFiles,
-      // Process a batch of files
-      async (batch) => {
-        const { assets, errors } = await getMultipleImageAssetDetails(
-          batch,
-          options?.projectPath,
-          blurCache,
-        );
-        // Update error count and track failed files for this batch
-        if (errors.length > 0) {
-          failedCount += errors.length;
-          failedFiles.push(...errors);
-        }
-        return assets;
-      },
-      // Update progress
-      updateProgress,
-      // Total items for progress tracking
-      totalFiles,
-      // Fallback for individual processing
-      async (file) => {
-        try {
-          return await getImageAssetDetails(
-            file,
-            options?.projectPath,
-            blurCache,
-          );
-        } catch (error) {
-          console.error(`Failed to process file ${file}:`, error);
-          failedCount++;
-          failedFiles.push(file);
-          return null;
-        }
-      },
+      options?.projectPath,
+      blurCache,
+      dispatch,
     );
 
-    return imageAssets;
+    return { assets, archiveFiles };
   } catch (error) {
     // Provide better error messages to the user
     console.error('Error loading assets:', error);
@@ -182,6 +218,42 @@ export const loadAllAssets = createAsyncThunk<
     );
   }
 });
+
+/**
+ * Hydrates the assets the project load left in `pendingArchiveFiles`. Anything
+ * archived during this session is already in the store, so it's filtered out
+ * rather than loaded a second time.
+ */
+export const loadArchivedAssets = createAsyncThunk<
+  ImageAsset[],
+  void,
+  { state: { assets: ImageAssets } }
+>(
+  'assets/loadArchivedAssets',
+  async (_arg, { dispatch, getState }) => {
+    const { images, imageIndexById, pendingArchiveFiles, loadedProject } =
+      getState().assets;
+
+    if (!loadedProject) return [];
+
+    const files = pendingArchiveFiles.filter(
+      (file) =>
+        imageIndexById[file.substring(0, file.lastIndexOf('.'))] === undefined,
+    );
+    if (files.length === 0) return [];
+
+    return hydrateAssetFiles(
+      files,
+      loadedProject,
+      buildBlurCache(images),
+      dispatch,
+    );
+  },
+  {
+    condition: (_arg, { getState }) =>
+      getState().assets.archiveIoState !== IoState.LOADING,
+  },
+);
 
 export const saveAsset = createAsyncThunk<
   SaveAssetResult,

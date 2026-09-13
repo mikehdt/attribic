@@ -30,6 +30,8 @@ export const coreReducers = {
     state.images = [];
     state.imageIndexById = {};
     state.loadedProject = null;
+    state.pendingArchiveFiles = [];
+    state.archiveIoState = IoState.INITIAL;
     state.loadProgress = undefined;
     state.saveProgress = undefined;
     // Reset sorting to defaults

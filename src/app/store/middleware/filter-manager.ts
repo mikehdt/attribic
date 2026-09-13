@@ -7,7 +7,7 @@ import {
 
 import { composeDimensions } from '../../utils/helpers';
 import { isArchiveSubfolder } from '../../utils/subfolder-utils';
-import { RootState } from '..';
+import { AppDispatch, RootState } from '..';
 import {
   addTag,
   deleteTag,
@@ -20,6 +20,7 @@ import {
 } from '../assets';
 import {
   loadAllAssets,
+  loadArchivedAssets,
   moveAssetsToFolderThunk,
   saveAllAssets,
   saveAsset,
@@ -391,6 +392,24 @@ filterManagerMiddleware.startListening({
     ) {
       listenerApi.dispatch(setTagFilterMode(FilterMode.SHOW_ALL));
     }
+  },
+});
+
+// The archive isn't hydrated on project open, so the first look at it has to
+// fetch it. Keyed on the transition rather than the picker's action so it fires
+// however the view got there — the same reasoning as the listener below.
+filterManagerMiddleware.startListening({
+  predicate: (_action, currentState, previousState) =>
+    (currentState as RootState).filters.visibility.archiveView !==
+      ArchiveViewMode.HIDDEN &&
+    (previousState as RootState).filters.visibility.archiveView ===
+      ArchiveViewMode.HIDDEN,
+  effect: async (_action, listenerApi) => {
+    const state = listenerApi.getState() as RootState;
+    if (state.assets.pendingArchiveFiles.length === 0) return;
+    // The listener middleware is created untyped, so its dispatch doesn't know
+    // about thunks
+    (listenerApi.dispatch as AppDispatch)(loadArchivedAssets());
   },
 });
 

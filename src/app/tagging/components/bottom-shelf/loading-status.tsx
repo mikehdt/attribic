@@ -6,16 +6,27 @@ interface LoadingStatusProps {
   ioState: IoState;
   saveProgress: SaveProgress | null;
   loadProgress: LoadProgress | null;
+  /**
+   * The deferred archive load runs alongside a settled project, so it reports
+   * progress without moving the slice's own `ioState`.
+   */
+  isArchiveLoading?: boolean;
 }
 
 export const LoadingStatus = ({
   ioState,
   saveProgress,
   loadProgress,
+  isArchiveLoading = false,
 }: LoadingStatusProps) => {
   const hasProgress =
     (saveProgress?.total && saveProgress.total > 0) ||
     (loadProgress?.total && loadProgress.total > 0);
+
+  const isLoading =
+    isArchiveLoading ||
+    ioState === IoState.LOADING ||
+    ioState === IoState.COMPLETING;
 
   return (
     <>
@@ -33,8 +44,7 @@ export const LoadingStatus = ({
           </>
         ) : null}
 
-        {(ioState === IoState.LOADING || ioState === IoState.COMPLETING) &&
-        loadProgress?.total ? (
+        {isLoading && loadProgress?.total ? (
           <>
             {loadProgress.total > 0
               ? `${loadProgress.completed} / ${loadProgress.total}`
@@ -45,9 +55,7 @@ export const LoadingStatus = ({
           </>
         ) : null}
 
-        {(ioState === IoState.SAVING ||
-          ioState === IoState.LOADING ||
-          ioState === IoState.COMPLETING) &&
+        {(isLoading || ioState === IoState.SAVING) &&
         !saveProgress?.total &&
         !loadProgress?.total ? (
           <>Preparing...</>

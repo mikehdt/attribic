@@ -18,6 +18,8 @@ import { buildTagCountsCache, hasState } from './utils';
 const selectAllImages = (state: RootState) => state.assets.images;
 const selectImageIndexById = (state: RootState) => state.assets.imageIndexById;
 const selectTagCountsCache = (state: RootState) => state.assets.tagCountsCache;
+const selectPendingArchiveFiles = (state: RootState) =>
+  state.assets.pendingArchiveFiles;
 
 // Selector that returns cached tag counts, rebuilding if cache is null
 // This is the core of the caching strategy - counts are computed once and shared
@@ -216,11 +218,19 @@ export const selectHasSubfolderAssets = createSelector(
   },
 );
 
-export const selectArchivedCount = createSelector([selectAllImages], (images) =>
-  images.reduce(
-    (count, asset) => (isArchiveSubfolder(asset.subfolder) ? count + 1 : count),
-    0,
-  ),
+// Counts what's on disk, not what's in memory: the pending files are archived
+// assets the project load deliberately skipped, and the archive control has to
+// offer itself before they're hydrated or they could never be brought in.
+// Assets archived during this session land in `images`, never in both.
+export const selectArchivedCount = createSelector(
+  [selectAllImages, selectPendingArchiveFiles],
+  (images, pendingArchiveFiles) =>
+    pendingArchiveFiles.length +
+    images.reduce(
+      (count, asset) =>
+        isArchiveSubfolder(asset.subfolder) ? count + 1 : count,
+      0,
+    ),
 );
 
 export const selectHasArchivedAssets = createSelector(
@@ -230,8 +240,13 @@ export const selectHasArchivedAssets = createSelector(
 
 // The working-set total — archived assets sit outside it
 export const selectUnarchivedImageCount = createSelector(
-  [selectAllImages, selectArchivedCount],
-  (images, archivedCount) => images.length - archivedCount,
+  [selectAllImages],
+  (images) =>
+    images.reduce(
+      (count, asset) =>
+        isArchiveSubfolder(asset.subfolder) ? count : count + 1,
+      0,
+    ),
 );
 
 // Using selectSaveProgress and selectLoadProgress from the slice

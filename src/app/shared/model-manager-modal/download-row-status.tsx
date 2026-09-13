@@ -7,6 +7,7 @@ import type { DownloadJob } from '@/app/store/jobs';
 import { formatBytes } from '../activity-panel/helpers';
 import { Button } from '../button';
 import { ProgressBar } from '../progress-bar/progress-bar';
+import { useConfirmAction } from '../use-confirm-action';
 
 /**
  * Right-hand-side content for a model row in the Model Manager modal
@@ -26,6 +27,11 @@ export function DownloadRowStatus({
   onCancel: (job: DownloadJob) => void;
   onDelete: (job: DownloadJob) => void;
 }) {
+  // Two-step confirm, as on the activity panel's download card — the same
+  // cancel, so it shouldn't be one stray click cheaper from here.
+  const { armed: confirmingCancel, trigger: handleCancelClick } =
+    useConfirmAction(() => onCancel(job));
+
   const isRunning = job.status === 'running' || job.status === 'preparing';
   const isQueued = job.status === 'pending';
   const isInterrupted = job.status === 'interrupted';
@@ -90,14 +96,19 @@ export function DownloadRowStatus({
       <div className="flex items-center justify-end gap-2">
         {(isRunning || isQueued) && (
           <Button
-            onClick={() => onCancel(job)}
+            onClick={handleCancelClick}
             color="rose"
             variant="ghost"
-            size="xs"
+            size="sm"
             width="sm"
+            title={
+              confirmingCancel
+                ? 'Click again to confirm cancellation'
+                : 'Cancel download'
+            }
           >
             <XIcon />
-            Cancel
+            {confirmingCancel ? 'Confirm?' : 'Cancel'}
           </Button>
         )}
         {canResume && (

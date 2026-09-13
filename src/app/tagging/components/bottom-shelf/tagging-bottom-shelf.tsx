@@ -8,6 +8,7 @@ import {
   IoState,
   selectFilteredAssetsCount,
   selectIoState,
+  selectIsArchiveLoading,
   selectLoadProgress,
   selectSaveProgress,
 } from '@/app/store/assets';
@@ -44,6 +45,7 @@ export const TaggingBottomShelf = ({
   const ioState = useAppSelector(selectIoState);
   const saveProgress = useAppSelector(selectSaveProgress) || null;
   const loadProgress = useAppSelector(selectLoadProgress) || null;
+  const isArchiveLoading = useAppSelector(selectIsArchiveLoading);
 
   // Crop visualisation
   const showCropVisualization = useAppSelector(selectShowCropVisualization);
@@ -89,6 +91,7 @@ export const TaggingBottomShelf = ({
   const filteredCount = useAppSelector(selectFilteredAssetsCount);
 
   const ioInProgress =
+    isArchiveLoading ||
     ioState === IoState.LOADING ||
     ioState === IoState.SAVING ||
     ioState === IoState.COMPLETING;
@@ -116,6 +119,7 @@ export const TaggingBottomShelf = ({
             ioState={ioState}
             saveProgress={saveProgress}
             loadProgress={loadProgress}
+            isArchiveLoading={isArchiveLoading}
           />
         ) : (
           <PaginationControls

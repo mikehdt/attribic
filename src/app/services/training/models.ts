@@ -983,10 +983,23 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // torch.compile refuses under swap — so the 26 above, inherited on a
       // provider switch, would sabotage every fizgig run.
       //
+      // transformerQuantization: with swap zeroed, the base precision is
+      // the whole VRAM story. Fizgig's fp8 RAW is ~14 GB resident, which
+      // its own guide pairs with 20 swapped blocks on 16 GB — fp8 + 0 swap
+      // filled the card before the epoch-0 preview ran a step and paged
+      // the run into sysmem. NF4 (~6 GB packed) is the measured 16 GB
+      // recipe (~6.5 s/it resident). The sidecar refuses fp8/bf16/int8
+      // with no swap on sub-20 GB cards, so this default is the one that
+      // launches.
+      //
       // sampleSteps: previews render through the step-distilled Turbo LoRA,
       // not RAW — 8 steps matches Fizgig's own CLI default, where the RAW
       // default of 28 would only triple preview time.
-      fizgig: { blocksToSwap: 0, sampleSteps: 8 },
+      fizgig: {
+        blocksToSwap: 0,
+        sampleSteps: 8,
+        transformerQuantization: 'nf4',
+      },
     },
   },
   {

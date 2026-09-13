@@ -118,6 +118,12 @@ type ImageFileListErrorType = 'not_found' | 'read_error';
 
 export interface ImageFileListResult {
   files: string[];
+  /**
+   * Archive contents, kept apart from `files` so opening a project doesn't pay
+   * to hydrate an archive nobody asked to see. Enumerating names is cheap; it's
+   * the per-asset detail read the caller defers.
+   */
+  archiveFiles: string[];
   error?: string;
   errorType?: ImageFileListErrorType;
 }
@@ -168,6 +174,7 @@ export const getImageFileList = async (
   const dir = path.isAbsolute(dataPath) ? dataPath : path.resolve(dataPath);
 
   const allImageFiles: string[] = [];
+  const archiveImageFiles: string[] = [];
 
   // 1. Get images from root directory
   let rootEntries: fs.Dirent[];
@@ -182,6 +189,7 @@ export const getImageFileList = async (
     console.error(errorMessage, error);
     return {
       files: [],
+      archiveFiles: [],
       error: errorMessage,
       errorType: isNotFound ? 'not_found' : 'read_error',
     };
@@ -200,9 +208,10 @@ export const getImageFileList = async (
 
   for (const subdir of subdirectories) {
     const subdirName = subdir.name;
+    const isArchive = subdirName === ARCHIVE_FOLDER;
 
     // Only repeat folders and the archive are part of the asset set
-    if (!isValidRepeatFolder(subdirName) && subdirName !== ARCHIVE_FOLDER) {
+    if (!isValidRepeatFolder(subdirName) && !isArchive) {
       // Skip invalid folders silently
       continue;
     }
@@ -216,23 +225,30 @@ export const getImageFileList = async (
         .filter((file) => !file.toLowerCase().endsWith(POSTER_SIDECAR_SUFFIX))
         .map((file) => `${subdirName}/${file}`); // Store with relative path
 
-      allImageFiles.push(...subdirImages);
+      (isArchive ? archiveImageFiles : allImageFiles).push(...subdirImages);
     } catch (error) {
       console.warn(`Failed to read subfolder ${subdirName}:`, error);
     }
   }
 
-  // Check for duplicate fileIds (same base name with different extensions)
+  // Check for duplicate fileIds (same base name with different extensions).
+  // Deduped per list, which is equivalent to deduping the union: fileIds carry
+  // their folder prefix, so an archived asset can never collide with a live one.
   const { uniqueFiles, duplicateWarnings } =
     detectDuplicateFileIds(allImageFiles);
+  const {
+    uniqueFiles: uniqueArchiveFiles,
+    duplicateWarnings: archiveDuplicateWarnings,
+  } = detectDuplicateFileIds(archiveImageFiles);
 
   // Log warnings if any duplicates were found
-  if (duplicateWarnings.length > 0) {
+  const allWarnings = [...duplicateWarnings, ...archiveDuplicateWarnings];
+  if (allWarnings.length > 0) {
     console.warn('File naming conflicts detected:');
-    duplicateWarnings.forEach((warning) => console.warn(warning));
+    allWarnings.forEach((warning) => console.warn(warning));
   }
 
-  return { files: uniqueFiles };
+  return { files: uniqueFiles, archiveFiles: uniqueArchiveFiles };
 };
 
 /**

@@ -1,5 +1,9 @@
+import { XIcon } from 'lucide-react';
+
 import { TRAINING_PROVIDER_LABELS } from '@/app/services/training/types';
+import { Button } from '@/app/shared/button';
 import { SegmentedControl } from '@/app/shared/segmented-control/segmented-control';
+import { useConfirmAction } from '@/app/shared/use-confirm-action';
 import type { TrainingJob } from '@/app/store/jobs';
 
 import { formatDuration } from '../../helpers';
@@ -21,7 +25,14 @@ import { useTrainingDetailTabs } from './use-training-detail-tabs';
  * so it's visible the setting took. Runs without sampling render exactly the
  * Overview body with no tab control, so the modal looks as before.
  */
-export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
+export function TrainingDetailTabs({
+  job,
+  onCancel,
+}: {
+  job: TrainingJob | null;
+  /** Absent for run-history views of finished runs; the button hides itself. */
+  onCancel?: (job: TrainingJob) => void;
+}) {
   const {
     grid,
     showSamplesTab,
@@ -40,9 +51,18 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
 
   const { config, progress } = useTrainingDetailView(job);
 
+  // Two-step confirm, as on the activity card — a run is hours of work, so one
+  // stray click shouldn't end it. Called before the null guard: hooks can't sit
+  // behind an early return.
+  const { armed: confirmingCancel, trigger: handleCancelClick } =
+    useConfirmAction(() => {
+      if (job) onCancel?.(job);
+    });
+
   if (!job || !progress) return null;
 
   const isCompleted = job.status === 'completed';
+  const isRunning = job.status === 'running' || job.status === 'preparing';
 
   const elapsed =
     progress.completedAt != null && progress.startedAt != null
@@ -76,11 +96,33 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
     </div>
   );
 
+  // Sits below the tab body rather than inside the Overview, so it keeps the
+  // same footer position on the Samples tab. Matches the tagging detail modal.
+  const cancelFooter = isRunning && onCancel && (
+    <div className="mt-4 flex justify-end">
+      <Button
+        onClick={handleCancelClick}
+        color="rose"
+        size="sm"
+        width="lg"
+        title={
+          confirmingCancel
+            ? 'Click again to confirm cancellation'
+            : 'Cancel training'
+        }
+      >
+        <XIcon />
+        {confirmingCancel ? 'Confirm?' : 'Cancel'}
+      </Button>
+    </div>
+  );
+
   if (!showSamplesTab)
     return (
       <div className="relative">
         {modalHeader}
         <TrainingDetailContent job={job} />
+        {cancelFooter}
       </div>
     );
 
@@ -121,6 +163,8 @@ export function TrainingDetailTabs({ job }: { job: TrainingJob | null }) {
           )}
         </div>
       )}
+
+      {cancelFooter}
 
       {lightbox && activeSample && activeRow && activeColumn && nav && (
         <SamplesLightbox

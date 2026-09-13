@@ -54,6 +54,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Optional
@@ -138,6 +140,13 @@ _OPTIMIZER_MAP = {
     "bitsandbytes.optim.lion8bit": "lion8bit",
     "bitsandbytes.optim.pagedadamw8bit": "pagedadamw8bit",
     "bitsandbytes.optim.ademamix8bit": "ademamix8bit",
+}
+
+_QUANT_LABELS = {
+    "float8": "fp8",
+    "none": "bf16",
+    "int8": "int8",
+    "nf4": "NF4",
 }
 
 _SCHEDULERS = {
@@ -228,6 +237,49 @@ def _find_model(model_id: str) -> Optional[dict]:
         if m["id"] == model_id:
             return m
     return None
+
+
+# Fizgig's fp8 Krea 2 RAW is ~14 GB resident; its own VRAM ladder pairs that
+# with 20 swapped blocks on a 16 GB card, and int8 residency needs ~18 GB
+# free. Below this card size only NF4 fits with swap off.
+_SMALL_CARD_GB = 20.0
+
+_total_vram_cache: Optional[float] = None
+
+
+def _gpu_total_vram_gb() -> Optional[float]:
+    """Smallest total VRAM across visible NVIDIA GPUs, in GB, or None when
+    there is nothing to ask. Read once per process — the card doesn't change
+    between launches, and validation runs on every start request."""
+    global _total_vram_cache
+    if _total_vram_cache is not None:
+        return _total_vram_cache
+    if shutil.which("nvidia-smi") is None:
+        return None
+    try:
+        out = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3.0,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    totals: list[float] = []
+    for line in out.splitlines():
+        try:
+            totals.append(float(line.strip()) / 1024.0)
+        except ValueError:
+            continue
+    if not totals:
+        return None
+    _total_vram_cache = min(totals)
+    return _total_vram_cache
 
 
 class FizgigProvider(SdScriptsProvider):
@@ -371,6 +423,21 @@ class FizgigProvider(SdScriptsProvider):
             errors.append(
                 f"{model_def['name']} supports at most {max_swap} swapped "
                 f"blocks (got {blocks_to_swap})"
+            )
+
+        quant = str(hp.get("transformer_quantization", "float8") or "float8")
+        total_vram = _gpu_total_vram_gb()
+        if (
+            total_vram is not None
+            and total_vram < _SMALL_CARD_GB
+            and quant != "nf4"
+            and blocks_to_swap == 0
+        ):
+            errors.append(
+                f"{model_def['name']} in {_QUANT_LABELS.get(quant, quant)} "
+                "does not fit resident on a "
+                f"{total_vram:.0f} GB card — pick NF4 quantisation, or keep "
+                "fp8 and swap at least 20 blocks"
             )
 
         model_paths = hp.get("model_paths") or {}

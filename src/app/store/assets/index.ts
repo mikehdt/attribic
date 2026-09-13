@@ -11,6 +11,8 @@ const initialState: ImageAssets = {
   images: [],
   imageIndexById: {},
   loadedProject: null,
+  pendingArchiveFiles: [],
+  archiveIoState: IoState.INITIAL,
   tagCountsCache: null,
   sortType: SortType.NAME,
   sortDirection: SortDirection.ASC,
@@ -37,6 +39,7 @@ const assetsSlice = createSlice({
       state.saveProgress.total > 0 &&
       state.saveProgress.completed < state.saveProgress.total,
     selectLoadProgress: (state) => state.loadProgress,
+    selectIsArchiveLoading: (state) => state.archiveIoState === IoState.LOADING,
     selectSortType: (state) => state.sortType,
     selectSortDirection: (state) => state.sortDirection,
   },
@@ -74,6 +77,7 @@ export const {
   selectSaveProgress,
   selectIsBatchSaveInProgress,
   selectLoadProgress,
+  selectIsArchiveLoading,
   selectSortType,
   selectSortDirection,
 } = assetsSlice.selectors;

@@ -21,7 +21,7 @@ export function TrainingDetailModal({
   jobId,
   onClose,
 }: TrainingDetailModalProps) {
-  const { job } = useTrainingDetailModal(jobId, onClose);
+  const { job, cancel } = useTrainingDetailModal(jobId, onClose);
   const isOpen = jobId !== null && job !== null;
 
   // Widen to make room for the samples grid whenever the Samples tab shows —
@@ -37,7 +37,7 @@ export function TrainingDetailModal({
       className={`w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'}`}
       ariaLabel="Training details"
     >
-      <TrainingDetailTabs key={job?.id} job={job} />
+      <TrainingDetailTabs key={job?.id} job={job} onCancel={cancel} />
     </Modal>
   );
 }
