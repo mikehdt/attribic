@@ -5,7 +5,8 @@ sd-scripts contract everywhere this provider touches it — verified against the
 checkout: dataset TOML with `[general]` + flat `[[datasets]]` blocks
 (musubi-shaped: image_directory / cache_directory / caption_extension), a
 `cache latents -> cache text -> train` pipeline whose scripts skip up-to-date
-items, a `steps`-desc tqdm bar with `avr_loss=` in the postfix, `epoch N/M`
+items (since upstream f9a83e4, 2026-10-01, Krea 2 runs through the shared
+family scripts `families/cache.py` / `families/train.py --family krea2`), a `steps`-desc tqdm bar with `avr_loss=` in the postfix, `epoch N/M`
 lines between epochs, `{output_name}-{epoch:06d}.safetensors` checkpoints,
 `{output_name}-NNNNNN-state` resume dirs, and epoch-cadence sample files named
 `{output_name}_e{epoch:06d}_{idx:02d}_{ts}_{seed}.png` under
@@ -17,19 +18,19 @@ What genuinely differs, and lives here:
 - **Plain-python launch.** Fizgig's scripts don't use accelerate (and its venv
   doesn't ship it) — `_spawn_accelerate` is overridden to exec the script
   directly.
-- **Epoch-only pacing.** `krea2_train.py` has `--max_train_epochs` but no
+- **Epoch-only pacing.** `families/train.py` has `--max_train_epochs` but no
   step-based duration, save or sample cadence. Steps-mode requests are
   rejected up front in `validate_request` rather than silently converted.
 - **Provider-side checkpoint retention.** Fizgig has no --save_last_n
   equivalent (its only pruning is resume-state dirs), so max_saves_to_keep
   is enforced here via the `_housekeep_checkpoints` hook — see
   `_prune_epoch_checkpoints` for the landed-file guards.
-- **Quantised-base training** is the point of the experiment: fp8 is Fizgig's
-  default; `--quant_int8 bf16` (int8 forward, exact bf16 gradients) and
-  `--quantize_4bit` (NF4) are the extra `transformer_quantization` values the
-  form offers on this provider only. torch.compile of the transformer blocks
-  is left on Fizgig's `auto` policy (it compiles when the run is long enough
-  to repay the warm-up, and never under block swap).
+- **Quantised-base training** is the point of the experiment: `--precision`
+  takes bf16 (`none`), int8 (W8A8 forward, exact bf16 gradients), nf4, or
+  `auto`, which plans int8-vs-NF4 and the block swap from free VRAM as
+  Fizgig's own GUI does. There is no fp8 base any more. torch.compile of the
+  transformer blocks is left on Fizgig's `auto` policy (it compiles when the
+  run is long enough to repay the warm-up, and never under block swap).
 - **Turbo-LoRA previews.** Samples render on the resident training DiT with
   the official Krea 2 Turbo LoRA applied at render time (few-step, CFG-free)
   — the optional `turbo_lora` component. Sample width/height are global flags
@@ -38,10 +39,13 @@ What genuinely differs, and lives here:
   deliberately not — it describes RAW-model CFG, and the Turbo path is
   CFG-free unless given a negative prompt, which we never send.
 
-Log-grammar deltas: Fizgig saves epoch checkpoints silently (no "saving
-checkpoint" line — intermediate saves just don't get an activity label) and
-ends with "saved final LoRA -> <path>", added to the save-done patterns. Its
-preview announce ("rendering previews (epoch N)…") is matched via
+Log-grammar deltas: Fizgig logs a save only after it lands ("[save] <path>",
+no "saving checkpoint" line first) — intermediate saves get no activity
+label, and are confirmed by `_scan_epoch_checkpoints` finding the file — and
+ends with "Training complete -> <path>", added to the save-done patterns.
+The end of a run also copies the final LoRA to `{output_name}-{epochs:06d}`,
+which retention treats as the final save, not an intermediate. Every preview
+opens with a "[preview-vram] preview start" line, matched via
 `sample_announce_patterns`, so the pause shows the sampling label; its
 per-image sampler bar (desc "sampling", total = denoise steps) then drives
 the determinate bar and — via `sample_bar_counts_images` — the image count,
@@ -82,9 +86,9 @@ SUPPORTED_MODELS = [
         "id": "krea2",
         "name": "Krea 2",
         "architecture": "krea2",
-        "train_script": "src/fizgig/scripts/krea2_train.py",
-        "latent_cache_script": "src/fizgig/scripts/krea2_cache_latents.py",
-        "te_cache_script": "src/fizgig/scripts/krea2_cache_text.py",
+        "family": "krea2",
+        "train_script": "src/fizgig/families/train.py",
+        "cache_script": "src/fizgig/families/cache.py",
         "components": [
             {
                 "key": "checkpoint",
@@ -123,8 +127,6 @@ SUPPORTED_MODELS = [
             "optimizer": "adamw8bit",
             "lr": 1e-4,
             "resolution": [1024],
-            # Fizgig's fixed krea2_shift recipe reads this as `shift`.
-            "discrete_flow_shift": 2.5,
         },
     },
 ]
@@ -142,11 +144,13 @@ _OPTIMIZER_MAP = {
     "bitsandbytes.optim.ademamix8bit": "ademamix8bit",
 }
 
-_QUANT_LABELS = {
-    "float8": "fp8",
+# transformer_quantization -> --precision. No fp8: upstream dropped it when
+# Krea 2 moved onto the family driver.
+_PRECISIONS = {
+    "auto": "auto",
     "none": "bf16",
     "int8": "int8",
-    "nf4": "NF4",
+    "nf4": "nf4",
 }
 
 _SCHEDULERS = {
@@ -163,8 +167,26 @@ def _canonical_optimizer(value: object) -> Optional[str]:
     return _OPTIMIZER_MAP.get(str(value or "").strip().lower())
 
 
+def _epoch_checkpoints(output_dir: Path, output_name: str) -> list[tuple[int, Path]]:
+    """This run's `{output_name}-NNNNNN.safetensors` epoch saves, oldest first."""
+    pattern = re.compile(
+        re.escape(output_name) + r"-(\d+)\.safetensors", re.IGNORECASE
+    )
+    checkpoints: list[tuple[int, Path]] = []
+    try:
+        entries = list(os.scandir(output_dir))
+    except OSError:
+        return []
+    for entry in entries:
+        match = pattern.fullmatch(entry.name)
+        if match and entry.is_file():
+            checkpoints.append((int(match.group(1)), Path(entry.path)))
+    checkpoints.sort()
+    return checkpoints
+
+
 def _prune_epoch_checkpoints(
-    output_dir: Path, output_name: str, max_keep: int
+    output_dir: Path, output_name: str, max_keep: int, final_epoch: int = 0
 ) -> int:
     """Delete this run's oldest intermediate checkpoints beyond `max_keep`.
 
@@ -172,10 +194,11 @@ def _prune_epoch_checkpoints(
     via --keep_last_n_states) — epoch `.safetensors` saves accumulate forever,
     so the provider enforces the max_saves_to_keep contract the other backends
     honour natively. Candidates are `{output_name}-NNNNNN.safetensors` only
-    (trainer.py's epoch template, matched case-insensitively like the
+    (train.py's epoch template, matched case-insensitively like the
     supersede machinery); the final `{output_name}.safetensors` never fits
-    that shape, so the final save is exempt by construction, and a digit-only
-    suffix keeps a sibling run like `demo-v2` out of `demo`'s candidates.
+    that shape, and its numbered copy (`final_epoch`, written at run end) is
+    excluded, so the final save is exempt. A digit-only suffix keeps a
+    sibling run like `demo-v2` out of `demo`'s candidates.
 
     Nothing is deleted unless the newest checkpoint has actually landed:
     nonzero size, and no smaller than half the largest candidate being
@@ -187,19 +210,11 @@ def _prune_epoch_checkpoints(
     """
     if max_keep <= 0:
         return 0
-    pattern = re.compile(
-        re.escape(output_name) + r"-(\d+)\.safetensors", re.IGNORECASE
-    )
-    checkpoints: list[tuple[int, Path]] = []
-    try:
-        entries = list(os.scandir(output_dir))
-    except OSError:
-        return 0
-    for entry in entries:
-        match = pattern.fullmatch(entry.name)
-        if match and entry.is_file():
-            checkpoints.append((int(match.group(1)), Path(entry.path)))
-    checkpoints.sort()
+    checkpoints = [
+        (epoch, path)
+        for epoch, path in _epoch_checkpoints(output_dir, output_name)
+        if epoch != final_epoch
+    ]
     if len(checkpoints) <= max_keep:
         return 0
 
@@ -239,9 +254,9 @@ def _find_model(model_id: str) -> Optional[dict]:
     return None
 
 
-# Fizgig's fp8 Krea 2 RAW is ~14 GB resident; its own VRAM ladder pairs that
-# with 20 swapped blocks on a 16 GB card, and int8 residency needs ~18 GB
-# free. Below this card size only NF4 fits with swap off.
+# Krea 2's int8 base needs ~19 GB at 1 MP (the family description's
+# train_memory) and bf16 more. Below this card size only NF4 — or Auto, which
+# plans its way to NF4 — fits with swap off.
 _SMALL_CARD_GB = 20.0
 
 _total_vram_cache: Optional[float] = None
@@ -285,18 +300,17 @@ def _gpu_total_vram_gb() -> Optional[float]:
 class FizgigProvider(SdScriptsProvider):
     """Training provider backed by shootthesound/Fizgig (Krea 2 only)."""
 
-    # trainer.py: `logger.info(f"saved final LoRA -> {out}")` is the only
-    # run-end save line — there is no "model saved." here.
+    # train.py: `logger.info(f"Training complete -> {final}")` is the only
+    # run-end line — there is no "model saved." here.
     save_done_patterns = SAVE_DONE_PATTERNS + [
-        re.compile(r"saved final lora", re.IGNORECASE)
+        re.compile(r"training complete ->", re.IGNORECASE)
     ]
 
-    # trainer.py's preview announces, all four variants: "rendering previews
-    # (epoch N) on the training DiT + Turbo LoRA..." / "...on the fp8
-    # Turbo...", and the Sample-at-Start pair "rendering epoch-0 preview
-    # (Sample at Start...)". None carries a step number, so the base loop
-    # anchors the pause to the step the training bar froze on.
-    _PREVIEW_ANNOUNCE = re.compile(r"rendering (?:previews|epoch-0 preview)")
+    # train.py announces nothing before a preview; its first line is the
+    # `_preview_vram("preview start")` waypoint, logged unconditionally on
+    # CUDA for every render, Sample at Start included. No step number, so
+    # the base loop anchors the pause to the step the training bar froze on.
+    _PREVIEW_ANNOUNCE = re.compile(r"\[preview-vram\] preview start")
     sample_announce_patterns = [_PREVIEW_ANNOUNCE]
 
     # Between the announce and the files appearing, the only output is the
@@ -328,13 +342,24 @@ class FizgigProvider(SdScriptsProvider):
             return SAMPLING_PHASE
         return super()._preparing_phase_for(lower_line)
 
+    def _scan_epoch_checkpoints(self, request: StartJobRequest) -> dict[str, int]:
+        return {
+            path.name: epoch
+            for epoch, path in _epoch_checkpoints(
+                Path(request.output_path), request.output_name
+            )
+        }
+
     def _housekeep_checkpoints(self, request: StartJobRequest) -> None:
         max_keep = int(
             request.hyperparameters.get("max_saves_to_keep", 0) or 0
         )
         if max_keep > 0:
             _prune_epoch_checkpoints(
-                Path(request.output_path), request.output_name, max_keep
+                Path(request.output_path),
+                request.output_name,
+                max_keep,
+                final_epoch=int(request.hyperparameters.get("epochs", 0) or 0),
             )
 
     # --- Environment / request validation ---
@@ -344,7 +369,7 @@ class FizgigProvider(SdScriptsProvider):
             return False, f"Fizgig path does not exist: {self._scripts_path}"
 
         for model in SUPPORTED_MODELS:
-            for key in ("train_script", "latent_cache_script", "te_cache_script"):
+            for key in ("train_script", "cache_script"):
                 script = self._scripts_path / model[key]
                 if not script.exists():
                     return (
@@ -389,7 +414,7 @@ class FizgigProvider(SdScriptsProvider):
                 + ", ".join(sorted(_SCHEDULERS))
             )
 
-        # Fizgig paces everything in epochs: krea2_train.py has no
+        # Fizgig paces everything in epochs: families/train.py has no
         # --max_train_steps / --save_every_n_steps / --sample_every_n_steps.
         if str(hp.get("duration_mode", "steps")) != "epochs":
             errors.append(
@@ -425,19 +450,23 @@ class FizgigProvider(SdScriptsProvider):
                 f"blocks (got {blocks_to_swap})"
             )
 
-        quant = str(hp.get("transformer_quantization", "float8") or "float8")
+        quant = str(hp.get("transformer_quantization", "auto") or "auto")
+        if quant not in _PRECISIONS:
+            errors.append(
+                f"Fizgig has no '{quant}' base precision — pick Auto, None "
+                "(bf16), int8 or NF4"
+            )
         total_vram = _gpu_total_vram_gb()
         if (
-            total_vram is not None
+            quant in ("none", "int8")
+            and total_vram is not None
             and total_vram < _SMALL_CARD_GB
-            and quant != "nf4"
             and blocks_to_swap == 0
         ):
             errors.append(
-                f"{model_def['name']} in {_QUANT_LABELS.get(quant, quant)} "
-                "does not fit resident on a "
-                f"{total_vram:.0f} GB card — pick NF4 quantisation, or keep "
-                "fp8 and swap at least 20 blocks"
+                f"{model_def['name']} in {_PRECISIONS[quant]} does not fit "
+                f"resident on a {total_vram:.0f} GB card — pick Auto or NF4 "
+                "quantisation, or swap blocks"
             )
 
         model_paths = hp.get("model_paths") or {}
@@ -630,6 +659,8 @@ class FizgigProvider(SdScriptsProvider):
     ) -> AsyncGenerator[JobProgress, None]:
         """Latent + text-encoder caching, each as its own subprocess.
 
+        Both stages are the shared family cache script, told the family and
+        stage, with the VAE or text encoder as `--model`.
         `--skip_existing` is resolution-aware in Fizgig (the cache filename
         encodes the source size and the content records the bucket, so a
         Target-resolution change re-encodes) — a warm re-run costs seconds.
@@ -644,14 +675,19 @@ class FizgigProvider(SdScriptsProvider):
         cwd = str(self._scripts_path)
         env = self._subprocess_env(gpu_id)
 
-        latent_argv = [
-            python_exe,
-            "-u",
-            str(self._scripts_path / model_def["latent_cache_script"]),
-            f"--dataset_config={config_path}",
-            f"--vae={paths['vae']}",
-            "--skip_existing",
-        ]
+        def cache_argv(stage: str, model_path: str) -> list[str]:
+            return [
+                python_exe,
+                "-u",
+                str(self._scripts_path / model_def["cache_script"]),
+                f"--family={model_def['family']}",
+                f"--stage={stage}",
+                f"--dataset_config={config_path}",
+                f"--model={model_path}",
+                "--skip_existing",
+            ]
+
+        latent_argv = cache_argv("latents", paths["vae"])
         async for tick in self._run_phase_subprocess(
             job_id, run, latent_argv, cwd, env, "Caching latents"
         ):
@@ -659,14 +695,7 @@ class FizgigProvider(SdScriptsProvider):
         if run.cancelled:
             return
 
-        te_argv = [
-            python_exe,
-            "-u",
-            str(self._scripts_path / model_def["te_cache_script"]),
-            f"--dataset_config={config_path}",
-            f"--text_encoder={paths['qwen']}",
-            "--skip_existing",
-        ]
+        te_argv = cache_argv("text", paths["qwen"])
         async for tick in self._run_phase_subprocess(
             job_id, run, te_argv, cwd, env, "Caching text-encoder outputs"
         ):
@@ -677,15 +706,16 @@ class FizgigProvider(SdScriptsProvider):
     def _build_cli_args(
         self, request: StartJobRequest, dataset_config: str, config_dir: str
     ) -> list[str]:
-        """Translate the generic request into krea2_train.py flags.
+        """Translate the generic request into families/train.py flags.
 
         All flags verified against the checkout's setup_parser. Deliberately
         absent vs the musubi builder: `--mixed_precision`/`--save_precision`
         (bf16 is hardcoded), `--network_module` (implied), step-based
         duration/cadence (epoch-only — enforced in validate_request),
-        `--network_dropout`/`--scale_weight_norms`/`--network_args` (no such
-        flags), and `--sdpa`/data-loader flags (Fizgig picks its own attention
-        backend and loader setup).
+        `--discrete_flow_shift` (Krea 2 derives its shift from the image-token
+        count), `--network_dropout`/`--scale_weight_norms`/`--network_args`
+        (no such flags), and `--sdpa`/data-loader flags (Fizgig picks its own
+        attention backend and loader setup).
         """
         model_def = _find_model(request.base_model)
         assert model_def is not None  # validated in generate_config
@@ -699,6 +729,7 @@ class FizgigProvider(SdScriptsProvider):
         )
 
         args: list[str] = [
+            f"--family={model_def['family']}",
             f"--dit={paths['checkpoint']}",
             f"--vae={paths['vae']}",
             f"--text_encoder={paths['qwen']}",
@@ -712,7 +743,8 @@ class FizgigProvider(SdScriptsProvider):
             f"--max_train_epochs={int(hp.get('epochs', 10))}",
             f"--gradient_accumulation_steps={int(hp.get('gradient_accumulation_steps', 1))}",
             f"--max_grad_norm={_num(hp.get('max_grad_norm', 1.0))}",
-            f"--discrete_flow_shift={_num(hp.get('discrete_flow_shift', defaults.get('discrete_flow_shift', 2.5)))}",
+            # Upstream defaults this to 1, so 0 must be sent to mean "off".
+            f"--save_every_n_epochs={int(hp.get('save_every_n_epochs', 0) or 0)}",
         ]
 
         network_type = str(hp.get("network_type", "lora") or "lora").lower()
@@ -720,22 +752,17 @@ class FizgigProvider(SdScriptsProvider):
             args.append("--network_type=lokr")
             args.append(f"--lokr_factor={int(hp.get('lokr_factor', 8))}")
 
-        # transformer_quantization: 'float8' is Fizgig's default (dynamic fp8
-        # base), so it emits nothing; 'none' opts back into bf16; 'int8' is
-        # the W8A8 frozen-base path with exact bf16 gradients; 'nf4' is the
-        # QLoRA-style 4-bit base. These are mutually exclusive by construction
-        # in the trainer (int8/nf4 take precedence over fp8 when set).
-        quant = str(hp.get("transformer_quantization", "float8") or "float8")
-        if quant == "none":
-            args.append("--no_fp8")
-        elif quant == "int8":
-            args.append("--quant_int8=bf16")
-        elif quant == "nf4":
-            args.append("--quantize_4bit")
+        quant = str(hp.get("transformer_quantization", "auto") or "auto")
+        precision = _PRECISIONS.get(quant, "auto")
+        args.append(f"--precision={precision}")
 
+        # Under Auto an explicit swap count is honoured as-is, so 0 would pin
+        # "no swap" even when the plan needs it; -1 lets the planner choose.
         blocks_to_swap = int(hp.get("blocks_to_swap", 0) or 0)
         if blocks_to_swap > 0:
             args.append(f"--blocks_to_swap={blocks_to_swap}")
+        elif precision == "auto":
+            args.append("--blocks_to_swap=-1")
 
         scheduler = str(hp.get("scheduler", "constant"))
         args.append(f"--lr_scheduler={scheduler}")
@@ -765,7 +792,7 @@ class FizgigProvider(SdScriptsProvider):
             ]
             optimizer_args.extend(user_tokens)
         if optimizer_args:
-            # One flag, one value: krea2_train takes the pairs as a single
+            # One flag, one value: train.py takes the pairs as a single
             # space-separated string, not argparse nargs.
             args.append("--optimizer_args=" + " ".join(optimizer_args))
 
@@ -773,9 +800,6 @@ class FizgigProvider(SdScriptsProvider):
         if seed >= 0:
             args.append(f"--seed={seed}")
 
-        save_every_epochs = int(hp.get("save_every_n_epochs", 0) or 0)
-        if save_every_epochs > 0:
-            args.append(f"--save_every_n_epochs={save_every_epochs}")
         if hp.get("save_state", False):
             args.append("--save_state")
             args.append("--save_state_on_train_end")
@@ -815,7 +839,7 @@ class FizgigProvider(SdScriptsProvider):
         width, height = request.sample_size_at(0, 1024, 1024)
         args = [
             f"--sample_prompts={prompt_file}",
-            f"--turbo_lora={paths['turbo_lora']}",
+            f"--speed_lora={paths['turbo_lora']}",
             f"--sample_width={width}",
             f"--sample_height={height}",
         ]

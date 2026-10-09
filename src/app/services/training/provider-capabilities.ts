@@ -136,20 +136,20 @@ const PROVIDER_CAPABILITIES: Record<
   // its own trainer, so it starts from an explicit list rather than the
   // family set. Deliberately absent vs musubi: saveFormat (bf16 hardcoded),
   // gradientCheckpointingToggle (always on), scaleWeightNorms /
-  // networkExtraArgs (no such flags), sampleGuidance (previews render through
+  // networkExtraArgs (no such flags), discreteFlowShift (Krea 2 derives its
+  // shift from the image-token count), sampleGuidance (previews render through
   // the step-distilled Turbo LoRA with CFG off — its --sample_cfg_scale only
   // means anything paired with a negative prompt, and the form's value
   // describes RAW-model CFG). Present beyond musubi: networkTypeSelect
   // + lokr (native LoKR), firstStepSample (--sample_at_first), and the
-  // quantization capability covers its extra int8/NF4 base values. Also
-  // absent: stepsPacing — krea2_train.py has no --max_train_steps and no
+  // quantization capability covers its own Auto/int8/NF4 base values. Also
+  // absent: stepsPacing — families/train.py has no --max_train_steps and no
   // step-cadence save/sample flags, so every pacing control is epoch-only
   // (the sidecar rejects steps-mode requests at launch as the backstop).
   fizgig: new Set([
     'lrSchedulerControls',
     'lrWarmupAnySchedule',
     'optimizerExtraArgs',
-    'discreteFlowShift',
     'bucketControls',
     'nativeResolution',
     'finalSaveExempt',

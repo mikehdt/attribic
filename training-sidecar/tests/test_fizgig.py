@@ -144,6 +144,7 @@ class TestBuildCliArgs:
             },
         )
         args = build_args(provider, request, tmp_path)
+        assert args[0] == "--family=krea2"
         assert "--max_train_epochs=30" in args
         assert "--network_dim=16" in args
         assert "--network_alpha=8" in args
@@ -151,31 +152,53 @@ class TestBuildCliArgs:
         assert "--seed=7" in args
         # Epoch-only backend: no step-based duration ever.
         assert not any(a.startswith("--max_train_steps") for a in args)
-        # bf16 is hardcoded upstream — no precision flags.
-        assert not any("precision" in a for a in args)
+        # Krea 2 derives its own flow shift; the flag no longer exists.
+        assert not any(a.startswith("--discrete_flow_shift") for a in args)
 
-    def test_quantization_default_fp8_emits_nothing(self, provider, tmp_path):
+    @pytest.mark.parametrize(
+        "quant, precision",
+        [("none", "bf16"), ("int8", "int8"), ("nf4", "nf4"), ("auto", "auto")],
+    )
+    def test_quantization_maps_to_precision(
+        self, provider, tmp_path, quant, precision
+    ):
+        request = make_request(tmp_path, {"transformer_quantization": quant})
+        args = build_args(provider, request, tmp_path)
+        assert [a for a in args if a.startswith("--precision")] == [
+            f"--precision={precision}"
+        ]
+
+    def test_missing_quantization_is_auto(self, provider, tmp_path):
+        args = build_args(provider, make_request(tmp_path), tmp_path)
+        assert "--precision=auto" in args
+
+    def test_auto_hands_swap_to_the_planner(self, provider, tmp_path):
+        """Under Auto an explicit 0 would pin "no swap"; -1 lets it plan."""
         request = make_request(
-            tmp_path, {"transformer_quantization": "float8"}
+            tmp_path, {"transformer_quantization": "auto", "blocks_to_swap": 0}
+        )
+        assert "--blocks_to_swap=-1" in build_args(provider, request, tmp_path)
+
+    def test_auto_keeps_an_explicit_swap(self, provider, tmp_path):
+        request = make_request(
+            tmp_path, {"transformer_quantization": "auto", "blocks_to_swap": 12}
         )
         args = build_args(provider, request, tmp_path)
-        assert "--no_fp8" not in args
-        assert not any(a.startswith("--quant_int8") for a in args)
-        assert "--quantize_4bit" not in args
+        assert [a for a in args if a.startswith("--blocks_to_swap")] == [
+            "--blocks_to_swap=12"
+        ]
 
-    def test_quantization_none_opts_out_of_fp8(self, provider, tmp_path):
-        request = make_request(tmp_path, {"transformer_quantization": "none"})
-        assert "--no_fp8" in build_args(provider, request, tmp_path)
+    def test_fixed_precision_without_swap_sends_none(self, provider, tmp_path):
+        request = make_request(
+            tmp_path, {"transformer_quantization": "nf4", "blocks_to_swap": 0}
+        )
+        args = build_args(provider, request, tmp_path)
+        assert not any(a.startswith("--blocks_to_swap") for a in args)
 
-    def test_quantization_int8_uses_exact_gradient_mode(
-        self, provider, tmp_path
-    ):
-        request = make_request(tmp_path, {"transformer_quantization": "int8"})
-        assert "--quant_int8=bf16" in build_args(provider, request, tmp_path)
-
-    def test_quantization_nf4(self, provider, tmp_path):
-        request = make_request(tmp_path, {"transformer_quantization": "nf4"})
-        assert "--quantize_4bit" in build_args(provider, request, tmp_path)
+    def test_saving_off_is_sent_explicitly(self, provider, tmp_path):
+        """Upstream defaults --save_every_n_epochs to 1."""
+        args = build_args(provider, make_request(tmp_path), tmp_path)
+        assert "--save_every_n_epochs=0" in args
 
     def test_lokr_network(self, provider, tmp_path):
         request = make_request(
@@ -262,7 +285,7 @@ class TestSampleArgs:
         content = Path(prompt_arg.split("=", 1)[1]).read_text(encoding="utf-8")
         # Plain prompts, one per line — no sd-scripts inline flags.
         assert content == "a portrait\na landscape"
-        assert any(a.startswith("--turbo_lora=") for a in args)
+        assert any(a.startswith("--speed_lora=") for a in args)
         assert "--sample_every_n_epochs=2" in args
         assert "--sample_seed=11" in args
 
@@ -303,7 +326,7 @@ class TestSampleArgs:
         request = make_request(tmp_path)
         args = build_args(provider, request, tmp_path)
         assert not any("sample" in a for a in args)
-        assert not any("turbo" in a for a in args)
+        assert not any("speed_lora" in a for a in args)
 
 
 # --------------------------------------------------------------------------
@@ -315,8 +338,8 @@ class TestPreviewLogGrammar:
     def test_preview_pause_labels_and_counts_by_bar_restart(
         self, provider, tmp_path
     ):
-        """Fizgig announces previews with its own wording and echoes no
-        per-image "prompt:" blocks — the label comes from the announce
+        """Fizgig announces previews only through its VRAM waypoint line and
+        echoes no per-image "prompt:" blocks — the label comes from that
         pattern and the image count from its sampler bar restarting."""
         request = make_request(
             tmp_path, sample_prompts=["one", "two"], with_turbo_lora=True
@@ -326,7 +349,7 @@ class TestPreviewLogGrammar:
             request,
             [
                 "steps:  25%|██▌       | 1/4 [00:01<00:03,  1.00it/s, avr_loss=0.15]",
-                "INFO:fizgig.krea2.trainer:rendering previews (epoch 1) on the training DiT + Turbo LoRA...",
+                "INFO:__main__:[preview-vram] preview start: allocated 7.10 GB, reserved 7.80 GB (peak 7.80 GB), free 6.90 GB",
                 "sampling:  12%|█▎        | 1/8 [00:01<00:07,  1.00it/s]",
                 "sampling: 100%|██████████| 8/8 [00:08<00:00,  1.00it/s]",
                 "sampling:  12%|█▎        | 1/8 [00:01<00:07,  1.00it/s]",
@@ -421,6 +444,18 @@ class TestCheckpointPruning:
         assert _prune_epoch_checkpoints(out, "demo", 1) == 0
         assert len(remaining(out)) == 3
 
+    def test_final_numbered_copy_is_exempt(self, tmp_path):
+        """Run end copies the final LoRA to its epoch number; that copy is
+        the final save, not one of the N intermediates."""
+        out = tmp_path / "loras"
+        write_checkpoints(out, "demo", [1, 2, 3, 20])
+        assert _prune_epoch_checkpoints(out, "demo", 2, final_epoch=20) == 1
+        assert remaining(out) == {
+            "demo-000002.safetensors",
+            "demo-000003.safetensors",
+            "demo-000020.safetensors",
+        }
+
     def test_missing_output_dir_is_noop(self, tmp_path):
         assert _prune_epoch_checkpoints(tmp_path / "nope", "demo", 2) == 0
 
@@ -465,6 +500,80 @@ class TestCheckpointPruning:
         transcript_run(provider, request, ["epoch 4/20"], exit_code=1)
         assert len(remaining(out)) == 3
 
+    def test_silent_epoch_save_is_confirmed_at_its_step(
+        self, provider, tmp_path, monkeypatch
+    ):
+        """Fizgig logs nothing for an epoch save, so the file is the signal.
+
+        Without it the chart had no confirmation for a reached checkpoint,
+        dropped its violet line, and the epoch gridline beneath showed grey.
+        Files already on disk at launch (a resume's earlier epochs) are not
+        claimed.
+        """
+        request = make_request(tmp_path, {"save_every_n_epochs": 1})
+        out = Path(request.output_path)
+        write_checkpoints(out, "demo", [1, 2, 3])
+        real_scan = fizgig_module._epoch_checkpoints
+        scans = []
+
+        def save_lands_after_launch(output_dir, output_name):
+            if scans:
+                write_checkpoints(out, "demo", [4])
+            scans.append(True)
+            return real_scan(output_dir, output_name)
+
+        monkeypatch.setattr(
+            fizgig_module, "_epoch_checkpoints", save_lands_after_launch
+        )
+        updates = transcript_run(
+            provider,
+            request,
+            [
+                "steps:  20%|██        | 16/80 [00:16<01:04,  1.00it/s, avr_loss=0.15]",
+                "epoch 4/20  avr_loss=0.1500  step=16",
+                "steps:  21%|██        | 17/80 [00:17<01:03,  1.00it/s, avr_loss=0.15]",
+            ],
+        )
+        assert [u.saved_checkpoints for u in updates if u.saved_checkpoints] == [
+            [16]
+        ]
+
+    def test_merged_bar_and_epoch_line_waits_for_the_save(
+        self, provider, tmp_path, monkeypatch
+    ):
+        """tqdm's last redraw and the epoch summary share one stderr line.
+
+        Scanning on that line ran before the save landed, so every
+        checkpoint was confirmed an epoch late.
+        """
+        request = make_request(tmp_path, {"save_every_n_epochs": 1})
+        out = Path(request.output_path)
+        real_scan = fizgig_module._epoch_checkpoints
+        scans = []
+
+        def save_lands_after_launch(output_dir, output_name):
+            if scans:
+                write_checkpoints(out, "demo", [4])
+            scans.append(True)
+            return real_scan(output_dir, output_name)
+
+        monkeypatch.setattr(
+            fizgig_module, "_epoch_checkpoints", save_lands_after_launch
+        )
+        updates = transcript_run(
+            provider,
+            request,
+            [
+                "steps:  20%|██        | 16/80 [00:16<01:04,  1.00it/s, avr_loss=0.15]"
+                "INFO:__main__:epoch 4/20  avr_loss=0.1500  step=16  4.10s/step  lr=1.000e-04  peak VRAM 14.2 GB",
+                "steps:  21%|██        | 17/80 [00:17<01:03,  1.00it/s, avr_loss=0.15]",
+            ],
+        )
+        confirmed = [u for u in updates if u.saved_checkpoints]
+        assert [(u.current_step, u.saved_checkpoints) for u in confirmed] == [
+            (17, [16])
+        ]
+
     def test_hook_without_retention_leaves_everything(
         self, provider, tmp_path
     ):
@@ -493,7 +602,7 @@ class TestCheckpointPruning:
             provider,
             request,
             [
-                "INFO:fizgig.krea2.trainer:rendering epoch-0 preview (Sample at Start, on training DiT)...",
+                "INFO:__main__:[preview-vram] preview start: allocated 7.10 GB, reserved 7.80 GB (peak 7.80 GB), free 6.90 GB",
                 "sampling:  50%|█████     | 4/8 [00:04<00:04,  1.00it/s]",
             ],
         )
@@ -511,6 +620,40 @@ class TestCheckpointPruning:
 def touch_model_paths(request: StartJobRequest) -> None:
     for path in request.hyperparameters["model_paths"].values():
         Path(path).write_bytes(b"")
+
+
+class TestPreTrain:
+    def test_cache_stages_use_the_family_script(self, provider, tmp_path):
+        request = make_request(tmp_path)
+        argvs = []
+
+        async def fake_phase(job_id, run, argv, cwd, env, label):
+            argvs.append(argv)
+            return
+            yield
+
+        provider._run_phase_subprocess = fake_phase
+
+        class Run:
+            cancelled = False
+
+        async def drain():
+            async for _ in provider._pre_train(
+                "job0", request, "dataset.toml", 0, Run()
+            ):
+                pass
+
+        asyncio.run(drain())
+        latents, text = argvs
+        for argv, stage in ((latents, "latents"), (text, "text")):
+            assert argv[2].replace("\\", "/").endswith(
+                "src/fizgig/families/cache.py"
+            )
+            assert "--family=krea2" in argv
+            assert f"--stage={stage}" in argv
+            assert "--skip_existing" in argv
+        assert f"--model={tmp_path / 'vae.safetensors'}" in latents
+        assert f"--model={tmp_path / 'te.safetensors'}" in text
 
 
 class TestValidateRequest:
@@ -558,8 +701,8 @@ class TestValidateRequest:
         errors = provider.validate_request(request)
         assert any("at most 26" in e for e in errors)
 
-    @pytest.mark.parametrize("quant", ["float8", "none", "int8"])
-    def test_resident_non_nf4_rejected_on_small_card(
+    @pytest.mark.parametrize("quant", ["none", "int8"])
+    def test_resident_bf16_or_int8_rejected_on_small_card(
         self, provider, tmp_path, monkeypatch, quant
     ):
         monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 16.0)
@@ -568,38 +711,47 @@ class TestValidateRequest:
         )
         touch_model_paths(request)
         errors = provider.validate_request(request)
-        assert any("16 GB card" in e and "NF4" in e for e in errors)
+        assert any("16 GB card" in e and "Auto" in e for e in errors)
 
-    def test_nf4_resident_passes_on_small_card(
-        self, provider, tmp_path, monkeypatch
+    @pytest.mark.parametrize("quant", ["auto", "nf4"])
+    def test_auto_and_nf4_pass_on_small_card(
+        self, provider, tmp_path, monkeypatch, quant
     ):
         monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 16.0)
         request = make_request(
-            tmp_path, {"transformer_quantization": "nf4", "blocks_to_swap": 0}
+            tmp_path, {"transformer_quantization": quant, "blocks_to_swap": 0}
         )
         touch_model_paths(request)
         assert provider.validate_request(request) == []
 
-    def test_fp8_with_swap_passes_on_small_card(
+    def test_int8_with_swap_passes_on_small_card(
         self, provider, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 16.0)
         request = make_request(
             tmp_path,
-            {"transformer_quantization": "float8", "blocks_to_swap": 20},
+            {"transformer_quantization": "int8", "blocks_to_swap": 8},
         )
         touch_model_paths(request)
         assert provider.validate_request(request) == []
 
-    def test_fp8_resident_passes_on_big_card(
+    def test_int8_resident_passes_on_big_card(
         self, provider, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(fizgig_module, "_gpu_total_vram_gb", lambda: 24.0)
         request = make_request(
-            tmp_path, {"transformer_quantization": "float8", "blocks_to_swap": 0}
+            tmp_path, {"transformer_quantization": "int8", "blocks_to_swap": 0}
         )
         touch_model_paths(request)
         assert provider.validate_request(request) == []
+
+    def test_fp8_rejected(self, provider, tmp_path):
+        """Upstream dropped the fp8 base; a stale saved config must not
+        silently train in bf16."""
+        request = make_request(tmp_path, {"transformer_quantization": "float8"})
+        touch_model_paths(request)
+        errors = provider.validate_request(request)
+        assert any("'float8'" in e for e in errors)
 
     def test_missing_component_reported(self, provider, tmp_path):
         request = make_request(tmp_path)

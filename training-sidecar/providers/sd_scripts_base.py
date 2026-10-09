@@ -15,6 +15,7 @@ method or class attribute here rather than a copy-paste site.
 """
 
 import asyncio
+import math
 import os
 import re
 import shlex
@@ -943,6 +944,41 @@ class SdScriptsProvider(TrainingProvider):
         provider overrides this to enforce max_saves_to_keep.
         """
 
+    def _scan_epoch_checkpoints(self, request: StartJobRequest) -> dict[str, int]:
+        """Hook for backends that write epoch saves without logging them.
+
+        Returns {filename: epoch} for the run's intermediate checkpoints on
+        disk. The run loop seeds a seen-set from it at launch and diffs
+        against it where `_housekeep_checkpoints` runs, confirming each new
+        file as a save at that epoch's step. The default is empty: sd-scripts
+        and musubi announce their saves in the log.
+        """
+        return {}
+
+    def _confirm_epoch_checkpoints(
+        self,
+        request: StartJobRequest,
+        seen: set[str],
+        total_steps: int,
+        total_epochs: int,
+    ) -> list[int]:
+        """Steps of epoch checkpoints that landed since the last scan.
+
+        Mapped with the predictor's epoch rhythm (job_manager's
+        `_predict_cadence_steps`) so a confirmed save sits exactly on its
+        predicted line.
+        """
+        if total_steps <= 0 or total_epochs <= 0:
+            return []
+        steps_per_epoch = max(1, math.ceil(total_steps / total_epochs))
+        steps: list[int] = []
+        for name, epoch in self._scan_epoch_checkpoints(request).items():
+            if name in seen:
+                continue
+            seen.add(name)
+            steps.append(min(epoch * steps_per_epoch, total_steps))
+        return sorted(steps)
+
     # --- The training-loop state machine ---
 
     async def _stream_training_progress(
@@ -968,9 +1004,11 @@ class SdScriptsProvider(TrainingProvider):
         # Epoch number logged during a sampling pause, applied once the pause
         # ends — see the EPOCH_PATTERN branch in the run loop.
         pending_epoch: Optional[int] = None
-        # Retention deferred from the epoch line to the next training bar —
-        # see the EPOCH_PATTERN branch.
-        housekeep_pending = False
+        # Retention + silent-save confirmation, deferred from the epoch line
+        # until a training bar advances past this step — see the
+        # EPOCH_PATTERN branch.
+        housekeep_after_step: Optional[int] = None
+        seen_checkpoints = set(self._scan_epoch_checkpoints(request))
 
         line_queue, drain_tasks = _merge_output(proc)
 
@@ -1059,10 +1097,10 @@ class SdScriptsProvider(TrainingProvider):
                 # start, but its hook is a no-op anyway). Pruning now would
                 # run one save behind — trim to N, then the save lands,
                 # leaving N+1 on disk for the whole next epoch (and for good
-                # if the run dies). Defer to the first training bar after the
-                # rollover, by which point the boundary block — save included
-                # — has finished.
-                housekeep_pending = True
+                # if the run dies). Defer to the first training bar past the
+                # boundary step, by which point the boundary block — save
+                # included — has finished.
+                housekeep_after_step = current_step
                 if sampling_active:
                     # sd-scripts samples at the end of an epoch and the loop
                     # logs the *next* epoch immediately after — while the
@@ -1106,10 +1144,21 @@ class SdScriptsProvider(TrainingProvider):
 
             if match and is_training_bar:
                 training_started = True
-                if housekeep_pending:
-                    housekeep_pending = False
-                    self._housekeep_checkpoints(request)
                 new_step = int(match.group(1))
+                silent_saves: list[int] = []
+                if housekeep_after_step is not None:
+                    if epoch_match:
+                        # tqdm's bar has no trailing newline, so its final
+                        # redraw and Fizgig's epoch summary arrive as one
+                        # line. That bar is the boundary itself, not the
+                        # next epoch's first step.
+                        housekeep_after_step = new_step
+                    elif new_step > housekeep_after_step:
+                        housekeep_after_step = None
+                        silent_saves = self._confirm_epoch_checkpoints(
+                            request, seen_checkpoints, total_steps, total_epochs
+                        )
+                        self._housekeep_checkpoints(request)
                 # sd-scripts reprints the training bar throughout the sampling
                 # pause — sometimes catching up to the step sampling was
                 # announced at. Only a bar past that step is training resuming;
@@ -1150,6 +1199,7 @@ class SdScriptsProvider(TrainingProvider):
                     loss=last_loss,
                     eta_seconds=eta,
                     speed=speed,
+                    saved_checkpoints=silent_saves,
                     samples=samples,
                     log_lines=log_lines[-50:],
                     # An advancing step means we're actively training — clear

@@ -117,7 +117,7 @@ export type TrainingDefaults = {
   resolution: number[];
   mixedPrecision: 'bf16' | 'fp16';
   /** Transformer weight quantization for VRAM savings. 'none' keeps full precision. */
-  transformerQuantization: 'none' | 'float8' | 'int8' | 'nf4';
+  transformerQuantization: 'auto' | 'none' | 'float8' | 'int8' | 'nf4';
   /** Text encoder weight quantization. */
   textEncoderQuantization: 'none' | 'float8';
   /** Pre-compute text encoder embeddings once and reuse (saves VRAM + time). */
@@ -984,13 +984,11 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       // provider switch, would sabotage every fizgig run.
       //
       // transformerQuantization: with swap zeroed, the base precision is
-      // the whole VRAM story. Fizgig's fp8 RAW is ~14 GB resident, which
-      // its own guide pairs with 20 swapped blocks on 16 GB — fp8 + 0 swap
-      // filled the card before the epoch-0 preview ran a step and paged
-      // the run into sysmem. NF4 (~6 GB packed) is the measured 16 GB
-      // recipe (~6.5 s/it resident). The sidecar refuses fp8/bf16/int8
-      // with no swap on sub-20 GB cards, so this default is the one that
-      // launches.
+      // the whole VRAM story. Auto is Fizgig's own GUI default: it plans
+      // int8 where it fits and NF4 otherwise (NF4 is the measured 16 GB
+      // recipe, ~6.5 s/it resident), and the sidecar hands it the swap
+      // decision too. The sidecar refuses bf16/int8 with no swap on
+      // sub-20 GB cards.
       //
       // sampleSteps: previews render through the step-distilled Turbo LoRA,
       // not RAW — 8 steps matches Fizgig's own CLI default, where the RAW
@@ -998,7 +996,7 @@ export const MODEL_DEFINITIONS: ModelDefinition[] = [
       fizgig: {
         blocksToSwap: 0,
         sampleSteps: 8,
-        transformerQuantization: 'nf4',
+        transformerQuantization: 'auto',
       },
     },
   },
@@ -1609,15 +1607,23 @@ type QuantizationOption = {
 };
 
 /**
- * Transformer-quantisation choices. int8/NF4 are Fizgig's two extra
- * frozen-base precisions beyond fp8: an INT8 W8A8 path with exact bf16
- * gradients (its headline speed experiment — the transformer blocks also
- * torch.compile on this path), and a QLoRA-style NF4 base for very small
- * cards. The other backends have no flag for either.
+ * Transformer-quantisation choices. Fizgig has its own set: no fp8 base (gone
+ * upstream since Krea 2 moved onto its family driver), but an INT8 W8A8 path
+ * with exact bf16 gradients, a QLoRA-style NF4 base, and Auto, which plans
+ * int8-vs-NF4 and the block swap from free VRAM as Fizgig's own GUI does.
  */
 export const TRANSFORMER_QUANTIZATION_OPTIONS: QuantizationOption[] = [
+  {
+    value: 'auto',
+    label: 'Auto (planned from free VRAM)',
+    providers: ['fizgig'],
+  },
   { value: 'none', label: 'None (full precision)' },
-  { value: 'float8', label: 'float8 (lower VRAM)' },
+  {
+    value: 'float8',
+    label: 'float8 (lower VRAM)',
+    providers: ['ai-toolkit', 'kohya', 'musubi'],
+  },
   {
     value: 'int8',
     label: 'int8 W8A8 (faster, exact gradients)',
