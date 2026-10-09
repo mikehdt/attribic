@@ -391,8 +391,9 @@ const trainingConfigSlice = createSlice({
         state.form.optimizer = getDefaults(state.form.modelId).optimizer;
       }
       state.form.scheduler = coerceScheduler(state.form).scheduler;
-      state.form.transformerQuantization =
-        coerceQuantization(state.form).transformerQuantization;
+      state.form.transformerQuantization = coerceQuantization(
+        state.form,
+      ).transformerQuantization;
       coerceDurationPacingInPlace(state.form);
 
       // Per-provider default overrides (ModelDefinition.providerDefaults):
@@ -1275,7 +1276,10 @@ function pristineFormState(
   // the user's provider choice and compare against that provider's effective
   // defaults, so switching to a backend with providerDefaults overrides
   // doesn't light up reset (or worse, "reset" onto another backend's values).
-  const form = defaultsToFormState(getProviderDefaults(modelId, provider), modelId);
+  const form = defaultsToFormState(
+    getProviderDefaults(modelId, provider),
+    modelId,
+  );
   form.selectedProvider = provider;
   fillEmptyModelPaths(form, appModelDefaults[modelId]);
   return form;

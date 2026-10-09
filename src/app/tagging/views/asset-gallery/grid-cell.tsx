@@ -4,7 +4,10 @@ import { memo, MouseEvent, useCallback } from 'react';
 
 import { isSupportedVideoExtension } from '@/app/constants';
 import { Checkbox } from '@/app/shared/checkbox';
-import { ImageDimensions, selectAssetHasModifiedTags } from '@/app/store/assets';
+import {
+  ImageDimensions,
+  selectAssetHasModifiedTags,
+} from '@/app/store/assets';
 import { useAppDispatch, useAppSelector } from '@/app/store/hooks';
 import { selectProjectFolderName } from '@/app/store/project';
 import {

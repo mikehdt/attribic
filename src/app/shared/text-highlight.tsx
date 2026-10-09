@@ -93,7 +93,10 @@ const computeHighlightRanges = (
     const normalizedPattern = pattern.toLowerCase();
 
     if (wholeWord) {
-      for (const start of findPhraseMatches(normalizedText, normalizedPattern)) {
+      for (const start of findPhraseMatches(
+        normalizedText,
+        normalizedPattern,
+      )) {
         ranges.push({ start, end: start + pattern.length });
       }
       continue;

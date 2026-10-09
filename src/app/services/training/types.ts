@@ -3,11 +3,7 @@ import type { ModelComponentType } from './models';
 // --- Provider & Backend ---
 
 export type TrainingProvider =
-  | 'ai-toolkit'
-  | 'kohya'
-  | 'musubi'
-  | 'fizgig'
-  | 'mock';
+  'ai-toolkit' | 'kohya' | 'musubi' | 'fizgig' | 'mock';
 
 export const TRAINING_PROVIDER_LABELS: Record<TrainingProvider, string> = {
   'ai-toolkit': 'AI Toolkit (Ostris)',

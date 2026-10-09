@@ -4,12 +4,14 @@ const nextConfig: NextConfig = {
   // Turn off to stop double-rendering in dev mode (eg. console logging twice)
   reactStrictMode: true,
   devIndicators: false,
+  reactCompiler: true,
 
   // Allow larger uploads for thumbnail creation
   experimental: {
     serverActions: {
       bodySizeLimit: '3mb',
     },
+    turbopackRustReactCompiler: true,
   },
 
   // Allow images from our API route

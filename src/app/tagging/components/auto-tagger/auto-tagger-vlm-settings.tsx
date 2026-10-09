@@ -273,9 +273,9 @@ export function AutoTaggerVlmSettings({
           {selectedVideoCount === 1
             ? 'The selected video will'
             : `The ${selectedVideoCount} selected videos will`}{' '}
-          be {isTagOutput ? 'tagged' : 'captioned'} from a single poster frame
-          — the chosen model can&apos;t read video natively. Pick a
-          video-capable model (e.g. Qwen3-VL GPU) for true frame-by-frame
+          be {isTagOutput ? 'tagged' : 'captioned'} from a single poster frame —
+          the chosen model can&apos;t read video natively. Pick a video-capable
+          model (e.g. Qwen3-VL GPU) for true frame-by-frame
           {isTagOutput ? ' analysis' : ' captioning'}.
         </p>
       )}

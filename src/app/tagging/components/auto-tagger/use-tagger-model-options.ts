@@ -36,9 +36,7 @@ export function useTaggerModelOptions({
   //   independently downstream, so either is safe.
   const modeFilteredReadyModels = useMemo(() => {
     if (captionMode === 'caption') {
-      return readyModels.filter(
-        (m) => getProviderTypeForModel(m.id) === 'vlm',
-      );
+      return readyModels.filter((m) => getProviderTypeForModel(m.id) === 'vlm');
     }
     return readyModels;
   }, [readyModels, captionMode]);

@@ -98,12 +98,7 @@ export const selectOrderedTagsWithStatus = createSelector(
   // Input selectors. Keyed on the single asset rather than the whole `images`
   // array: every asset gets a new array reference on any mutation, so taking
   // the list here would recompute this for every mounted row on every edit.
-  [
-    selectAssetById,
-    selectTagCounts,
-    selectTagSortType,
-    selectTagSortDirection,
-  ],
+  [selectAssetById, selectTagCounts, selectTagSortType, selectTagSortDirection],
   // Result function
   (selectedImage, tagCounts, sortType, sortDirection) => {
     if (!selectedImage) return [];
